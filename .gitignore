@@ -1,0 +1,218 @@
+# ============================================================
+# GITIGNORE - Comprehensive Security Configuration
+# ============================================================
+# This file ensures NO credentials or sensitive data are committed to Git
+# ============================================================
+
+# ============================================================
+# CRITICAL SECURITY: NEVER COMMIT THESE FILES
+# ============================================================
+
+# Environment variables with REAL credentials (NEVER commit these!)
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+.env.development
+
+# API Keys and Secrets
+*.key
+*.secret
+*.pem
+*.p12
+*.pfx
+credentials.*
+secrets.*
+api_keys.*
+private_keys.json
+
+# Password files
+*.password
+*passwords.txt
+passphrase.txt
+
+# ============================================================
+# PROJECT-SPECIFIC FILES
+# ============================================================
+
+# Polymarket specific
+polymarket_private_key.txt
+builder_credentials.txt
+wallet_mnemonic.txt
+
+# Alert configuration with real credentials
+email_config.json
+discord_config.json
+alert_settings.json
+
+# ============================================================
+# BINARY FILES AND COMPILED CODE
+# ============================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+.conda/
+envs/
+
+# ============================================================
+# IDE AND EDITOR CONFIGURATIONS
+# ============================================================
+
+# VSCode
+.vscode/
+*.code-workspace
+history/
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+
+# Vim
+*.swp
+*.swo
+*~
+.viminfo
+
+# Emacs
+*~
+\#*\#
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# ============================================================
+# LOGS AND TEMPORARY FILES
+# ============================================================
+
+# All log files
+logs/
+*.log
+*.logs
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ============================================================
+# DATABASE FILES
+# ============================================================
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.sql
+
+# Database backups
+*.db.backup
+*.sql.backup
+
+# ============================================================
+# TEST COVERAGE AND METRICS
+# ============================================================
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.cache
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Black
+.black
+
+# ============================================================
+# BUILD AND DEPENDENCY ARTIFACTS
+# ============================================================
+
+# Node modules (if using Node for anything)
+node_modules/
+package-lock.json
+yarn.lock
+
+# ============================================================
+# PERSONAL FILES
+# ============================================================
+
+# Notes
+NOTES.md
+TODO.md
+PERSONAL.md
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# ============================================================
+# ADDITIONAL PROTECTION
+# ============================================================
+
+# Prevent accidental commits of large files
+*.zip
+*.tar
+*.tar.gz
+*.rar
+
+# Large binary files (adjust as needed)
+*.iso
+*.dmg
+*.exe
+
+# ============================================================
+# EXAMPLE AND TEMPLATE FILES (SAFE TO COMMIT)
+# ============================================================
+
+# These ARE safe to commit because they contain only placeholders
+# Do NOT ignore these:
+# .env.example          (contains only placeholders, safe to commit)
+# config.example.json   (contains only placeholders, safe to commit)

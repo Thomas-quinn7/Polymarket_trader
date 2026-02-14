@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polymarket Arbitrage Bot Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 Polymarket Arbitrage Bot</h1>
+            <div class="status-badge" id="statusBadge">
+                <span id="statusIcon">🟢</span>
+                <span id="statusText">Running</span>
+            </div>
+        </header>
+
+        <main>
+            <!-- P&L Section -->
+            <section class="card pnl-card">
+                <h2>💰 Portfolio Performance</h2>
+                <div class="pnl-grid">
+                    <div class="pnl-item">
+                        <span class="label">Balance</span>
+                        <span class="value" id="balance">$0.00</span>
+                    </div>
+                    <div class="pnl-item">
+                        <span class="label">Total P&L</span>
+                        <span class="value" id="totalPnl">$0.00</span>
+                    </div>
+                    <div class="pnl-item">
+                        <span class="label">Win Rate</span>
+                        <span class="value" id="winRate">0%</span>
+                    </div>
+                    <div class="pnl-item">
+                        <span class="label">Deployed</span>
+                        <span class="value" id="deployed">$0.00</span>
+                    </div>
+                </div>
+                <div class="pnl-chart" id="pnlChart">
+                    <canvas id="pnlCanvas"></canvas>
+                </div>
+            </section>
+
+            <!-- Positions Section -->
+            <section class="card positions-card">
+                <div class="card-header">
+                    <h2>📊 Open Positions</h2>
+                    <span class="position-count" id="positionCount">0/5</span>
+                </div>
+                <div class="positions-table" id="positionsTable">
+                    <div class="empty-state">No open positions</div>
+                </div>
+            </section>
+
+            <!-- Trade History Section -->
+            <section class="card trades-card">
+                <h2>📜 Recent Trades</h2>
+                <div class="trades-table" id="tradesTable">
+                    <div class="empty-state">No trades yet</div>
+                </div>
+            </section>
+
+            <!-- System Status Section -->
+            <section class="card status-card">
+                <h2>⚙️ System Status</h2>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <span class="label">Uptime</span>
+                        <span class="value" id="uptime">0s</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Last Update</span>
+                        <span class="value" id="lastUpdate">-</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Total Trades</span>
+                        <span class="value" id="totalTrades">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Drawdown</span>
+                        <span class="value" id="drawdown">0%</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Polymarket Arbitrage Bot v1.0.0 | <span id="refreshRate">Auto-refresh: 5s</span></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
