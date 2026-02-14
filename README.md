@@ -1,14 +1,14 @@
 # Polymarket Arbitrage Bot
 
-An automated arbitrage trading bot for Polymarket that implements the 98.5 cent settlement arbitrage strategy. The bot monitors markets for opportunities where the price is between $0.985 and $1.00, executes trades 1-2 seconds before market close, and tracks wins/losses with comprehensive PnL monitoring.
+An automated arbitrage trading bot for Polymarket that implements a 98.5 cent settlement arbitrage strategy. The bot monitors markets for opportunities where the price is between $0.985 and $1.00, executes trades 1-2 seconds before market close, and tracks wins/losses with comprehensive P&L monitoring.
 
 ## Features
 
 - **98.5 Cent Settlement Arbitrage Strategy**: Automatically detects opportunities in the 98.5-100 cent range
-- **Paper Trading Mode**: Simulate trading with fake currency ($10,000 starting balance)
-- **Real-time Monitoring**: Web dashboard with live PnL, positions, and trade history
+- **Paper Trading Mode**: Simulates trading with fake currency ($10,000 starting balance)
+- **Real-time Monitoring**: Web dashboard with live P&L, positions, and trade history
 - **Comprehensive Alerts**: Email and Discord notifications for trades, wins, and losses
-- **PnL Tracking**: Detailed win/loss statistics, drawdown monitoring, and profit analysis
+- **P&L Tracking**: Detailed win/loss statistics, drawdown monitoring, and profit analysis
 - **Configurable Timing**: Adjust execution timing (default: 2 seconds before market close)
 - **Risk Management**: Max 5 positions with equal 20% capital allocation
 - **Error Handling**: Alert and continue on errors - never stop trading
@@ -27,7 +27,7 @@ The 98.5 cent settlement arbitrage strategy works as follows:
 ### Why This Strategy Works
 
 - **Price Confirmation**: Price > 98.5 cents indicates high probability of YES outcome
-- **No External Data Needed**: Price threshold itself provides the confirmation
+- **No External Data Needed**: Price threshold itself provides confirmation
 - **Fast Execution**: Trading 1-2 seconds before close ensures correct side
 - **Consistent Edge**: Each trade has a small mathematical advantage
 
@@ -40,29 +40,29 @@ The 98.5 cent settlement arbitrage strategy works as follows:
 
 ### Setup
 
-1. Clone the repository:
+1. **Clone repository**:
 ```bash
 cd Polymarket_trading
 ```
 
-2. Create a virtual environment:
+2. **Create a virtual environment**:
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-3. Install dependencies:
+3. **Install dependencies**:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Configure environment variables:
+4. **Configure environment variables**:
 ```bash
 cp .env.example .env
 # Edit .env with your configuration
 ```
 
-5. Set up your Polymarket credentials:
+5. **Set up your Polymarket credentials**:
    - Get your Polymarket private key from [polymarket.com](https://polymarket.com)
    - Add to `.env` file: `POLYMARKET_PRIVATE_KEY=your_key_here`
 
@@ -70,38 +70,6 @@ cp .env.example .env
    - Follow the [Builder Verification Guide](BUILDER_VERIFICATION.md)
    - Get 3000 requests/day (vs 200 unverified)
    - Enable builder features and leaderboard access
-
-### Builder Verification (Optional - Highly Recommended)
-
-To get **verified status** and access **3000 requests/day** (vs 200 requests/day):
-
-1. **Create Builder Account**:
-   - Go to [polymarket.com/settings?tab=builder](https://polymarket.com/settings?tab=builder)
-   - Click your profile image and select "Builders"
-
-2. **Generate Builder Credentials**:
-   - In the "Builder Keys" section, click "+ Create New"
-   - You'll receive:
-     - `BUILDER_API_KEY`: Your builder API key identifier
-     - `BUILDER_SECRET`: Secret key for signing requests
-     - `BUILDER_PASSPHRASE`: Additional authentication passphrase
-
-3. **Add to `.env` file**:
-   ```env
-   BUILDER_ENABLED=True
-   BUILDER_API_KEY=your_builder_api_key_here
-   BUILDER_SECRET=your_builder_secret_here
-   BUILDER_PASSPHRASE=your_builder_passphrase_here
-   ```
-
-**Benefits of Builder Verification**:
-- ✅ **3000 requests/day** (vs 200 unverified)
-- ✅ Order attribution for Builder Leaderboard
-- ✅ Fee share on routed orders
-- ✅ Track performance via Data API
-- ✅ Compete for weekly builder rewards
-
-**Security Note**: Never commit builder credentials to version control. Use environment variables or a secrets manager.
 
 ## Configuration
 
@@ -143,6 +111,41 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOO
 DISCORD_MENTION_USER=your_discord_username
 ```
 
+### Strategy Configuration
+
+```env
+# Timing
+EXECUTE_BEFORE_CLOSE_SECONDS=2
+
+# Price Thresholds
+MIN_PRICE_THRESHOLD=0.985
+MAX_PRICE_THRESHOLD=1.00
+
+# Position Management
+MAX_POSITIONS=5
+CAPITAL_SPLIT_PERCENT=0.2
+
+# Scanning
+SCAN_INTERVAL_MS=500
+```
+
+### Dashboard Configuration
+
+```env
+# Dashboard
+DASHBOARD_ENABLED=True
+DASHBOARD_PORT=8080
+DASHBOARD_HOST=0.0.0.0
+```
+
+### Logging Configuration
+
+```env
+# Logging
+LOG_LEVEL=INFO
+LOG_TO_FILE=True
+```
+
 ### Rate Limits
 
 The bot respects Polymarket API rate limits:
@@ -154,26 +157,26 @@ The bot respects Polymarket API rate limits:
 
 **Recommendation**: Enable Builder credentials (`BUILDER_ENABLED=True`) for 15x higher rate limit and access to builder features.
 
-### Testing Your Setup
+## Testing Your Setup
 
 We've provided several scripts to help you validate your setup:
 
-#### 1. Quick Start Script
+### 1. Quick Start Script
 
 The fastest way to get started:
 
 ```bash
-# Run the quick start script
+# Run quick start script
 python quick_start.py
 ```
 
 This will:
 - Create a virtual environment
 - Install all dependencies
-- Create .env from template
+- Create `.env` from template
 - Guide you through configuration
 
-#### 2. Validate Everything
+### 2. Validate Everything
 
 Before starting the bot, run the validation script:
 
@@ -193,7 +196,7 @@ This will check:
 
 **All checks must pass before running the bot.**
 
-#### 3. Test Email Alerts
+### 3. Test Email Alerts
 
 If you've configured email alerts, test them:
 
@@ -209,7 +212,7 @@ This will:
 **For Gmail users**: You must use an App Password, not your regular password
 - Get one at: https://myaccount.google.com/apppasswords
 
-#### 4. Test Discord Alerts
+### 4. Test Discord Alerts
 
 If you've configured Discord alerts, test them:
 
@@ -238,7 +241,7 @@ PAPER_TRADING_ONLY=True       # Safety: Blocks any real money trades
 **When `PAPER_TRADING_ONLY=True`**:
 - ✅ All trades use fake currency only
 - ✅ No real money can be spent
-- ✅ PnL is tracked in fake currency
+- ✅ P&L is tracked in fake currency
 - ✅ Safety warning on bot startup
 - ✅ Cannot accidentally switch to real trading
 
@@ -248,7 +251,7 @@ The bot tracks all trades with fake currency:
 - Starting balance: $10,000
 - 20% allocation per position
 - Automatic return on settlements
-- PnL tracking and reporting
+- P&L tracking and reporting
 
 #### 3. Safety Warnings
 
@@ -258,32 +261,6 @@ When the bot starts in safety mode, you'll see:
 ```
 
 This confirms you're protected from real-money trades.
-
-### Strategy Configuration
-
-```env
-# Timing
-EXECUTE_BEFORE_CLOSE_SECONDS=2
-
-# Price Thresholds
-MIN_PRICE_THRESHOLD=0.985
-MAX_PRICE_THRESHOLD=1.00
-
-# Position Management
-MAX_POSITIONS=5
-CAPITAL_SPLIT_PERCENT=0.2
-
-# Scanning
-SCAN_INTERVAL_MS=500
-```
-
-### Dashboard Configuration
-
-```env
-DASHBOARD_ENABLED=True
-DASHBOARD_PORT=8080
-DASHBOARD_HOST=0.0.0.0
-```
 
 ## Usage
 
@@ -296,9 +273,10 @@ python main.py
 The bot will:
 1. Initialize all components (Polymarket client, strategy, portfolio, alerts)
 2. Start scanning for arbitrage opportunities
-3. Execute trades at the optimal timing
-4. Track all positions and PnL
+3. Execute trades at optimal timing
+4. Track all positions and P&L
 5. Send alerts on important events
+6. Handle errors gracefully (alert and continue)
 
 ### Access the Dashboard
 
@@ -313,13 +291,7 @@ The dashboard provides:
 - Trade history with wins/losses
 - System status and uptime
 - Portfolio summary
-
-### Monitor Logs
-
-Logs are saved to the `logs/` directory:
-- `polymarket_trading_YYYYMMDD.log` - Main bot logs
-- `trades_YYYYMMDD.log` - Trade history
-- `trades_YYYYMMDD.csv` - Trade history CSV
+- Auto-refresh every 5 seconds
 
 ## Project Structure
 
@@ -358,13 +330,15 @@ Polymarket_trading/
 │   ├── alerts.py            # Alert management
 │   ├── email_sender.py      # Email notifications
 │   ├── logger.py            # Logging
-│   ├── pnl_tracker.py       # PnL tracking
+│   ├── pnl_tracker.py       # P&L tracking
 │   └── webhook_sender.py    # Discord notifications
 ├── logs/                     # Log files
 ├── main.py                   # Main bot entry point
 ├── requirements.txt          # Python dependencies
 ├── .env.example             # Configuration template
-└── README.md               # This file
+├── .gitignore              # Git ignore rules
+├── README.md               # This file
+└── SECURITY.md              # Security guide
 ```
 
 ## Key Components
@@ -396,9 +370,9 @@ Implements the 98.5 cent arbitrage strategy:
 Handles paper trading execution:
 - Simulates buy orders
 - Tracks settlements
-- Calculates PnL
+- Calculates P&L
 
-### PnL Tracking (`utils/pnl_tracker.py`)
+### P&L Tracking (`utils/pnl_tracker.py`)
 
 Comprehensive profit/loss tracking:
 - Win/loss statistics
@@ -488,34 +462,10 @@ The bot implements several risk controls:
 - Verify internet connection
 - Check Polymarket API status
 
-## Future Enhancements
-
-- [ ] Julia implementation for high-performance trading
-- [ ] Additional market categories (Fed, regulatory, economic)
-- [ ] Machine learning for opportunity scoring
-- [ ] Advanced risk management features
-- [ ] Real-time WebSocket integration
-- [ ] Backtesting and simulation tools
-- [ ] Mobile app notifications
-- [ ] Builder Leaderboard integration and display
-- [ ] Fee sharing tracking and reporting
-- [ ] Weekly builder rewards monitoring
-
-## Disclaimer
-
-This bot is for educational purposes only. Trading on Polymarket involves financial risk. Always:
-1. Start with paper trading
-2. Understand the strategy thoroughly
-3. Only trade with money you can afford to lose
-4. Comply with all applicable laws and regulations
-
-## License
-
-This project is provided as-is for educational purposes.
-
-## Support
-
-For issues, questions, or contributions, please refer to the project documentation or create an issue in the repository.
+**Dashboard not accessible**:
+- Check dashboard port (default 8080)
+- Ensure `DASHBOARD_ENABLED=True` in `.env`
+- Check firewall settings
 
 ## Quick Reference
 
@@ -543,5 +493,22 @@ python main.py                   # Start trading bot
 http://localhost:8080            # Access web dashboard
 ```
 
-#   P o l y m a r k e t _ t r a d e r  
- 
+## Support
+
+For issues, questions, or contributions, please refer to:
+- Project documentation
+- Builder Verification Guide: `BUILDER_VERIFICATION.md`
+- Check logs in `logs/` directory
+- Create an issue in the repository
+
+## Disclaimer
+
+This bot is for educational purposes only. Trading on Polymarket involves financial risk. Always:
+1. Start with paper trading
+2. Understand the strategy thoroughly
+3. Only trade with money you can afford to lose
+4. Comply with all applicable laws and regulations
+
+## License
+
+This project is provided as-is for educational purposes.
