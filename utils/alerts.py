@@ -151,13 +151,13 @@ class AlertManager:
 
         # Log alert
         if severity == AlertSeverity.CRITICAL:
-            logger.critical(f"🚨 [{alert_type.value}] {title}: {message}")
+            logger.critical(f"[{alert_type.value}] {title}: {message}")
         elif severity == AlertSeverity.ERROR:
-            logger.error(f"❌ [{alert_type.value}] {title}: {message}")
+            logger.error(f"[{alert_type.value}] {title}: {message}")
         elif severity == AlertSeverity.WARNING:
-            logger.warning(f"⚠️  [{alert_type.value}] {title}: {message}")
+            logger.warning(f"[{alert_type.value}] {title}: {message}")
         else:
-            logger.info(f"ℹ️  [{alert_type.value}] {title}: {message}")
+            logger.info(f"[{alert_type.value}] {title}: {message}")
 
         return True
 

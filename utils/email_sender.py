@@ -57,6 +57,46 @@ class EmailSender:
         self, subject: str, body: str, html_body: Optional[str] = None
     ) -> bool:
         """
+        Send an email using SMTP
+        """
+        if not self.enabled:
+            logger.warning("Email sending disabled - not configured")
+            return False
+
+        try:
+            # Create message
+            msg = MIMEMultipart("alternative")
+            msg["From"] = config.EMAIL_FROM
+            msg["To"] = config.EMAIL_TO
+            msg["Subject"] = f"[Polymarket Arbitrage Bot] {subject}"
+            msg["MIME-Version"] = "1.0"
+            msg["Content-Type"] = "multipart/alternative; boundary={msg.as_string()}"
+            
+            # Add plain text part
+            msg.attach(MIMEText(body, "plain"))
+            
+            # Add HTML part if provided
+            if html_body:
+                msg.attach(MIMEText(html_body, "html"))
+
+            # Send email
+            with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=10) as server:
+                server.starttls()
+                if self.smtp_username and self.smtp_password:
+                    server.login(self.smtp_username, self.smtp_password)
+                response = server.send_message(msg)
+                
+                if response.status_code in [200, 201, 204]:
+                    logger.info(f"Email sent successfully")
+                    return True
+                else:
+                    logger.error(f"Failed to send email: {response.status_code}")
+                    return False
+
+        except Exception as e:
+            logger.error(f"Failed to send email: {e}")
+            return False
+        """
         Send an email
 
         Args:

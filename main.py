@@ -6,7 +6,9 @@ Orchestrates all components and runs the trading loop
 import time
 import signal
 import sys
+import threading
 from datetime import datetime, timedelta
+from typing import Optional
 
 from data.polymarket_client import PolymarketClient
 from data.polymarket_models import ArbitrageOpportunity
@@ -19,6 +21,9 @@ from utils.logger import logger
 from utils.pnl_tracker import PnLTracker
 from utils.alerts import alert_manager
 from config.polymarket_config import config
+
+# Import dashboard module (conditionally loaded when DASHBOARD_ENABLED is True)
+import dashboard.api
 
 
 class TradingBot:
@@ -73,11 +78,44 @@ class TradingBot:
         logger.info("\nShutdown signal received")
         self.stop()
 
+    def _start_dashboard(self):
+        """Start the dashboard in a separate thread"""
+        import uvicorn
+        
+        logger.info(f"Starting dashboard server on {config.DASHBOARD_HOST}:{config.DASHBOARD_PORT}")
+        
+        # Set bot instance for dashboard API
+        if config.DASHBOARD_ENABLED:
+            global dashboard_bot_instance
+            dashboard_bot_instance = self
+        
+        # Create uvicorn config
+        uvicorn_config = uvicorn.Config(
+            app="dashboard.api:app",
+            host=config.DASHBOARD_HOST,
+            port=config.DASHBOARD_PORT,
+            log_level="warning",
+        )
+        
+        # Create and run server
+        server = uvicorn.Server(uvicorn_config)
+        server.run()
+
     def start(self):
         """Start the trading bot"""
         logger.info("Starting Trading Bot...")
         self.running = True
         logger.info("Trading Bot started successfully")
+
+        # Start dashboard in background thread if enabled
+        if config.DASHBOARD_ENABLED:
+            logger.info(f"Dashboard will be available at http://localhost:{config.DASHBOARD_PORT}")
+            # Set bot instance for dashboard API before starting dashboard
+            dashboard.api.bot_instance = self
+            dashboard_thread = threading.Thread(target=self._start_dashboard, daemon=True)
+            dashboard_thread.start()
+            # Give dashboard time to start
+            time.sleep(2)
 
         # Send system start alert
         alert_manager.send_system_start_alert()
@@ -251,10 +289,10 @@ class TradingBot:
         # PnL status
         pnl_summary = self.pnl_tracker.get_summary()
 
-        logger.info(f"\n💰 Balance: ${balance:.2f} | Deployed: ${deployed:.2f}")
-        logger.info(f"📊 Open Positions: {position_count}/{config.MAX_POSITIONS}")
-        logger.info(f"📈 Total P&L: ${pnl_summary.total_pnl:.2f}")
-        logger.info(f"🎯 Win Rate: {pnl_summary.win_rate:.1f}%")
+        logger.info(f"\nBalance: ${balance:.2f} | Deployed: ${deployed:.2f}")
+        logger.info(f"Open Positions: {position_count}/{config.MAX_POSITIONS}")
+        logger.info(f"Total P&L: ${pnl_summary.total_pnl:.2f}")
+        logger.info(f"Win Rate: {pnl_summary.win_rate:.1f}%")
 
     def _print_final_report(self):
         """Print final report"""

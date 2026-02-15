@@ -4,14 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Polymarket Arbitrage Bot Dashboard</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🎯 Polymarket Arbitrage Bot</h1>
+            <h1>Polymarket Arbitrage Bot</h1>
             <div class="status-badge" id="statusBadge">
-                <span id="statusIcon">🟢</span>
+                <span id="statusIcon">[green circle]</span>
                 <span id="statusText">Running</span>
             </div>
         </header>
@@ -19,7 +19,7 @@
         <main>
             <!-- P&L Section -->
             <section class="card pnl-card">
-                <h2>💰 Portfolio Performance</h2>
+                <h2>Portfolio Performance</h2>
                 <div class="pnl-grid">
                     <div class="pnl-item">
                         <span class="label">Balance</span>
@@ -46,7 +46,7 @@
             <!-- Positions Section -->
             <section class="card positions-card">
                 <div class="card-header">
-                    <h2>📊 Open Positions</h2>
+                    <h2>Open Positions</h2>
                     <span class="position-count" id="positionCount">0/5</span>
                 </div>
                 <div class="positions-table" id="positionsTable">
@@ -56,7 +56,7 @@
 
             <!-- Trade History Section -->
             <section class="card trades-card">
-                <h2>📜 Recent Trades</h2>
+                <h2>Recent Trades</h2>
                 <div class="trades-table" id="tradesTable">
                     <div class="empty-state">No trades yet</div>
                 </div>
@@ -64,7 +64,7 @@
 
             <!-- System Status Section -->
             <section class="card status-card">
-                <h2>⚙️ System Status</h2>
+                <h2>System Status</h2>
                 <div class="status-grid">
                     <div class="status-item">
                         <span class="label">Uptime</span>
@@ -91,6 +91,6 @@
         </footer>
     </div>
 
-    <script src="app.js"></script>
+    <script src="/static/app.js"></script>
 </body>
 </html>

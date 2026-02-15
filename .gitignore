@@ -216,3 +216,5 @@ PERSONAL.md
 # Do NOT ignore these:
 # .env.example          (contains only placeholders, safe to commit)
 # config.example.json   (contains only placeholders, safe to commit)
+
+Notes

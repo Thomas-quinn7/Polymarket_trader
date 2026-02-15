@@ -216,9 +216,8 @@ class PnLTracker:
 
         if not closed_trades:
             return PnLSummary(
-                initial_balance=self.initial_balance,
-                current_balance=self.current_balance,
                 peak_balance=self.peak_balance,
+                initial_balance=self.initial_balance,
             )
 
         wins = [t for t in closed_trades if t.pnl > 0]

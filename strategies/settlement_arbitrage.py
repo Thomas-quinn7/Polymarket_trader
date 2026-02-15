@@ -7,7 +7,7 @@ from typing import List, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from data.polymarket_config import config
+from config.polymarket_config import config
 from data.polymarket_client import PolymarketClient
 from data.polymarket_models import ArbitrageOpportunity, ArbitrageStatus
 from utils.logger import logger

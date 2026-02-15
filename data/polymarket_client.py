@@ -31,9 +31,6 @@ class PolymarketClient:
         self.private_key = config.POLYMARKET_PRIVATE_KEY
         self.funder_address = config.POLYMARKET_FUNDER_ADDRESS
 
-        # Initialize SDK client
-        self.client = ClobClient(self.host)
-
         # Check if builder credentials are configured
         if config.BUILDER_ENABLED:
             try:
@@ -50,14 +47,18 @@ class PolymarketClient:
                     local_builder_creds=builder_creds
                 )
 
+                # Initialize SDK client with credentials
+                self.client = ClobClient(
+                    host=self.host,
+                    chain_id=self.chain_id,
+                    key=self.private_key,
+                    signature_type=1,  # Email/Magic wallet
+                    funder=self.funder_address,
+                )
+
                 # Set user API credentials
                 self.client.set_api_creds(
-                    self.client.create_or_derive_api_creds(
-                        key=self.private_key,
-                        chain_id=self.chain_id,
-                        signature_type=1,  # Email/Magic wallet
-                        funder=self.funder_address,
-                    )
+                    self.client.create_or_derive_api_creds()
                 )
 
                 # Update client with builder config
@@ -73,14 +74,18 @@ class PolymarketClient:
 
     def _initialize_standard_mode(self):
         """Initialize without builder credentials (unverified mode)"""
+        # Initialize SDK client with credentials
+        self.client = ClobClient(
+            host=self.host,
+            chain_id=self.chain_id,
+            key=self.private_key,
+            signature_type=1,  # Email/Magic wallet
+            funder=self.funder_address,
+        )
+
         # Set API credentials
         self.client.set_api_creds(
-            self.client.create_or_derive_api_creds(
-                key=self.private_key,
-                chain_id=self.chain_id,
-                signature_type=1,  # Email/Magic wallet
-                funder=self.funder_address,
-            )
+            self.client.create_or_derive_api_creds()
         )
 
         logger.info("Polymarket client initialized (unverified mode - 200 req/day limit)")

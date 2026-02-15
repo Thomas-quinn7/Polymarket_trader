@@ -37,9 +37,26 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Polymarket Arbitrage Bot Dashboard",
-    description="Monitoring and control API for the Polymarket Arbitrage Bot",
+    description="Monitoring and control API for Polymarket Arbitrage Bot",
     version="1.0.0",
     lifespan=lifespan,
+)
+
+# Add static files mount
+from fastapi.staticfiles import StaticFiles
+import os
+
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Add CORS middleware
@@ -137,9 +154,14 @@ def get_bot():
     """Get the global bot instance"""
     if bot_instance is None:
         raise HTTPException(
-            status_code=503, detail="Trading bot not initialized or not running"
+            status_code=503, detail="Trading bot not initialized or not running. Please start the trading bot first."
         )
     return bot_instance
+
+
+def is_bot_available():
+    """Check if bot instance is available"""
+    return bot_instance is not None
 
 
 # Dashboard Routes
@@ -147,7 +169,10 @@ def get_bot():
 async def get_dashboard():
     """Serve the dashboard HTML page"""
     try:
-        with open("dashboard/static/index.html", "r") as f:
+        # Get working directory path
+        import os
+        dashboard_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
+        with open(dashboard_path, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         return HTMLResponse(content="<h1>Dashboard not found</h1><p>Static files not available</p>")

@@ -5,12 +5,47 @@ Provides colored console logging and file logging with rotation
 
 import logging
 import sys
+import io
+import codecs
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
 import colorlog
 
 from config.polymarket_config import config
+
+
+# Configure UTF-8 encoding for stdout on Windows
+if sys.platform == 'win32':
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', write_through=True)
+    if hasattr(sys.stderr, 'buffer'):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', write_through=True)
+
+
+class UTF8ColorStreamHandler(colorlog.StreamHandler):
+    """Stream handler that handles UTF-8 encoding properly"""
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            stream = self.stream
+            
+            # Ensure UTF-8 encoding
+            if hasattr(stream, 'buffer') and hasattr(stream, 'encoding'):
+                if stream.encoding.lower() != 'utf-8':
+                    stream.reconfigure(encoding='utf-8', errors='replace')
+            
+            # Write with error handling
+            try:
+                stream.write(msg + self.terminator)
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                # Fallback: encode and decode with replace
+                stream.write(msg.encode('utf-8', errors='replace').decode('utf-8', errors='replace') + self.terminator)
+            
+            self.flush()
+        except Exception:
+            self.handleError(record)
 
 
 def setup_logger(name: str, log_file: str = None) -> logging.Logger:
@@ -31,8 +66,8 @@ def setup_logger(name: str, log_file: str = None) -> logging.Logger:
     if logger.handlers:
         return logger
 
-    # Console handler with colors
-    console_handler = colorlog.StreamHandler(sys.stdout)
+    # Console handler with colors and UTF-8 encoding
+    console_handler = UTF8ColorStreamHandler(sys.stdout)
     console_handler.setLevel(logging.DEBUG)
 
     console_format = colorlog.ColoredFormatter(
@@ -124,7 +159,7 @@ class TradeLogger:
     ):
         """Log arbitrage opportunity detection"""
         self.logger.info(
-            f"🎯 Opportunity detected: {market_id} - "
+            f"Opportunity detected: {market_id} - "
             f"Price: ${price:.4f}, Edge: {edge:.2f}%, "
             f"Time to close: {time_to_close:.0f}s"
         )
@@ -139,7 +174,7 @@ class TradeLogger:
     ):
         """Log position opening"""
         self.logger.info(
-            f"📈 Position opened: {position_id} - "
+            f"Position opened: {position_id} - "
             f"{shares:.4f} shares @ ${entry_price:.4f}, "
             f"Expected profit: ${expected_profit:.2f}"
         )
@@ -154,13 +189,13 @@ class TradeLogger:
         """Log position closing"""
         if realized_pnl >= 0:
             self.logger.info(
-                f"✅ Position settled: {position_id} - "
+                f"Position settled: {position_id} - "
                 f"Exit: ${exit_price:.4f}, "
-                f"Profit: ${realized_pnl:.2f} 🎉"
+                f"Profit: ${realized_pnl:.2f}"
             )
         else:
             self.logger.warning(
-                f"❌ Position settled: {position_id} - "
+                f"Position settled: {position_id} - "
                 f"Exit: ${exit_price:.4f}, "
                 f"Loss: ${abs(realized_pnl):.2f}"
             )
