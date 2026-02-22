@@ -9,12 +9,8 @@
 # ============================================================
 
 # Environment variables with REAL credentials (NEVER commit these!)
-.env
-.env.local
-.env.*.local
-.env.production
-.env.staging
-.env.development
+# Note: .env is now managed by Git LFS for local development
+# .env.example files remain untracked for templates
 
 # API Keys and Secrets
 *.key
