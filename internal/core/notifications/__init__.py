@@ -16,12 +16,6 @@ from internal.core.notifications.service.notification_service import (
     EmailChannel,
     NotificationService,
 )
-from internal.core.notifications.mocks.mock_notification_channel import (
-    MockNotificationChannel,
-)
-from internal.core.notifications.mocks.failing_notification_channel import (
-    FailingNotificationChannel,
-)
 
 __all__ = [
     # Domain
@@ -36,7 +30,4 @@ __all__ = [
     "NotificationService",
     "DiscordChannel",
     "EmailChannel",
-    # Mocks
-    "MockNotificationChannel",
-    "FailingNotificationChannel",
 ]

@@ -61,15 +61,15 @@ def configure_logger(
         file_handler = logging.FileHandler(log_file, mode="a")
         file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s"))
 
-        # Add file processor
-        processors.append(
+        # Add file processors
+        processors.extend([
             structlog.stdlib.add_log_level,
             structlog.stdlib.filter_by_level,
             structlog.stdlib.PositionalArgumentsFormatter(),
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
             structlog.processors.UnicodeDecoder(),
-        )
+        ])
 
         # Create new logger with file handler
         structlog.configure(
@@ -77,7 +77,6 @@ def configure_logger(
             wrapper_class=structlog.stdlib.BoundLogger,
             logger_factory=structlog.stdlib.LoggerFactory(),
             cache_logger_on_first_use=True,
-            log_level=log_level,
         )
         # Add file handler to root logger
         root_logger = logging.getLogger()
@@ -90,7 +89,6 @@ def configure_logger(
             wrapper_class=structlog.stdlib.BoundLogger,
             logger_factory=structlog.stdlib.LoggerFactory(),
             cache_logger_on_first_use=True,
-            log_level=log_level,
         )
 
 
