@@ -3,9 +3,10 @@ Notification Service - Main business logic for alert management.
 Routes alerts to appropriate channels with rate limiting.
 """
 
+import time
 from typing import List, Optional
 
-from internal.core.notifications.domain import Alert, AlertSeverity, AlertType, NotificationChannel, RateLimitError
+from internal.core.notifications.domain import Alert, AlertSeverity, AlertType, NotificationChannel, NotificationChannelError, RateLimitError
 
 
 class NotificationService:
@@ -52,7 +53,7 @@ class NotificationService:
                 results[channel.__class__.__name__] = success
 
                 if success:
-                    self._last_sent[alert.type] = 0
+                    self._last_sent[alert.type] = time.time()
                 else:
                     results[channel.__class__.__name__] = False
 
@@ -87,7 +88,7 @@ class NotificationService:
 
         return elapsed < self.cooldown_seconds
 
-    def test_all_channels(self) -> dict[str, bool]:
+    async def test_all_channels(self) -> dict[str, bool]:
         """
         Test all configured notification channels.
 
@@ -169,10 +170,6 @@ class NotificationService:
         )
 
 
-# Import time for rate limiting
-import time
-
-# Import logger
 from pkg.logger import get_logger
 
 logger = get_logger(__name__)
@@ -375,12 +372,16 @@ class EmailChannel(NotificationChannel):
             msg.attach(part1)
             msg.attach(part2)
 
-            # Send email
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                if self.smtp_port == 465:
+            # Send email — port 465 uses implicit SSL; port 587 uses STARTTLS
+            if self.smtp_port == 465:
+                with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port) as server:
+                    server.login(self.username, self.password)
+                    server.send_message(msg)
+            else:
+                with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
                     server.starttls()
-                server.login(self.username, self.password)
-                server.send_message(msg)
+                    server.login(self.username, self.password)
+                    server.send_message(msg)
 
             return True
 
@@ -392,10 +393,13 @@ class EmailChannel(NotificationChannel):
         try:
             import smtplib
 
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                if self.smtp_port == 465:
+            if self.smtp_port == 465:
+                with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port) as server:
+                    server.noop()
+            else:
+                with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
                     server.starttls()
-                server.noop()
+                    server.noop()
             return True
         except Exception as e:
             raise NotificationChannelError(f"Email connection test failed: {str(e)}")

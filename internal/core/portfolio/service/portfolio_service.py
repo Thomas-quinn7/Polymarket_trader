@@ -86,8 +86,8 @@ class PortfolioService:
         logger = get_logger(__name__)
 
         # Check balance for paper trading
-        if self._is_paper_trading() and await self._check_balance(quantity):
-            raise BalanceError(f"Insufficient balance for paper trading. Required: {quantity}, Available: {await self._get_balance()}")
+        if self._is_paper_trading() and not await self._check_balance(quantity):
+            raise PortfolioError(f"Insufficient balance for paper trading. Required: {quantity}, Available: {await self._get_balance()}")
         else:
             # In real trading, check actual balance here
             pass
