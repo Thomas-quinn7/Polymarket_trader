@@ -35,61 +35,43 @@ def configure_logger(
         stream=sys.stdout,
     )
 
-    # Configure structlog processors
+    # Enrichment processors — must all run before the terminal renderer
     processors: list[Processor] = [
         structlog.contextvars.merge_contextvars,
-        structlog.processors.add_log_level,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
         structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
     ]
 
+    # Renderer must be the final processor
     if json_logs:
-        # JSON output for production/structured logs
-        processors.extend([
-            structlog.processors.JSONRenderer(),
-        ])
+        processors.append(structlog.processors.JSONRenderer())
     else:
-        # Pretty console output for development
-        processors.extend([
-            structlog.dev.ConsoleRenderer(),
-        ])
+        processors.append(structlog.dev.ConsoleRenderer())
 
-    # Add file handler if requested
+    structlog.configure(
+        processors=processors,
+        wrapper_class=structlog.stdlib.BoundLogger,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+
+    # File logging is handled by stdlib — attach a handler to the root logger
     if log_to_file:
         log_dir = Path(log_file).parent
         log_dir.mkdir(parents=True, exist_ok=True)
 
         file_handler = logging.FileHandler(log_file, mode="a")
-        file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s"))
-
-        # Add file processors
-        processors.extend([
-            structlog.stdlib.add_log_level,
-            structlog.stdlib.filter_by_level,
-            structlog.stdlib.PositionalArgumentsFormatter(),
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            structlog.processors.UnicodeDecoder(),
-        ])
-
-        # Create new logger with file handler
-        structlog.configure(
-            processors=processors,
-            wrapper_class=structlog.stdlib.BoundLogger,
-            logger_factory=structlog.stdlib.LoggerFactory(),
-            cache_logger_on_first_use=True,
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s")
         )
-        # Add file handler to root logger
-        root_logger = logging.getLogger()
-        root_logger.addHandler(file_handler)
-        root_logger.setLevel(log_level)
-    else:
-        # Standard configuration for console-only logging
-        structlog.configure(
-            processors=processors,
-            wrapper_class=structlog.stdlib.BoundLogger,
-            logger_factory=structlog.stdlib.LoggerFactory(),
-            cache_logger_on_first_use=True,
-        )
+        logging.getLogger().addHandler(file_handler)
+
+    logging.getLogger().setLevel(log_level)
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
