@@ -12,6 +12,8 @@ from typing import Optional
 
 from data.polymarket_client import PolymarketClient
 from data.polymarket_models import ArbitrageOpportunity
+from data.database import TradeDatabase
+from data.order_book_store import OrderBookStore, OrderBookSnapshot, OrderBookLevel
 from strategies.settlement_arbitrage import SettlementArbitrage
 from portfolio.fake_currency_tracker import FakeCurrencyTracker
 from portfolio.position_tracker import PositionTracker
@@ -22,7 +24,7 @@ from utils.pnl_tracker import PnLTracker
 from utils.alerts import alert_manager
 from config.polymarket_config import config
 
-# Import dashboard module (conditionally loaded when DASHBOARD_ENABLED is True)
+# Import dashboard module
 import dashboard.api
 
 
@@ -30,18 +32,17 @@ class TradingBot:
     """Main trading bot orchestrator"""
 
     def __init__(self):
-        """Initialize the trading bot"""
         logger.info("=" * 70)
         logger.info("Initializing Polymarket Arbitrage Bot")
         logger.info("=" * 70)
 
-        # Initialize Polymarket client
-        self.client = PolymarketClient()
+        self.start_time = datetime.now()
 
-        # Initialize strategy
+        # Initialize client & strategy (may be re-created on each trading start)
+        self.client = PolymarketClient()
         self.strategy = SettlementArbitrage(self.client)
 
-        # Initialize trackers
+        # Initialize trackers (persist across start/stop cycles)
         self.currency_tracker = FakeCurrencyTracker()
         self.pnl_tracker = PnLTracker(initial_balance=self.currency_tracker.starting_balance)
         self.position_tracker = PositionTracker(self.pnl_tracker)
@@ -56,101 +57,170 @@ class TradingBot:
         # Initialize execution timer
         self.execution_timer = ExecutionTimer()
 
+        # SQLite persistence (positions, trades, PnL history)
+        self.db: Optional[TradeDatabase] = None
+        if config.DB_ENABLED:
+            self.db = TradeDatabase(config.DB_PATH)
+            if not self.db.connect():
+                logger.warning("SQLite DB unavailable — data will not be persisted")
+                self.db = None
+
+        # Optional ScyllaDB order book store
+        self.order_book_store: Optional[OrderBookStore] = None
+        if config.SCYLLA_ENABLED:
+            self.order_book_store = OrderBookStore(
+                hosts=[config.SCYLLA_HOST],
+                port=config.SCYLLA_PORT,
+                keyspace=config.SCYLLA_KEYSPACE,
+            )
+            connected = self.order_book_store.connect()
+            if not connected:
+                logger.warning("ScyllaDB unavailable — order book snapshots disabled")
+                self.order_book_store = None
+
         # Trading state
         self.running = False
         self.markets_cache = []
         self.last_scan_time = 0
-        self.active_timers = {}
+        self._trading_thread: Optional[threading.Thread] = None
 
-        # Setup signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-        logger.info(f"Trading Mode: Paper Trading")
-        logger.info(f"Strategy: 98.5 Cent Settlement Arbitrage")
-        logger.info(f"Execution Timing: {config.EXECUTE_BEFORE_CLOSE_SECONDS} seconds before close")
-        logger.info(f"Max Positions: {config.MAX_POSITIONS}")
         logger.info(f"Initial Balance: ${self.currency_tracker.starting_balance:.2f}")
+        logger.info("=" * 70)
+        logger.info("Ready — use the WebUI to configure mode and start trading")
         logger.info("=" * 70)
 
     def _signal_handler(self, signum, frame):
-        """Handle shutdown signals gracefully"""
         logger.info("\nShutdown signal received")
         self.stop()
+        sys.exit(0)
 
-    def _start_dashboard(self):
-        """Start the dashboard in a separate thread"""
+    def _start_dashboard(self, port: int):
         import uvicorn
-        
-        logger.info(f"Starting dashboard server on {config.DASHBOARD_HOST}:{config.DASHBOARD_PORT}")
-        
-        # Set bot instance for dashboard API
-        if config.DASHBOARD_ENABLED:
-            global dashboard_bot_instance
-            dashboard_bot_instance = self
-        
-        # Create uvicorn config
-        uvicorn_config = uvicorn.Config(
-            app="dashboard.api:app",
-            host=config.DASHBOARD_HOST,
-            port=config.DASHBOARD_PORT,
-            log_level="warning",
-        )
-        
-        # Create and run server
-        server = uvicorn.Server(uvicorn_config)
-        server.run()
+        try:
+            uvicorn_config = uvicorn.Config(
+                app="dashboard.api:app",
+                host=config.DASHBOARD_HOST,
+                port=port,
+                log_level="warning",
+            )
+            uvicorn.Server(uvicorn_config).run()
+        except Exception as e:
+            logger.error(f"Dashboard server crashed: {e}")
+
+    # ── Process lifecycle ──────────────────────────────────────────────
 
     def start(self):
-        """Start the trading bot"""
+        """Start the process: launch dashboard and wait for WebUI commands."""
         logger.info("Starting Trading Bot...")
-        self.running = True
-        logger.info("Trading Bot started successfully")
 
-        # Start dashboard in background thread if enabled
         if config.DASHBOARD_ENABLED:
-            logger.info(f"Dashboard will be available at http://localhost:{config.DASHBOARD_PORT}")
-            # Set bot instance for dashboard API before starting dashboard
-            dashboard.api.bot_instance = self
-            dashboard_thread = threading.Thread(target=self._start_dashboard, daemon=True)
-            dashboard_thread.start()
-            # Give dashboard time to start
-            time.sleep(2)
+            import socket as _socket
+            port = config.DASHBOARD_PORT
+            original_port = port
+            while True:
+                with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
+                    if s.connect_ex(('127.0.0.1', port)) != 0:
+                        break
+                port += 1
+                if port > original_port + 10:
+                    logger.error(
+                        f"No free port in range {original_port}–{original_port + 10}, dashboard disabled."
+                    )
+                    port = None
+                    break
 
-        # Send system start alert
+            if port:
+                if port != original_port:
+                    logger.warning(f"Port {original_port} in use, using port {port}")
+                logger.info(f"Dashboard: http://localhost:{port}")
+                dashboard.api.bot_instance = self
+                threading.Thread(
+                    target=self._start_dashboard, args=(port,), daemon=True
+                ).start()
+                time.sleep(2)
+
         alert_manager.send_system_start_alert()
 
-        # Run the main trading loop
+        # Keep main thread alive — trading is started via WebUI
         try:
-            self.run()
+            while True:
+                time.sleep(1)
         except KeyboardInterrupt:
-            logger.info("\nBot stopped by user")
-        except Exception as e:
-            logger.critical(f"Fatal error in trading bot: {e}", exc_info=True)
-            alert_manager.send_error_alert(str(e), "Fatal error in trading bot")
+            logger.info("\nShutdown requested")
         finally:
             self.stop()
 
     def stop(self):
-        """Stop the trading bot"""
-        if not self.running:
-            return
+        """Stop everything cleanly."""
+        if self.running:
+            self.stop_trading_loop()
+            # Wait briefly for the loop thread to exit
+            if self._trading_thread and self._trading_thread.is_alive():
+                self._trading_thread.join(timeout=5)
 
-        logger.info("Stopping Trading Bot...")
-        self.running = False
-
-        # Print final report
         self._print_final_report()
-
-        # Send system stop alert
         alert_manager.send_system_stop_alert()
-
         logger.info("Trading Bot stopped")
 
+    # ── Trading loop control (called via WebUI API) ────────────────────
+
+    def start_trading_loop(self) -> bool:
+        """Reinitialize client for current mode and start the trading loop."""
+        if self.running:
+            logger.warning("Trading loop already running")
+            return False
+
+        # Reinitialize client so new TRADING_MODE takes effect
+        logger.info(f"Starting trading loop (mode={config.TRADING_MODE})")
+        self.client = PolymarketClient()
+        self.strategy = SettlementArbitrage(self.client)
+
+        # Reset scan cache and timers for a clean run
+        self.markets_cache = []
+        self.last_scan_time = 0
+        self.execution_timer = ExecutionTimer()
+
+        self.running = True
+        self._trading_thread = threading.Thread(target=self._run_loop_thread, daemon=True)
+        self._trading_thread.start()
+
+        mode_label = (
+            "SIMULATION (offline, synthetic data)"
+            if config.TRADING_MODE == "simulation"
+            else "PAPER (real prices, simulated execution)"
+        )
+        logger.info(f"Trading loop started — {mode_label}")
+        return True
+
+    def stop_trading_loop(self) -> bool:
+        """Signal the trading loop to stop after its current iteration."""
+        if not self.running:
+            logger.warning("Trading loop is not running")
+            return False
+        logger.info("Stopping trading loop...")
+        self.running = False
+        return True
+
+    def _run_loop_thread(self):
+        """Run trading loop inside a daemon thread."""
+        try:
+            self.run()
+        except Exception as e:
+            logger.critical(f"Fatal error in trading loop: {e}", exc_info=True)
+            alert_manager.send_error_alert(str(e), "Fatal error in trading loop")
+        finally:
+            self.running = False
+            logger.info("Trading loop exited")
+
+    # ── Main trading loop ──────────────────────────────────────────────
+
     def run(self):
-        """Main trading loop"""
+        """Main trading loop (runs in _trading_thread)."""
         iteration = 0
-        scan_interval = config.SCAN_INTERVAL_MS / 1000  # Convert to seconds
+        scan_interval = config.SCAN_INTERVAL_MS / 1000
 
         while self.running:
             iteration += 1
@@ -161,92 +231,85 @@ class TradingBot:
             logger.info(f"{'=' * 70}")
 
             try:
-                # Check for executions that should happen now
                 self._check_executions()
-
-                # Scan for opportunities
+                self._settle_expired_positions()
                 self._scan_for_opportunities()
-
-                # Print status
                 self._print_status()
 
-                # Sleep between scans
                 logger.info(f"Sleeping for {scan_interval:.1f} seconds...")
                 time.sleep(scan_interval)
 
             except Exception as e:
                 logger.error(f"Error in trading loop: {e}", exc_info=True)
-                # Alert and continue
                 alert_manager.send_error_alert(str(e), f"Error in trading loop iteration #{iteration}")
                 time.sleep(scan_interval)
 
     def _check_executions(self):
-        """Check and execute timed positions"""
         try:
             ready_to_execute = self.execution_timer.check_executions()
 
             for market_id in ready_to_execute:
-                logger.info(f"🎯 Executing position for market: {market_id}")
+                logger.info(f"Executing position for market: {market_id}")
 
-                # Find opportunity for this market
                 opportunity = self._find_opportunity_by_market(market_id)
                 if not opportunity:
                     logger.warning(f"Opportunity not found for market {market_id}")
                     self.execution_timer.remove_timer(market_id)
                     continue
 
-                # Check if we can open a new position
                 if not self.position_tracker.can_open_position():
                     logger.warning("Max positions reached, skipping execution")
                     self.execution_timer.remove_timer(market_id)
                     continue
 
-                # Generate position ID
                 position_id = f"{market_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-
-                # Execute buy
                 success = self.executor.execute_buy(opportunity, position_id)
 
                 if success:
-                    logger.info(f"✅ Position executed successfully: {position_id}")
+                    logger.info(f"Position executed successfully: {position_id}")
+                    if self.db:
+                        pos = self.position_tracker.get_position(position_id)
+                        if pos:
+                            self.db.upsert_position(pos)
+                        trade = self.pnl_tracker.open_positions.get(position_id)
+                        if trade:
+                            self.db.upsert_trade(trade)
                 else:
-                    logger.error(f"❌ Position execution failed: {position_id}")
+                    logger.error(f"Position execution failed: {position_id}")
 
-                # Remove timer
                 self.execution_timer.remove_timer(market_id)
 
         except Exception as e:
             logger.error(f"Error checking executions: {e}", exc_info=True)
 
     def _scan_for_opportunities(self):
-        """Scan for arbitrage opportunities"""
         try:
-            # Get markets (cache for performance)
-            if not self.markets_cache or time.time() - self.last_scan_time > 60:  # Refresh every minute
+            # Simulation refreshes every 5s (new random prices each cycle)
+            # Paper mode refreshes every 60s (real API data changes slowly)
+            cache_ttl = 5 if config.TRADING_MODE == "simulation" else 60
+            if not self.markets_cache or time.time() - self.last_scan_time > cache_ttl:
                 self.markets_cache = self.client.get_all_markets(category="crypto")
                 self.last_scan_time = time.time()
                 logger.debug(f"Refreshed market cache: {len(self.markets_cache)} markets")
 
-            # Scan for opportunities
             opportunities = self.strategy.scan_for_opportunities(self.markets_cache)
 
             if not opportunities:
                 logger.debug("No opportunities found in this scan")
                 return
 
-            logger.info(f"🎯 Found {len(opportunities)} opportunity(ies)")
-
-            # Get best opportunities (max 5)
+            logger.info(f"Found {len(opportunities)} opportunity(ies)")
             best_opportunities = self.strategy.get_best_opportunities(opportunities, limit=5)
 
-            # Set up timers for best opportunities
+            # Capture order book snapshots for each opportunity
+            if self.order_book_store is not None:
+                self._capture_order_book_snapshots(best_opportunities)
+
             for opportunity in best_opportunities:
-                # Check if already tracking this market
                 if opportunity.market_id in self.execution_timer.active_timers:
                     logger.debug(f"Already tracking market: {opportunity.market_id}")
                     continue
 
-                # Start timer
                 timer_started = self.execution_timer.start_timer(
                     market_id=opportunity.market_id,
                     opportunity=opportunity.to_dict(),
@@ -254,11 +317,9 @@ class TradingBot:
 
                 if timer_started:
                     logger.info(
-                        f"⏱️ Timer started for {opportunity.market_slug} - "
+                        f"Timer started for {opportunity.market_slug} - "
                         f"Executing in {opportunity.time_to_close_seconds - config.EXECUTE_BEFORE_CLOSE_SECONDS:.0f}s"
                     )
-
-                    # Send alert
                     alert_manager.send_opportunity_detected_alert(
                         market_id=opportunity.market_slug,
                         price=opportunity.current_price,
@@ -269,24 +330,84 @@ class TradingBot:
         except Exception as e:
             logger.error(f"Error scanning for opportunities: {e}", exc_info=True)
 
-    def _find_opportunity_by_market(self, market_id: str) -> Optional[ArbitrageOpportunity]:
-        """Find cached opportunity by market ID"""
-        opportunities = self.strategy.scan_for_opportunities(self.markets_cache)
+    def _capture_order_book_snapshots(self, opportunities: list):
+        """Capture top-5 order book snapshots for each opportunity token."""
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        for opp in opportunities:
+            try:
+                token_id = opp.winning_token_id
+                book = self.client.get_order_book(token_id, levels=5)
+                snapshot = OrderBookSnapshot(
+                    token_id=token_id,
+                    captured_at=now,
+                    bids=[OrderBookLevel(lvl["price"], lvl["size"]) for lvl in book.get("bids", [])],
+                    asks=[OrderBookLevel(lvl["price"], lvl["size"]) for lvl in book.get("asks", [])],
+                )
+                self.order_book_store.write_snapshot(snapshot)
+                logger.debug(
+                    "Order book snapshot saved: %s (%d bids, %d asks)",
+                    token_id[:16],
+                    len(snapshot.bids),
+                    len(snapshot.asks),
+                )
+            except Exception as e:
+                logger.debug("Snapshot capture failed for %s: %s", opp.market_slug, e)
 
+    def _find_opportunity_by_market(self, market_id: str) -> Optional[ArbitrageOpportunity]:
+        opportunities = self.strategy.scan_for_opportunities(self.markets_cache)
         for opp in opportunities:
             if opp.market_id == market_id:
                 return opp
-
         return None
 
+    def _settle_expired_positions(self):
+        """
+        Auto-settle positions whose markets have passed their close time.
+        Called each loop iteration so positions don't stay open indefinitely.
+        """
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+
+        for pos in self.position_tracker.get_open_positions():
+            try:
+                # Look up the market's end date from our cached data
+                end_date_str = None
+                for m in self.markets_cache:
+                    if m.get("id") == pos.market_id or pos.market_slug in (
+                        m.get("slug", ""), m.get("id", "")
+                    ):
+                        end_date_str = m.get("endDate")
+                        break
+
+                if not end_date_str:
+                    continue
+
+                end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
+                if now < end_date:
+                    continue
+
+                # Market has closed — settle YES at $1.00 (strategy only bets near-certain YES)
+                logger.info(f"Market closed, settling position: {pos.position_id}")
+                pnl = self.executor.settle_position(pos.position_id, settlement_price=1.0)
+
+                if self.db:
+                    settled_pos = self.position_tracker.get_position(pos.position_id)
+                    if settled_pos:
+                        self.db.upsert_position(settled_pos)
+                    # Find the closed trade record
+                    for trade in self.pnl_tracker.trades:
+                        if trade.position_id == pos.position_id and trade.exit_time:
+                            self.db.upsert_trade(trade)
+                            break
+
+            except Exception as e:
+                logger.error(f"Error settling position {pos.position_id}: {e}")
+
     def _print_status(self):
-        """Print current status"""
-        # Portfolio status
         balance = self.currency_tracker.get_balance()
         deployed = self.currency_tracker.get_deployed()
         position_count = self.position_tracker.get_position_count()
-
-        # PnL status
         pnl_summary = self.pnl_tracker.get_summary()
 
         logger.info(f"\nBalance: ${balance:.2f} | Deployed: ${deployed:.2f}")
@@ -294,16 +415,14 @@ class TradingBot:
         logger.info(f"Total P&L: ${pnl_summary.total_pnl:.2f}")
         logger.info(f"Win Rate: {pnl_summary.win_rate:.1f}%")
 
+        if self.db:
+            self.db.add_pnl_snapshot(balance=balance, pnl=pnl_summary.total_pnl)
+
     def _print_final_report(self):
-        """Print final report"""
         logger.info("\n" + "=" * 70)
         logger.info("FINAL REPORT")
         logger.info("=" * 70)
-
-        # Print PnL report
         print(self.pnl_tracker.get_report())
-
-        # Print position summary
         position_summary = self.position_tracker.get_summary()
         logger.info(
             f"\nPositions Summary:\n"
@@ -316,7 +435,6 @@ class TradingBot:
 
 
 def main():
-    """Main entry point"""
     bot = TradingBot()
     bot.start()
 

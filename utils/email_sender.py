@@ -31,8 +31,8 @@ class EmailSender:
         self.smtp_port = config.SMTP_PORT
         self.smtp_username = config.SMTP_USERNAME
         self.smtp_password = config.SMTP_PASSWORD
-        self.from_email = config.EMAIL_FROM
-        self.to_email = config.EMAIL_TO
+        self.from_email = config.ALERT_EMAIL_FROM
+        self.to_email = config.ALERT_EMAIL_TO
 
         self.enabled = self._validate_configuration()
 
@@ -66,8 +66,8 @@ class EmailSender:
         try:
             # Create message
             msg = MIMEMultipart("alternative")
-            msg["From"] = config.EMAIL_FROM
-            msg["To"] = config.EMAIL_TO
+            msg["From"] = self.from_email
+            msg["To"] = self.to_email
             msg["Subject"] = f"[Polymarket Arbitrage Bot] {subject}"
             msg["MIME-Version"] = "1.0"
             msg["Content-Type"] = "multipart/alternative; boundary={msg.as_string()}"
