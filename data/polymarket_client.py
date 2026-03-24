@@ -6,7 +6,7 @@ Wrapper around py-clob-client SDK
 from typing import List, Optional, Dict
 from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import MarketOrderArgs, OrderType
-from py_clob_client.order_builder.constants import BUY
+from py_clob_client.order_builder.constants import BUY, SELL
 import os
 from utils.logger import logger
 
@@ -317,11 +317,11 @@ class PolymarketClient:
                     order_type=OrderType.FOK,  # Fill or Kill
                 )
             else:
-                # Limit order (not used for arbitrage but available)
+                # Market order with a price cap (won't fill above this price)
                 order_args = MarketOrderArgs(
                     token_id=token_id,
+                    amount=amount,
                     price=price,
-                    size=set(amount),
                     side=BUY,
                     order_type=OrderType.FOK,
                 )
@@ -391,8 +391,8 @@ class PolymarketClient:
 
             orders = self.client.get_orders(OpenOrderParams())
 
-            # Filter for open orders only
-            open_orders = [o for o in orders if o.get("status") == "OPEN"]
+            # Filter for live (open) orders — Polymarket uses "LIVE" not "OPEN"
+            open_orders = [o for o in orders if o.get("status") in ("LIVE", "OPEN", "UNMATCHED")]
 
             return open_orders
 

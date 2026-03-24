@@ -80,6 +80,11 @@ class TestReturnToBalance:
         tracker.return_to_balance("p1", 2_100.0)
         assert tracker.balance == 10_100.0  # profit scenario
 
+    def test_return_decreases_deployed(self, tracker):
+        tracker.allocate_to_position("p1", "m1", 2_000.0)
+        tracker.return_to_balance("p1", 2_100.0)
+        assert tracker.deployed == 0.0  # capital freed after settlement
+
     def test_return_true_on_success(self, tracker):
         tracker.allocate_to_position("p1", "m1", 1_000.0)
         result = tracker.return_to_balance("p1", 1_000.0)

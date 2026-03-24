@@ -104,8 +104,10 @@ class FakeCurrencyTracker:
             logger.warning(f"Position {position_id} not found")
             return False
 
+        original_allocated = self.positions[position_id].allocated
         self.positions[position_id].returned += return_amount
         self.balance += return_amount
+        self.deployed -= original_allocated
 
         logger.info(
             f"💵 Returned ${return_amount:.2f} from {position_id} "
