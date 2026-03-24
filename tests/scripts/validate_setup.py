@@ -81,7 +81,7 @@ def check_import(module_name, package_name):
         return True
     except ImportError:
         print_error(f"{package_name}: Not installed")
-        print(f"   Run: pip install {package_name}")
+        print(f"   Run: uv pip install -e .")
         return False
 
 
@@ -319,7 +319,7 @@ def validate_project_structure():
         ("main.py", "Main bot file"),
         ("config/polymarket_config.py", "Configuration file"),
         ("data/polymarket_client.py", "Polymarket client"),
-        ("strategies/settlement_arbitrage.py", "Strategy file"),
+        ("strategies/examples/settlement_arbitrage.py", "Strategy file"),
         ("portfolio/fake_currency_tracker.py", "Portfolio tracker"),
         ("execution/order_executor.py", "Order executor"),
         ("utils/logger.py", "Logger"),
@@ -387,16 +387,16 @@ def generate_setup_report(results):
     print(f"  Success Rate: {GREEN}{(passed_checks / total_checks * 100):.0f}%{RESET}\n")
 
     if passed_checks == total_checks:
-        print_success("All checks passed! Your bot is ready to run. 🎉")
+        print_success("All checks passed! Your bot is ready to run.")
         print("\nTo start the bot:")
-        print(f"  {BLUE}python main.py{RESET}\n")
+        print(f"  {BLUE}polymarket{RESET}\n")
         print("To access the dashboard:")
         print(f"  {BLUE}http://localhost:8080{RESET}\n")
         return 0
     else:
         print_error(f"{total_checks - passed_checks} check(s) failed. Please fix the issues above.")
         print("\nTo re-run validation:")
-        print(f"  {BLUE}python validate_setup.py{RESET}\n")
+        print(f"  {BLUE}python tests/scripts/validate_setup.py{RESET}\n")
         return 1
 
 

@@ -1,125 +1,99 @@
 """
 Quick Start Script
-Simplified setup for Polymarket Arbitrage Bot
+Automated setup for the Polymarket Trading Framework using uv.
 """
 
 import os
-import sys
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 
 def print_step(step_num, title):
-    """Print formatted step"""
     print(f"\n{'=' * 70}")
     print(f"Step {step_num}: {title}")
     print(f"{'=' * 70}\n")
 
 
-def run_command(command, description):
-    """Run a shell command"""
-    print(f"📋 {description}...")
-    try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        print(f"✅ {description} - Success")
+def run(command, description):
+    print(f"  Running: {command}")
+    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    if result.returncode == 0:
+        print(f"  OK: {description}")
         return True
-    except subprocess.CalledProcessError as e:
-        print(f"❌ {description} - Failed")
-        print(f"   Error: {e.stderr}")
+    else:
+        print(f"  FAILED: {description}")
+        if result.stderr:
+            print(f"  {result.stderr.strip()}")
         return False
 
 
+def check_uv():
+    """Ensure uv is available."""
+    if shutil.which("uv"):
+        return True
+    print("  uv not found. Install it first:")
+    print("    Windows:  powershell -ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/install.ps1 | iex\"")
+    print("    macOS/Linux: curl -LsSf https://astral.sh/uv/install.sh | sh")
+    return False
+
+
 def main():
-    """Main quick start function"""
     print("\n" + "=" * 70)
-    print("Polymarket Arbitrage Bot - Quick Start")
+    print("Polymarket Trading Framework - Quick Start")
     print("=" * 70)
 
-    # Step 1: Create virtual environment
-    print_step(1, "Create Virtual Environment")
-    if not Path("venv").exists():
-        run_command(
-            sys.executable + " -m venv venv",
-            "Creating virtual environment"
-        )
+    # Step 1: Check uv
+    print_step(1, "Check uv")
+    if not check_uv():
+        sys.exit(1)
+    print("  uv is available")
+
+    # Step 2: Create virtual environment
+    print_step(2, "Create Virtual Environment")
+    venv_path = Path(".venv")
+    if not venv_path.exists():
+        if not run("uv venv", "Create .venv"):
+            sys.exit(1)
     else:
-        print("✅ Virtual environment already exists")
+        print("  .venv already exists — skipping")
 
-    # Step 2: Activate virtual environment
-    print_step(2, "Activate Virtual Environment")
-    print("\n📌 Activate virtual environment:")
-    if os.name == 'nt':  # Windows
-        print("   venv\\Scripts\\activate")
-    else:  # Unix/Linux/Mac
-        print("   source venv/bin/activate")
+    # Step 3: Install project and dependencies
+    print_step(3, "Install Project and Dependencies")
+    if not run("uv pip install -e .", "Install project (editable)"):
+        sys.exit(1)
+    print("\n  The 'polymarket' command is now registered in your venv.")
 
-    # Step 3: Install dependencies
-    print_step(3, "Install Dependencies")
-    run_command(
-        "pip install -r requirements.txt",
-        "Installing Python packages"
-    )
-
-    # Step 4: Create .env file
+    # Step 4: Configure .env
     print_step(4, "Configure Environment Variables")
     if not Path(".env").exists():
-        run_command(
-            "cp .env.example .env",
-            "Creating .env from template"
-        )
-        print("\n📝 IMPORTANT: Edit .env file with your credentials:")
-        print("   1. Add your Polymarket private key")
-        print("   2. (Optional) Add builder credentials for 3000 req/day")
-        print("   3. (Optional) Configure email and Discord alerts")
-        print("   4. Keep PAPER_TRADING_ONLY=True for safety")
+        if Path(".env.template").exists():
+            run("cp .env.template .env" if os.name != "nt" else "copy .env.template .env",
+                "Create .env from template")
+        print("\n  Edit .env and set your credentials:")
+        print("    POLYMARKET_PRIVATE_KEY=your_key_here")
+        print("    POLYMARKET_FUNDER_ADDRESS=your_address_here")
+        print("    PAPER_TRADING_ONLY=True  (keep True until you're ready to go live)")
     else:
-        print("✅ .env file already exists")
+        print("  .env already exists — skipping")
 
-    # Step 5: Run setup validation
-    print_step(5, "Validate Setup")
-    print("\n📋 Run validation script to check everything is working:")
-    print("   python validate_setup.py")
+    # Step 5: Activate and validate
+    print_step(5, "Next Steps")
+    if os.name == "nt":
+        activate = ".venv\\Scripts\\activate"
+    else:
+        activate = "source .venv/bin/activate"
 
-    # Step 6: Start the bot
-    print_step(6, "Start the Bot")
-    print("\n🚀 After validation, start the bot:")
-    print("   python main.py")
+    print(f"  1. Activate the environment:  {activate}")
+    print("  2. Edit .env with your credentials")
+    print("  3. Validate setup:            python tests/scripts/validate_setup.py")
+    print("  4. Start the bot:             polymarket")
+    print("  5. Open dashboard:            http://localhost:8080")
 
-    # Step 7: Access dashboard
-    print_step(7, "Access Dashboard")
-    print("\n📊 Dashboard will be available at:")
-    print("   http://localhost:8080")
-
-    # Summary
     print("\n" + "=" * 70)
-    print("Quick Start Complete!")
-    print("=" * 70)
-
-    print("\n📋 Next Steps:")
-    print("   1. Edit .env with your credentials")
-    print("   2. Run: python validate_setup.py")
-    print("   3. Fix any validation errors")
-    print("   4. Run: python main.py")
-    print("   5. Visit: http://localhost:8080")
-
-    print("\n📚 Documentation:")
-    print("   - README.md - Full documentation")
-    print("   - BUILDER_VERIFICATION.md - Get 3000 req/day")
-    print("   - .env.example - Configuration template")
-
-    print("\n⚠️  Safety Notes:")
-    print("   - PAPER_TRADING_ONLY=True ensures no real money trades")
-    print("   - Test with fake currency first")
-    print("   - Never share your API keys or private keys")
-    print("   - Keep builder credentials secure")
-
-    print("\n")
+    print("Setup complete.")
+    print("=" * 70 + "\n")
 
 
 if __name__ == "__main__":
