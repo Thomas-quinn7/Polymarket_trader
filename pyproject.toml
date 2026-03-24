@@ -69,6 +69,9 @@ Documentation = "https://github.com/yourusername/polymarket-trading-bot#readme"
 Repository = "https://github.com/yourusername/polymarket-trading-bot"
 Issues = "https://github.com/yourusername/polymarket-trading-bot/issues"
 
+[tool.setuptools]
+py-modules = ["main"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 exclude = ["tests*", "*.egg-info*"]
