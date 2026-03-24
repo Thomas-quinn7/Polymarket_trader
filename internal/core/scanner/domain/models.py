@@ -3,7 +3,7 @@ Domain models for the scanner module.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 from datetime import datetime
 
 from pkg.errors import AppError

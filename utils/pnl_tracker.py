@@ -160,8 +160,7 @@ class PnLTracker:
 
         trade = self.open_positions[position_id]
 
-        # Use exit_price if provided, otherwise use final settlement price
-        settlement_price = exit_price if exit_price > 0 else final_price
+        settlement_price = exit_price
 
         # Calculate PnL
         # If YES token settles at $1.00, we get $1.00 per share
