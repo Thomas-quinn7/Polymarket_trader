@@ -90,6 +90,17 @@ class TestReturnToBalance:
         result = tracker.return_to_balance("p1", 1_000.0)
         assert result is True
 
+    def test_return_frees_position_slot(self, tracker):
+        # After returning, the position is removed so the slot can be reused
+        tracker.allocate_to_position("p1", "m1", 2_000.0)
+        tracker.return_to_balance("p1", 2_000.0)
+        assert "p1" not in tracker.positions
+        # Slot is free — a 6th allocation should now succeed even after 5 cycles
+        for i in range(5):
+            tracker.allocate_to_position(f"cycle_{i}", "m1", 100.0)
+            tracker.return_to_balance(f"cycle_{i}", 100.0)
+        assert tracker.balance == 10_000.0  # back to starting balance
+
     def test_return_false_for_unknown_position(self, tracker):
         result = tracker.return_to_balance("unknown", 500.0)
         assert result is False

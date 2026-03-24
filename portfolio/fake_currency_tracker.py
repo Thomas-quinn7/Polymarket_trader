@@ -105,9 +105,9 @@ class FakeCurrencyTracker:
             return False
 
         original_allocated = self.positions[position_id].allocated
-        self.positions[position_id].returned += return_amount
         self.balance += return_amount
         self.deployed -= original_allocated
+        del self.positions[position_id]  # free the slot so a new position can be opened
 
         logger.info(
             f"💵 Returned ${return_amount:.2f} from {position_id} "
