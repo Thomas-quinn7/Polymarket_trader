@@ -49,6 +49,11 @@ class PolymarketConfig:
     TRADING_MODE = os.getenv("TRADING_MODE", "paper").lower()
     PAPER_TRADING_ONLY = True  # real-money execution is never implemented
 
+    # Strategy Selection
+    # Name of the strategy to load from strategies/registry.py.
+    # Set STRATEGY=<name> in .env to switch strategies without code changes.
+    STRATEGY = os.getenv("STRATEGY", "settlement_arbitrage")
+
     FAKE_CURRENCY_BALANCE = float(os.getenv("FAKE_CURRENCY_BALANCE", "10000.00"))
 
     # Dashboard Configuration

@@ -226,8 +226,10 @@ PERSONAL.md
 Notes
 
 # ============================================================
-# STRATEGIES (ignore live strategies, keep examples)
+# STRATEGIES (ignore live strategies, keep framework + examples)
 # ============================================================
 strategies/*.py
 !strategies/__init__.py
+!strategies/base.py
+!strategies/registry.py
 !strategies/examples/
