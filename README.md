@@ -36,19 +36,20 @@ git clone https://github.com/Thomas-quinn7/Polymarket_trader.git
 cd Polymarket_trader
 ```
 
-2. **Create a virtual environment and install dependencies**:
+2. **Create and activate a virtual environment**:
 ```bash
 uv venv
-uv sync
-```
 
-3. **Activate the environment**:
-```bash
 # Windows
 .venv\Scripts\activate
 
 # macOS / Linux
 source .venv/bin/activate
+```
+
+3. **Install the project and dependencies**:
+```bash
+uv pip install -e .
 ```
 
 4. **Configure environment variables**:
@@ -163,7 +164,12 @@ Checks: credentials, dependencies, paper trading mode, alert configuration.
 ### Start the Bot
 
 ```bash
-uv run python main.py
+polymarket
+```
+
+Or directly:
+```bash
+python main.py
 ```
 
 The framework will:

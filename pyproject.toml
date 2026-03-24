@@ -59,6 +59,7 @@ all = [
 ]
 
 [project.scripts]
+polymarket = "main:main"
 bot = "cmd.bot:main"
 api = "api.router:main"
 
@@ -68,12 +69,12 @@ Documentation = "https://github.com/yourusername/polymarket-trading-bot#readme"
 Repository = "https://github.com/yourusername/polymarket-trading-bot"
 Issues = "https://github.com/yourusername/polymarket-trading-bot/issues"
 
-[tool.setuptools]
-packages = ["pkg", "internal", "internal.core", "internal.core.notifications", "internal.core.scanner", "internal.core.execution", "internal.core.portfolio", "internal.core.common", "internal.core.common.service", "cmd", "api", "api.routes", "tests"]
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["tests*", "*.egg-info*"]
 
 [tool.setuptools.package-data]
-pkg = ["*.py"]
-internal = ["**/*.py"]
+"*" = ["*.py", "static/*", "templates/*"]
 
 [tool.black]
 line-length = 100
