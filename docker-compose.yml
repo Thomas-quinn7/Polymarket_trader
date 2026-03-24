@@ -7,40 +7,30 @@ services:
       dockerfile: Dockerfile
     container_name: polymarket-trading-bot
     restart: unless-stopped
+    # Load all secrets and user config from .env automatically
+    env_file:
+      - .env
     environment:
+      # Docker-specific overrides — these take priority over .env values
       - PYTHONUNBUFFERED=1
-      # Environment variables from .env file (if present)
-      # Polymarket API Configuration
-      - POLYMARKET_PRIVATE_KEY=
-      - POLYMARKET_FUNDER_ADDRESS=
-      # Paper Trading Settings
-      - PAPER_TRADING_ENABLED=true
-      - PAPER_TRADING_ONLY=true
-      - FAKE_CURRENCY_BALANCE=10000.00
-      # Dashboard Configuration
-      - DASHBOARD_ENABLED=true
-      - DASHBOARD_PORT=8080
       - DASHBOARD_HOST=0.0.0.0
-      # Logging Configuration
-      - LOG_LEVEL=INFO
-      - LOG_TO_FILE=true
-      # SQLite database path (mounted volume below)
+      # SQLite lives in the mounted storage volume
       - DB_ENABLED=true
       - DB_PATH=/app/storage/trading.db
-      # ScyllaDB (set SCYLLA_ENABLED=true to activate)
-      - SCYLLA_ENABLED=false
+      # ScyllaDB is always available inside Docker Compose —
+      # use the service name as the host and enable the connection
+      - SCYLLA_ENABLED=true
       - SCYLLA_HOST=scylla
       - SCYLLA_PORT=9042
+      - SCYLLA_KEYSPACE=polymarket
     ports:
       - "8080:8080"
     volumes:
-      # Mount logs directory for persistence
+      # Persist logs and SQLite database outside the container
       - ./logs:/app/logs
-      # Mount storage directory — SQLite database lives here
       - ./storage:/app/storage
-      # Mount .env file for configuration (rw so Settings page can write back)
+      # Mount .env so the Settings UI can write changes back
       - ./.env:/app/.env
-      # Mount .env.template for reference
       - ./.env.template:/app/.env.template:ro
     depends_on:
       scylla:
@@ -63,12 +53,17 @@ services:
     image: scylladb/scylla:5.4
     container_name: polymarket-scylla
     restart: unless-stopped
+    # Single CPU, 750 MB RAM, developer mode — suitable for a local/dev setup
     command: --smp 1 --memory 750M --overprovisioned 1 --developer-mode 1
     volumes:
       - scylla_data:/var/lib/scylla
+    ports:
+      # Expose CQL port so you can query ScyllaDB from outside Docker (optional)
+      - "9042:9042"
     networks:
       - trading-bot-network
     healthcheck:
+      # Wait until ScyllaDB reports a node in UN (Up/Normal) state
       test: ["CMD-SHELL", "nodetool status | grep UN"]
       interval: 15s
       timeout: 10s

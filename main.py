@@ -382,12 +382,19 @@ class TradingBot:
                         end_date_str = m.get("endDate")
                         break
 
+                # Fall back to the expiry time stored on the position itself
+                # (important for simulation where the market cache regenerates with new end dates)
                 if not end_date_str:
-                    continue
-
-                end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
-                if now < end_date:
-                    continue
+                    if pos.expires_at and now >= pos.expires_at:
+                        end_date = pos.expires_at
+                    else:
+                        continue
+                else:
+                    end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
+                    if now < end_date:
+                        # Also check position-level expiry in case cache end date was refreshed
+                        if not (pos.expires_at and now >= pos.expires_at):
+                            continue
 
                 # Market has closed — settle YES at $1.00 (strategy only bets near-certain YES)
                 logger.info(f"Market closed, settling position: {pos.position_id}")

@@ -8,7 +8,6 @@ import sys
 import io
 import codecs
 from pathlib import Path
-from logging.handlers import RotatingFileHandler
 from datetime import datetime
 import colorlog
 
@@ -93,11 +92,10 @@ def setup_logger(name: str, log_file: str = None) -> logging.Logger:
         logs_dir.mkdir(exist_ok=True)
 
         file_path = logs_dir / log_file
-        file_handler = RotatingFileHandler(
-            file_path,
-            maxBytes=10*1024*1024,  # 10MB
-            backupCount=5
-        )
+        # Plain FileHandler — date-stamped filenames already provide daily rotation.
+        # RotatingFileHandler uses os.rename() which fails on Windows when another
+        # process holds the file open.
+        file_handler = logging.FileHandler(file_path, encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)
 
         file_format = logging.Formatter(

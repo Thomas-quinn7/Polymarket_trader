@@ -302,30 +302,45 @@ class PnLTracker:
         """Generate formatted PnL report"""
         summary = self.get_summary()
 
-        report = f"""
-╔════════════════════════════════════════════════════════════════╗
-║                    P&L REPORT                                    ║
-╠════════════════════════════════════════════════════════════════╣
-║ Balance                                                        ║
-║   Initial:     ${summary.initial_balance:>12,.2f}                ║
-║   Current:     ${self.current_balance:>12,.2f}                ║
-║   Peak:        ${summary.peak_balance:>12,.2f}                 ║
-║   Change:      ${summary.total_pnl:>12,.2f} ({summary.total_pnl/summary.initial_balance*100:>6.2f}%) ║
-║                                                                 ║
-║ Trade Statistics                                               ║
-║   Total Trades: {summary.total_trades:>8}                             ║
-║   Wins:        {summary.wins:>8} ({summary.win_rate:>5.1f}%)             ║
-║   Losses:      {summary.losses:>8} ({100-summary.win_rate:>5.1f}%)           ║
-║                                                                 ║
-║ Performance                                                     ║
-║   Avg Win:     ${summary.average_win:>12,.2f}                ║
-║   Avg Loss:    ${summary.average_loss:>12,.2f}                ║
-║   Profit Factor: {summary.profit_factor:>9.2f}                          ║
-║                                                                 ║
-║ Drawdown                                                       ║
-║   Max DD:      {summary.max_drawdown:>9.2f}%                          ║
-║   Current DD:  {summary.current_drawdown:>9.2f}%                          ║
-╚════════════════════════════════════════════════════════════════╝
-"""
+        pnl_pct = summary.total_pnl / summary.initial_balance * 100 if summary.initial_balance else 0
+        W = 50  # inner width between the two ║ chars
+
+        def row(label: str, value: str) -> str:
+            content = f"  {label:<16}{value}"
+            return f"║ {content:<{W}} ║"
+
+        def section(title: str) -> str:
+            return f"║ {title:<{W}} ║"
+
+        def blank() -> str:
+            return f"║ {'':<{W}} ║"
+
+        border = "═" * (W + 2)
+        lines = [
+            f"╔{border}╗",
+            f"║{'P&L REPORT':^{W+2}}║",
+            f"╠{border}╣",
+            section("Balance"),
+            row("Initial:",  f"${summary.initial_balance:>13,.2f}"),
+            row("Current:",  f"${self.current_balance:>13,.2f}"),
+            row("Peak:",     f"${summary.peak_balance:>13,.2f}"),
+            row("Change:",   f"${summary.total_pnl:>13,.2f}  ({pnl_pct:+.2f}%)"),
+            blank(),
+            section("Trade Statistics"),
+            row("Total Trades:", f"{summary.total_trades:>8}"),
+            row("Wins:",         f"{summary.wins:>8}  ({summary.win_rate:>5.1f}%)"),
+            row("Losses:",       f"{summary.losses:>8}  ({100 - summary.win_rate:>5.1f}%)"),
+            blank(),
+            section("Performance"),
+            row("Avg Win:",       f"${summary.average_win:>13,.2f}"),
+            row("Avg Loss:",      f"${summary.average_loss:>13,.2f}"),
+            row("Profit Factor:", f"{summary.profit_factor:>13.2f}"),
+            blank(),
+            section("Drawdown"),
+            row("Max DD:",     f"{summary.max_drawdown:>12.2f}%"),
+            row("Current DD:", f"{summary.current_drawdown:>12.2f}%"),
+            f"╚{border}╝",
+        ]
+        report = "\n" + "\n".join(lines) + "\n"
 
         return report

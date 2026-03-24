@@ -6,7 +6,7 @@ Tracks individual positions and settlements
 import threading
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from config.polymarket_config import config
 from utils.logger import logger
@@ -31,6 +31,7 @@ class Position:
     edge_percent: float
     status: str = "OPEN"  # OPEN, SETTLED, FAILED
     opened_at: datetime = field(default_factory=datetime.now)
+    expires_at: Optional[datetime] = None  # absolute time this position should settle
     settled_at: Optional[datetime] = None
     settlement_price: Optional[float] = None
     realized_pnl: Optional[float] = None
@@ -51,6 +52,7 @@ class Position:
             "edge_percent": self.edge_percent,
             "status": self.status,
             "opened_at": self.opened_at.isoformat() if self.opened_at else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "settled_at": self.settled_at.isoformat() if self.settled_at else None,
             "settlement_price": self.settlement_price,
             "realized_pnl": self.realized_pnl,
@@ -100,6 +102,15 @@ class PositionTracker:
         if position_id is None:
             position_id = f"{opportunity.market_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
+        # Compute absolute expiry from the opportunity's close time
+        expires_at = None
+        detected_at = getattr(opportunity, "detected_at", None)
+        time_to_close = getattr(opportunity, "time_to_close_seconds", None)
+        if detected_at and time_to_close is not None:
+            if detected_at.tzinfo is None:
+                detected_at = detected_at.replace(tzinfo=timezone.utc)
+            expires_at = detected_at + timedelta(seconds=time_to_close)
+
         position = Position(
             position_id=position_id,
             market_id=opportunity.market_id,
@@ -113,6 +124,7 @@ class PositionTracker:
             allocated_capital=allocated_capital,
             expected_profit=expected_profit,
             edge_percent=opportunity.edge_percent,
+            expires_at=expires_at,
         )
 
         with self._lock:
