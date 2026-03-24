@@ -1,96 +1,185 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Polymarket Arbitrage Bot Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Polymarket Bot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Polymarket Arbitrage Bot</h1>
-            <div class="status-badge" id="statusBadge">
-                <span id="statusIcon">[green circle]</span>
-                <span id="statusText">Running</span>
-            </div>
-        </header>
+<div class="shell">
 
-        <main>
-            <!-- P&L Section -->
-            <section class="card pnl-card">
-                <h2>Portfolio Performance</h2>
-                <div class="pnl-grid">
-                    <div class="pnl-item">
-                        <span class="label">Balance</span>
-                        <span class="value" id="balance">$0.00</span>
-                    </div>
-                    <div class="pnl-item">
-                        <span class="label">Total P&L</span>
-                        <span class="value" id="totalPnl">$0.00</span>
-                    </div>
-                    <div class="pnl-item">
-                        <span class="label">Win Rate</span>
-                        <span class="value" id="winRate">0%</span>
-                    </div>
-                    <div class="pnl-item">
-                        <span class="label">Deployed</span>
-                        <span class="value" id="deployed">$0.00</span>
-                    </div>
-                </div>
-                <div class="pnl-chart" id="pnlChart">
-                    <canvas id="pnlCanvas"></canvas>
-                </div>
-            </section>
-
-            <!-- Positions Section -->
-            <section class="card positions-card">
-                <div class="card-header">
-                    <h2>Open Positions</h2>
-                    <span class="position-count" id="positionCount">0/5</span>
-                </div>
-                <div class="positions-table" id="positionsTable">
-                    <div class="empty-state">No open positions</div>
-                </div>
-            </section>
-
-            <!-- Trade History Section -->
-            <section class="card trades-card">
-                <h2>Recent Trades</h2>
-                <div class="trades-table" id="tradesTable">
-                    <div class="empty-state">No trades yet</div>
-                </div>
-            </section>
-
-            <!-- System Status Section -->
-            <section class="card status-card">
-                <h2>System Status</h2>
-                <div class="status-grid">
-                    <div class="status-item">
-                        <span class="label">Uptime</span>
-                        <span class="value" id="uptime">0s</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="label">Last Update</span>
-                        <span class="value" id="lastUpdate">-</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="label">Total Trades</span>
-                        <span class="value" id="totalTrades">0</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="label">Drawdown</span>
-                        <span class="value" id="drawdown">0%</span>
-                    </div>
-                </div>
-            </section>
-        </main>
-
-        <footer>
-            <p>Polymarket Arbitrage Bot v1.0.0 | <span id="refreshRate">Auto-refresh: 5s</span></p>
-        </footer>
+  <!-- ── Sidebar ──────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-name">POLYMARKET</span>
+      <span class="brand-sub">Arbitrage Bot</span>
     </div>
 
-    <script src="/static/app.js"></script>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-label">Monitor</div>
+        <button class="nav-item active" data-page="overview">Overview</button>
+        <button class="nav-item" data-page="positions">Positions</button>
+        <button class="nav-item" data-page="trades">Trades</button>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">System</div>
+        <button class="nav-item" data-page="status">Status</button>
+        <button class="nav-item" data-page="config">Config</button>
+        <button class="nav-item" data-page="settings">Settings</button>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <span class="badge badge-gray" id="mode-badge">—</span>
+      <span class="sidebar-uptime" id="sidebar-uptime"></span>
+    </div>
+  </aside>
+
+  <!-- ── Main Content ──────────────────────────────────────────────── -->
+  <main class="main-content">
+
+    <!-- Overview -->
+    <section id="page-overview" class="page">
+      <div class="overview-header">
+        <h1 class="page-title" style="margin-bottom:0;">Overview</h1>
+        <div class="ctrl-bar">
+          <span class="badge badge-gray" id="ctrl-status-badge">Stopped</span>
+          <button class="btn btn-primary btn-sm" id="btn-start">Start Trading</button>
+          <button class="btn btn-outline btn-sm" id="btn-stop">Stop</button>
+          <span class="ctrl-feedback" id="ctrl-feedback"></span>
+        </div>
+      </div>
+
+      <div class="stats-row" id="stats-overview">
+        <div class="stat-card"><div class="stat-number">—</div><div class="stat-label">Balance</div></div>
+        <div class="stat-card"><div class="stat-number">—</div><div class="stat-label">Total P&amp;L</div></div>
+        <div class="stat-card"><div class="stat-number">—</div><div class="stat-label">Win Rate</div></div>
+        <div class="stat-card"><div class="stat-number">—</div><div class="stat-label">Positions</div></div>
+      </div>
+
+      <div class="overview-grid">
+        <div class="card">
+          <div class="card-header"><span>P&amp;L History</span></div>
+          <div id="pnl-chart" style="height: 200px;"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span>Portfolio</span></div>
+          <div id="portfolio-kv" class="kv-list"><div class="kv-empty">Loading…</div></div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-card-header">
+          <span>Open Positions</span>
+          <span class="badge badge-gray" id="open-pos-count">0</span>
+        </div>
+        <div class="table-wrap" id="overview-positions-table">
+          <table><tbody><tr><td class="empty-row">Loading…</td></tr></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Positions -->
+    <section id="page-positions" class="page hidden">
+      <h1 class="page-title">Positions</h1>
+      <div class="filter-tabs" id="positions-filter">
+        <button class="filter-tab active" data-filter="all">All</button>
+        <button class="filter-tab" data-filter="open">Open</button>
+        <button class="filter-tab" data-filter="settled">Settled</button>
+      </div>
+      <div class="table-bordered">
+        <div class="table-wrap" id="positions-table">
+          <table><tbody><tr><td class="empty-row">Loading…</td></tr></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Trades -->
+    <section id="page-trades" class="page hidden">
+      <h1 class="page-title">Trades</h1>
+      <div class="table-bordered">
+        <div class="table-wrap" id="trades-table">
+          <table><tbody><tr><td class="empty-row">Loading…</td></tr></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Status -->
+    <section id="page-status" class="page hidden">
+      <h1 class="page-title">Status</h1>
+      <div class="status-grid">
+        <div class="card">
+          <div class="card-header"><span>Bot Status</span></div>
+          <div id="status-kv" class="kv-list"><div class="kv-empty">Loading…</div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span>Performance</span></div>
+          <div id="pnl-kv" class="kv-list"><div class="kv-empty">Loading…</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Config -->
+    <section id="page-config" class="page hidden">
+      <h1 class="page-title">Configuration</h1>
+      <div class="card" style="max-width: 480px;">
+        <div class="card-header"><span>Bot Configuration</span></div>
+        <div id="config-kv" class="kv-list"><div class="kv-empty">Loading…</div></div>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section id="page-settings" class="page hidden">
+      <h1 class="page-title">Settings</h1>
+      <div class="settings-grid">
+
+        <div class="card">
+          <div class="card-header"><span>Trading</span></div>
+          <div class="settings-fields" id="fields-trading"></div>
+          <div class="settings-footer">
+            <button class="btn btn-primary btn-sm" id="save-trading">Save</button>
+            <span class="save-feedback" id="fb-trading"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><span>Strategy</span></div>
+          <div class="settings-fields" id="fields-strategy"></div>
+          <div class="settings-footer">
+            <button class="btn btn-primary btn-sm" id="save-strategy">Save</button>
+            <span class="save-feedback" id="fb-strategy"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><span>Alerts</span></div>
+          <div class="settings-fields" id="fields-alerts"></div>
+          <div class="settings-footer">
+            <button class="btn btn-primary btn-sm" id="save-alerts">Save</button>
+            <span class="save-feedback" id="fb-alerts"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><span>Logging</span></div>
+          <div class="settings-fields" id="fields-logging"></div>
+          <div class="settings-footer">
+            <button class="btn btn-primary btn-sm" id="save-logging">Save</button>
+            <span class="save-feedback" id="fb-logging"></span>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="/static/app.js"></script>
 </body>
 </html>

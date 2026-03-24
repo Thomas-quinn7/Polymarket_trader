@@ -5,7 +5,7 @@ Core arbitrage logic for Polymarket
 
 from typing import List, Optional
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from config.polymarket_config import config
 from data.polymarket_client import PolymarketClient
@@ -68,7 +68,7 @@ class SettlementArbitrage:
                     edge = (1.00 - yes_price) * 100
 
                     # Calculate time to close
-                    end_time = market.get("end_time")
+                    end_time = market.get("endDate")
                     time_to_close = self._calculate_time_to_close(end_time)
 
                     opportunity = ArbitrageOpportunity(
@@ -138,8 +138,9 @@ class SettlementArbitrage:
         """
         Calculate time to market close in seconds"""
         try:
-            end_time = datetime.fromisoformat(end_time_str)
-            time_diff = (end_time - datetime.utcnow()).total_seconds()
+            end_time = datetime.fromisoformat(end_time_str.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            time_diff = (end_time - now).total_seconds()
             return max(0.0, time_diff)
         except Exception as e:
             logger.error(f"Error parsing end time: {e}")

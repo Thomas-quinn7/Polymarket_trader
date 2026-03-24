@@ -43,9 +43,12 @@ class PolymarketConfig:
     DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
     DISCORD_MENTION_USER = os.getenv("DISCORD_MENTION_USER", "")
 
-    # Paper Trading
-    PAPER_TRADING_ENABLED = os.getenv("PAPER_TRADING_ENABLED", "True").lower() == "true"
-    PAPER_TRADING_ONLY = os.getenv("PAPER_TRADING_ONLY", "True").lower() == "true"
+    # Trading Mode
+    # "paper"      - real Polymarket API prices, simulated order execution (no real money)
+    # "simulation" - fully offline, synthetic market data, no API calls
+    TRADING_MODE = os.getenv("TRADING_MODE", "paper").lower()
+    PAPER_TRADING_ONLY = True  # real-money execution is never implemented
+
     FAKE_CURRENCY_BALANCE = float(os.getenv("FAKE_CURRENCY_BALANCE", "10000.00"))
 
     # Dashboard Configuration
@@ -59,13 +62,13 @@ class PolymarketConfig:
 
     # Arbitrage Strategy Configuration
     EXECUTE_BEFORE_CLOSE_SECONDS = int(os.getenv("EXECUTE_BEFORE_CLOSE_SECONDS", "2"))
-    MIN_PRICE_THRESHOLD = 0.985  # 98.5 cents
-    MAX_PRICE_THRESHOLD = 1.00  # 100 cents
-    MAX_POSITIONS = 5
-    CAPITAL_SPLIT_PERCENT = 0.2  # 20%
+    MIN_PRICE_THRESHOLD = float(os.getenv("MIN_PRICE_THRESHOLD", "0.985"))
+    MAX_PRICE_THRESHOLD = float(os.getenv("MAX_PRICE_THRESHOLD", "1.00"))
+    MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "5"))
+    CAPITAL_SPLIT_PERCENT = float(os.getenv("CAPITAL_SPLIT_PERCENT", "0.20"))
 
     # Scanning Configuration
-    SCAN_INTERVAL_MS = 500
+    SCAN_INTERVAL_MS = int(os.getenv("SCAN_INTERVAL_MS", "500"))
 
     # Market Categories (all enabled)
     ENABLE_CRYPTO_MARKETS = True
@@ -84,6 +87,39 @@ class PolymarketConfig:
     SLIPPAGE_TOLERANCE_PERCENT = 5.0  # 5% max slippage
     MAX_RETRIES = 3
     RETRY_DELAY_MS = 100
+
+    # SQLite — trades, positions, PnL history
+    DB_ENABLED = os.getenv("DB_ENABLED", "True").lower() == "true"
+    DB_PATH = os.getenv("DB_PATH", "./storage/trading.db")
+
+    # ScyllaDB — order book snapshot storage
+    SCYLLA_ENABLED = os.getenv("SCYLLA_ENABLED", "False").lower() == "true"
+    SCYLLA_HOST = os.getenv("SCYLLA_HOST", "127.0.0.1")
+    SCYLLA_PORT = int(os.getenv("SCYLLA_PORT", "9042"))
+    SCYLLA_KEYSPACE = os.getenv("SCYLLA_KEYSPACE", "polymarket")
+
+
+    def reload(self):
+        """Re-read .env and update all live-configurable fields in-place."""
+        from dotenv import dotenv_values
+        env = dotenv_values()
+        self.TRADING_MODE                = env.get("TRADING_MODE", "paper").lower()
+        self.FAKE_CURRENCY_BALANCE       = float(env.get("FAKE_CURRENCY_BALANCE", "10000.00"))
+        self.EXECUTE_BEFORE_CLOSE_SECONDS= int(env.get("EXECUTE_BEFORE_CLOSE_SECONDS", "2"))
+        self.SCAN_INTERVAL_MS            = int(env.get("SCAN_INTERVAL_MS", "500"))
+        self.MAX_POSITIONS               = int(env.get("MAX_POSITIONS", "5"))
+        self.CAPITAL_SPLIT_PERCENT       = float(env.get("CAPITAL_SPLIT_PERCENT", "0.20"))
+        self.MIN_PRICE_THRESHOLD         = float(env.get("MIN_PRICE_THRESHOLD", "0.985"))
+        self.MAX_PRICE_THRESHOLD         = float(env.get("MAX_PRICE_THRESHOLD", "1.00"))
+        self.ENABLE_EMAIL_ALERTS         = env.get("ENABLE_EMAIL_ALERTS", "True").lower() == "true"
+        self.ENABLE_DISCORD_ALERTS       = env.get("ENABLE_DISCORD_ALERTS", "True").lower() == "true"
+        self.DISCORD_WEBHOOK_URL         = env.get("DISCORD_WEBHOOK_URL", "")
+        self.ALERT_EMAIL_FROM            = env.get("ALERT_EMAIL_FROM", "noreply@example.com")
+        self.ALERT_EMAIL_TO              = env.get("ALERT_EMAIL_TO", "")
+        self.SMTP_SERVER                 = env.get("SMTP_SERVER", "smtp.gmail.com")
+        self.SMTP_PORT                   = int(env.get("SMTP_PORT", "587"))
+        self.SMTP_USERNAME               = env.get("SMTP_USERNAME", "")
+        self.LOG_LEVEL                   = env.get("LOG_LEVEL", "INFO")
 
 
 # Global config instance
