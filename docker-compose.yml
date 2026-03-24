@@ -24,15 +24,27 @@ services:
       # Logging Configuration
       - LOG_LEVEL=INFO
       - LOG_TO_FILE=true
+      # SQLite database path (mounted volume below)
+      - DB_ENABLED=true
+      - DB_PATH=/app/storage/trading.db
+      # ScyllaDB (set SCYLLA_ENABLED=true to activate)
+      - SCYLLA_ENABLED=false
+      - SCYLLA_HOST=scylla
+      - SCYLLA_PORT=9042
     ports:
       - "8080:8080"
     volumes:
       # Mount logs directory for persistence
       - ./logs:/app/logs
-      # Mount .env file for configuration
-      - ./.env:/app/.env:ro
+      # Mount storage directory — SQLite database lives here
+      - ./storage:/app/storage
+      # Mount .env file for configuration (rw so Settings page can write back)
+      - ./.env:/app/.env
       # Mount .env.template for reference
       - ./.env.template:/app/.env.template:ro
+    depends_on:
+      scylla:
+        condition: service_healthy
     networks:
       - trading-bot-network
     healthcheck:
@@ -47,50 +59,26 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Optional: PostgreSQL database (for production)
-  # postgres:
-  #   image: postgres:15-alpine
-  #   container_name: polymarket-db
-  #   restart: unless-stopped
-  #   environment:
-  #     POSTGRES_USER: trader
-  #     POSTGRES_PASSWORD: secure_password
-  #     POSTGRES_DB: polymarket_trading
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-  #   networks:
-  #     - trading-bot-network
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U trader"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-
-  # Optional: Redis for caching (for production)
-  # redis:
-  #   image: redis:7-alpine
-  #   container_name: polymarket-redis
-  #   restart: unless-stopped
-  #   ports:
-  #     - "6379:6379"
-  #   volumes:
-  #     - redis_data:/data
-  #   networks:
-  #     - trading-bot-network
-  #   healthcheck:
-  #     test: ["CMD", "redis-cli", "ping"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
+  scylla:
+    image: scylladb/scylla:5.4
+    container_name: polymarket-scylla
+    restart: unless-stopped
+    command: --smp 1 --memory 750M --overprovisioned 1 --developer-mode 1
+    volumes:
+      - scylla_data:/var/lib/scylla
+    networks:
+      - trading-bot-network
+    healthcheck:
+      test: ["CMD-SHELL", "nodetool status | grep UN"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
 
 networks:
   trading-bot-network:
     driver: bridge
 
 volumes:
-  # postgres_data:
-  #   driver: local
-  # redis_data:
-  #   driver: local
+  scylla_data:
+    driver: local

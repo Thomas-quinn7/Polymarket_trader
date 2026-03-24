@@ -37,6 +37,11 @@ passphrase.txt
 # PROJECT-SPECIFIC FILES
 # ============================================================
 
+# SQLite database — persisted via Docker volume or local storage/
+storage/*.db
+storage/*.db-shm
+storage/*.db-wal
+
 # Polymarket specific
 polymarket_private_key.txt
 builder_credentials.txt
@@ -219,3 +224,10 @@ PERSONAL.md
 # config.example.json   (contains only placeholders, safe to commit)
 
 Notes
+
+# ============================================================
+# STRATEGIES (ignore live strategies, keep examples)
+# ============================================================
+strategies/*.py
+!strategies/__init__.py
+!strategies/examples/

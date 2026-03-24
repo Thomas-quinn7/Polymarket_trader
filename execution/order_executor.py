@@ -40,8 +40,7 @@ class OrderExecutor:
 
         # Safety check for paper trading only mode
         if config.PAPER_TRADING_ONLY:
-            logger.info("Order executor initialized (PAPER TRADING ONLY MODE)")
-            logger.warning("SAFETY MODE: Only paper trading is allowed - no real money trades")
+            logger.info("Order executor initialized — paper trading only, no real money trades")
         else:
             logger.info("Order executor initialized (paper trading mode)")
 
