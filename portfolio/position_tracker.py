@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from datetime import datetime
 
+from config.polymarket_config import config
 from utils.logger import logger
 from utils.pnl_tracker import PnLTracker, TradeRecord
 
@@ -68,7 +69,6 @@ class PositionTracker:
     """
 
     def __init__(self, pnl_tracker: PnLTracker):
-        from config.polymarket_config import config
         self.pnl_tracker = pnl_tracker
         self.positions: Dict[str, Position] = {}
         self.max_positions = config.MAX_POSITIONS

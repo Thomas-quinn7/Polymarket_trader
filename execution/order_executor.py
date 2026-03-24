@@ -101,7 +101,7 @@ class OrderExecutor:
             trade_logger.log_position_opened(
                 position_id=position_id,
                 market_id=opportunity.market_id,
-                quantity=shares,
+                shares=shares,
                 entry_price=opportunity.current_price,
                 expected_profit=expected_profit,
             )
@@ -227,7 +227,7 @@ class OrderExecutor:
             logger.info(
                 f"✅ Position settled: {position_id} - "
                 f"Exit: ${settlement_price:.4f}, "
-                f"PnL: ${pnl:.2f if pnl else 0:.2f}"
+                f"PnL: ${(pnl or 0.0):.2f}"
             )
 
             return pnl
