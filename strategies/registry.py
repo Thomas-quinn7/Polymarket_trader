@@ -18,9 +18,11 @@ _REGISTRY: Dict[str, Type] = {}
 
 def _build_registry() -> Dict[str, Type]:
     from strategies.examples.settlement_arbitrage import SettlementArbitrage
+    from strategies.examples.demo_buy import DemoBuy
 
     return {
         "settlement_arbitrage": SettlementArbitrage,
+        "demo_buy": DemoBuy,
     }
 
 
