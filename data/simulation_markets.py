@@ -63,6 +63,8 @@ def generate_simulation_markets(category: str = None) -> list:
             "clobTokenIds": [token_yes, token_no],
             "outcomePrices": [str(yes_price), str(no_price)],
             "tags": [{"label": tmpl["category"]}],
+            # Synthetic volume so the liquidity filter passes in simulation mode
+            "volume": round(random.uniform(5000.0, 50000.0), 2),
             # Simulation flag — lets get_price() return the baked-in price
             "_sim_yes_price": yes_price,
         })

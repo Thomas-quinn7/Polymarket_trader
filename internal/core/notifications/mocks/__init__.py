@@ -1,15 +1,6 @@
 """
 Mock notification channels for testing.
+Mock implementations are defined in individual files in this directory.
 """
 
-from internal.core.notifications.mocks.failing_notification_channel import (
-    FailingNotificationChannel,
-)
-from internal.core.notifications.mocks.mock_notification_channel import (
-    MockNotificationChannel,
-)
-
-__all__ = [
-    "MockNotificationChannel",
-    "FailingNotificationChannel",
-]
+__all__ = []

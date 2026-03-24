@@ -5,7 +5,7 @@ Defines the protocol contracts and data structures.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Optional, Protocol, runtime_checkable
 
 from pkg.errors import AppError
 
