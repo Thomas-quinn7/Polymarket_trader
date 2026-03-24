@@ -5,7 +5,7 @@ Times market close and triggers execution
 
 from dataclasses import dataclass, field
 from typing import Dict, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import time
 
 from utils.logger import logger
@@ -57,8 +57,9 @@ class ExecutionTimer:
             close_time = datetime.fromisoformat(end_time)
             execute_time = close_time - timedelta(seconds=self.execute_before_close)
 
+            now = datetime.now(timezone.utc)
             # Check if we should still execute
-            if execute_time <= datetime.utcnow():
+            if execute_time <= now:
                 timed_exec = TimedExecution(
                     market_id=market_id,
                     execute_at=execute_time,
@@ -68,13 +69,13 @@ class ExecutionTimer:
                 self.active_timers[market_id] = timed_exec
                 logger.info(
                     f"⏱️ Timer started: {market_id} - "
-                    f"Execute in {(execute_time - datetime.utcnow()).total_seconds():.0f}s"
+                    f"Execute in {(execute_time - now).total_seconds():.0f}s"
                 )
                 return True
             else:
                 logger.warning(
                     f"⏰ Too late to execute: {market_id} - "
-                    f"Market closes in {(close_time - datetime.utcnow()).total_seconds():.0f}s"
+                    f"Market closes in {(close_time - now).total_seconds():.0f}s"
                 )
                 return False
 
@@ -90,7 +91,7 @@ class ExecutionTimer:
             List of market IDs to execute
         """
         ready_to_execute = []
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for market_id, timed_exec in self.active_timers.items():
             if now >= timed_exec.execute_at:
