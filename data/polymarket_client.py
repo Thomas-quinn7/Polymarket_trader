@@ -103,13 +103,13 @@ class PolymarketClient:
 
     def get_all_markets(self, category: Optional[str] = None) -> list:  # noqa: C901
         """
-        Get all active markets from Gamma API
+        Get all active markets from Gamma API with pagination.
 
         Args:
             category: Optional category (crypto, fed, regulatory, economic, other)
 
         Returns:
-            List of market objects
+            List of raw market dicts (all pages combined)
         """
         if self._simulation:
             from data.simulation_markets import generate_simulation_markets
@@ -117,29 +117,51 @@ class PolymarketClient:
             logger.debug(f"[SIM] Generated {len(self._sim_markets)} synthetic markets (category={category})")
             return self._sim_markets
 
-        try:
-            import requests
-            import json as _json
-            from config.polymarket_config import config
+        import requests
+        import json as _json
 
-            tag_map = {"crypto": "21", "fed": "7"}
-            params = {"active": "true", "closed": "false"}
+        tag_map = {"crypto": "21", "fed": "7"}
+        all_markets: list = []
+        page_size = 100
+        offset = 0
+
+        while True:
+            params = {"active": "true", "closed": "false", "limit": page_size, "offset": offset}
             if category in tag_map:
                 params["tag_id"] = tag_map[category]
 
-            response = requests.get(f"{config.GAMMA_API_URL}/events", params=params)
+            try:
+                response = requests.get(
+                    f"{config.GAMMA_API_URL}/events",
+                    params=params,
+                    timeout=10,
+                )
+            except requests.exceptions.Timeout:
+                logger.error(f"Timeout fetching markets page (offset={offset}) for category '{category}'")
+                break
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Request error fetching markets page (offset={offset}) for category '{category}': {e}")
+                break
 
             if response.status_code != 200:
-                logger.warning(f"Gamma API returned {response.status_code} for category '{category}'")
-                return []
+                logger.warning(
+                    f"Gamma API returned {response.status_code} for category '{category}' "
+                    f"(offset={offset}): {response.text[:200]}"
+                )
+                break
 
-            events = response.json()
+            try:
+                events = response.json()
+            except ValueError as e:
+                logger.error(f"Failed to parse Gamma API response for category '{category}' (offset={offset}): {e}")
+                break
+
             if not isinstance(events, list):
                 logger.warning(f"Unexpected Gamma API response type: {type(events)}")
-                return []
+                break
 
             # Flatten events → markets, attach event tags, parse clobTokenIds
-            markets = []
+            page_markets = []
             for event in events:
                 event_tags = event.get("tags", [])
                 for market in event.get("markets", []):
@@ -152,14 +174,18 @@ class PolymarketClient:
                             market["clobTokenIds"] = _json.loads(clob)
                         except Exception:
                             market["clobTokenIds"] = []
-                    markets.append(market)
+                    page_markets.append(market)
 
-            logger.debug(f"Fetched {len(markets)} active markets (category={category})")
-            return markets
+            all_markets.extend(page_markets)
 
-        except Exception as e:
-            logger.error(f"Error fetching markets: {e}")
-            return []
+            # Stop when API returned fewer events than requested (last page)
+            if len(events) < page_size:
+                break
+
+            offset += page_size
+
+        logger.info(f"Fetched {len(all_markets)} total markets for category '{category}'")
+        return all_markets
 
     def get_market(self, market_id: str) -> dict:
         """

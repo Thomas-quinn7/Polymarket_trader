@@ -3,16 +3,20 @@ Enhanced Market Scanner
 Advanced market filtering and scanning capabilities
 """
 
+import json
 import os
 from typing import List, Optional, Set, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 import re
 
 from config.polymarket_config import config
 from data.polymarket_client import PolymarketClient
 from data.polymarket_models import ArbitrageOpportunity
+from data.market_schema import PolymarketMarket
 from utils.logger import logger
+
+_SEEN_MARKETS_FILE = os.path.join(os.path.dirname(__file__), "..", "data", ".seen_markets.json")
 
 
 @dataclass
@@ -179,8 +183,9 @@ class EnhancedMarketScanner:
         try:
             return float(value)
         except ValueError:
+            logger.warning(f"Invalid float config value: '{value}' — ignoring")
             return None
-    
+
     def _parse_int(self, value: Optional[str]) -> Optional[int]:
         """Parse integer from string"""
         if not value:
@@ -188,54 +193,66 @@ class EnhancedMarketScanner:
         try:
             return int(value)
         except ValueError:
+            logger.warning(f"Invalid int config value: '{value}' — ignoring")
             return None
     
     def _load_seen_markets(self):
-        """Load persistent seen markets from database or file"""
-        # For now, just initialize empty set
-        # TODO: Add database persistence
-        self.seen_markets = set()
-    
+        """Load seen market IDs from JSON file for persistence across restarts."""
+        try:
+            path = os.path.abspath(_SEEN_MARKETS_FILE)
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    data = json.load(f)
+                self.seen_markets = set(data) if isinstance(data, list) else set()
+                logger.debug(f"Loaded {len(self.seen_markets)} seen markets from {path}")
+            else:
+                self.seen_markets = set()
+        except Exception as e:
+            logger.warning(f"Could not load seen markets file: {e} — starting fresh")
+            self.seen_markets = set()
+
     def _save_seen_markets(self):
-        """Save seen markets for persistence"""
-        # TODO: Add database persistence
-        pass
+        """Persist seen market IDs to JSON file."""
+        try:
+            path = os.path.abspath(_SEEN_MARKETS_FILE)
+            with open(path, "w") as f:
+                json.dump(list(self.seen_markets), f)
+        except Exception as e:
+            logger.warning(f"Could not save seen markets file: {e}")
     
-    def matches_filters(self, market: dict, category: str) -> bool:
+    def matches_filters(self, market: PolymarketMarket, category: str) -> bool:
         """
-        Check if market matches all configured filters
+        Check if a PolymarketMarket matches all configured filters.
         """
-        
+
+        # Liquidity filter
+        if not market.has_sufficient_liquidity(config.MIN_VOLUME_USD):
+            return False
+
         # Check if market is seen
         if self.config.ignore_seen_markets:
-            market_id = market.get("conditionId") or market.get("marketSlug", "")
-            if market_id in self.seen_markets:
+            if market.market_id in self.seen_markets:
                 return False
-        
-        # Check keyword match
+
+        # Keyword filters
         keywords = self._get_category_keywords(category)
         if keywords:
-            market_title = market.get("question", "").lower()
-            market_slug = market.get("marketSlug", "").lower()
-            
-            # Check include keywords
-            if keywords:
-                if not any(keyword.lower() in market_title or keyword.lower() in market_slug 
-                          for keyword in keywords):
-                    return False
-            
-            # Check exclude keywords
-            if self.config.exclude_keywords:
-                if any(keyword.lower() in market_title or keyword.lower() in market_slug 
-                          for keyword in self.config.exclude_keywords):
-                    return False
-            
-            # Check exclude slugs
-            if self.config.exclude_slugs:
-                if market.get("marketSlug", "") in self.config.exclude_slugs:
-                    return False
-        
-        # Check price filters
+            title_lower = market.question.lower()
+            slug_lower = market.slug.lower()
+
+            if not any(kw.lower() in title_lower or kw.lower() in slug_lower for kw in keywords):
+                return False
+
+        if self.config.exclude_keywords:
+            title_lower = market.question.lower()
+            slug_lower = market.slug.lower()
+            if any(kw.lower() in title_lower or kw.lower() in slug_lower for kw in self.config.exclude_keywords):
+                return False
+
+        if self.config.exclude_slugs and market.slug in self.config.exclude_slugs:
+            return False
+
+        # Price filters (requires live price fetch — skip if not configured)
         if self.config.min_price is not None or self.config.max_price is not None:
             price = self._get_market_price(market)
             if price is not None:
@@ -243,27 +260,16 @@ class EnhancedMarketScanner:
                     return False
                 if self.config.max_price is not None and price > self.config.max_price:
                     return False
-        
-        # Check edge filters
-        if self.config.min_edge is not None or self.config.max_edge is not None:
-            # This will be applied during opportunity evaluation
-            pass
-        
-        # Check time to close filters
+
+        # Time to close filters
         if self.config.min_time_to_close is not None or self.config.max_time_to_close is not None:
-            end_time_str = market.get("end_date", "")
-            if end_time_str:
-                try:
-                    end_time = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
-                    time_to_close = int((end_time - datetime.now()).total_seconds())
-                    
-                    if self.config.min_time_to_close is not None and time_to_close < self.config.min_time_to_close:
-                        return False
-                    if self.config.max_time_to_close is not None and time_to_close > self.config.max_time_to_close:
-                        return False
-                except (ValueError, AttributeError):
-                    pass
-        
+            ttc = market.seconds_to_close()
+            if ttc is not None:
+                if self.config.min_time_to_close is not None and ttc < self.config.min_time_to_close:
+                    return False
+                if self.config.max_time_to_close is not None and ttc > self.config.max_time_to_close:
+                    return False
+
         return True
     
     def _get_category_keywords(self, category: str) -> Optional[List[str]]:
@@ -278,12 +284,12 @@ class EnhancedMarketScanner:
             return self.config.other_keywords
         return None
     
-    def _get_market_price(self, market: dict) -> Optional[float]:
+    def _get_market_price(self, market: PolymarketMarket) -> Optional[float]:
         """Get the current YES price for a market"""
         try:
-            # This would need to call the API to get orderbook
-            # For now, return None
-            return None
+            if not market.token_ids:
+                return None
+            return self.client.get_price(market.token_ids[0]) or None
         except Exception:
             return None
     
@@ -324,27 +330,33 @@ class EnhancedMarketScanner:
         
         # Get markets from API
         try:
-            markets = self.client.get_all_markets(category=category)
+            raw_markets = self.client.get_all_markets(category=category)
         except Exception as e:
             logger.error(f"Failed to get markets for category {category}: {e}")
             return []
-        
-        if not markets:
+
+        if not raw_markets:
             logger.debug(f"No markets found for category {category}")
             return []
-        
-        # Apply filters
+
+        # Parse and filter
         filtered_markets = []
-        for market in markets:
+        skipped_parse = 0
+        for raw in raw_markets:
+            market = PolymarketMarket.from_api(raw)
+            if market is None:
+                skipped_parse += 1
+                continue
             if self.matches_filters(market, category):
                 filtered_markets.append(market)
-                # Add to seen set
                 if not self.config.track_new_markets_only:
-                    market_id = market.get("conditionId") or market.get("marketSlug", "")
-                    self.seen_markets.add(market_id)
-        
-        logger.info(f"Scanned {len(filtered_markets)}/{len(markets)} markets for category {category}")
-        
+                    self.seen_markets.add(market.market_id)
+
+        if skipped_parse:
+            logger.warning(f"Skipped {skipped_parse} markets with missing required fields for category {category}")
+
+        logger.info(f"Scanned {len(filtered_markets)}/{len(raw_markets)} markets for category {category}")
+
         return filtered_markets
     
     def scan_all_markets(self) -> List[dict]:

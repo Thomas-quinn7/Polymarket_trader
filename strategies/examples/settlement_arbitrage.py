@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from config.polymarket_config import config
 from data.polymarket_client import PolymarketClient
 from data.polymarket_models import ArbitrageOpportunity, ArbitrageStatus
+from data.market_schema import PolymarketMarket
 from utils.logger import logger
 
 
@@ -42,15 +43,26 @@ class SettlementArbitrage:
         """
         opportunities = []
 
-        for market in markets:
+        for raw_market in markets:
             try:
-                # Get token IDs
-                token_ids = market.get("clobTokenIds", [])
-                if len(token_ids) != 2:
+                market = PolymarketMarket.from_api(raw_market)
+                if market is None:
+                    logger.debug("Skipping market with missing id/token_ids")
                     continue
 
-                token_id_yes = token_ids[0]
-                token_id_no = token_ids[1]
+                # Liquidity filter
+                if not market.has_sufficient_liquidity(config.MIN_VOLUME_USD):
+                    logger.debug(
+                        f"Skipping illiquid market {market.slug} "
+                        f"(volume=${market.volume:.0f} < min=${config.MIN_VOLUME_USD:.0f})"
+                    )
+                    continue
+
+                if len(market.token_ids) != 2:
+                    continue
+
+                token_id_yes = market.token_ids[0]
+                token_id_no = market.token_ids[1]
 
                 # Get current price of YES token
                 yes_price = self.client.get_price(token_id_yes)
@@ -64,87 +76,53 @@ class SettlementArbitrage:
                     <= yes_price
                     <= config.MAX_PRICE_THRESHOLD
                 ):
-                    # Calculate edge
-                    edge = (1.00 - yes_price) * 100
+                    # Net edge after Polymarket taker fee
+                    gross_edge = (1.00 - yes_price) * 100
+                    net_edge = gross_edge - config.TAKER_FEE_PERCENT
 
-                    # Calculate time to close
-                    end_time = market.get("endDate")
-                    time_to_close = self._calculate_time_to_close(end_time)
+                    if net_edge <= 0:
+                        logger.debug(
+                            f"Skipping {market.slug}: gross edge {gross_edge:.2f}% "
+                            f"wiped by {config.TAKER_FEE_PERCENT:.1f}% fee"
+                        )
+                        continue
+
+                    time_to_close = market.seconds_to_close() or 0.0
 
                     opportunity = ArbitrageOpportunity(
-                        market_id=market.get("id"),
-                        market_slug=market.get("slug"),
-                        question=market.get("question"),
-                        category=self._get_category_name(market),
+                        market_id=market.market_id,
+                        market_slug=market.slug,
+                        question=market.question,
+                        category=market.category,
                         token_id_yes=token_id_yes,
                         token_id_no=token_id_no,
                         winning_token_id=token_id_yes,
                         current_price=yes_price,
-                        edge_percent=edge,
-                        confidence=1.0,  # High confidence since price is the actual
+                        edge_percent=net_edge,
+                        confidence=1.0,
                         time_to_close_seconds=time_to_close,
-                        detected_at=datetime.utcnow(),
+                        detected_at=datetime.now(timezone.utc),
                         status=ArbitrageStatus.DETECTED,
                     )
 
                     opportunities.append(opportunity)
                     logger.info(
-                        f"✅ Opportunity: {market.get('slug')} - "
+                        f"Opportunity: {market.slug} - "
                         f"Price: ${yes_price:.4f}, "
-                        f"Edge: {edge:.2f}%, "
+                        f"Net edge: {net_edge:.2f}% (gross {gross_edge:.2f}% - {config.TAKER_FEE_PERCENT:.1f}% fee), "
                         f"Time to close: {time_to_close:.0f}s"
                     )
                 else:
-                    # Price outside target range
                     logger.debug(
-                        f"Price outside range: {market.get('slug')} - ${yes_price:.4f} "
+                        f"Price outside range: {market.slug} - ${yes_price:.4f} "
                         f"(Range: ${config.MIN_PRICE_THRESHOLD:.2f}-{config.MAX_PRICE_THRESHOLD:.2f})"
                     )
 
             except Exception as e:
-                logger.error(f"Error scanning market {market.get('slug')}: {e}")
+                logger.error(f"Error scanning market {raw_market.get('slug', 'unknown')}: {e}")
                 continue
 
         return opportunities
-
-    def _get_category_name(self, market: dict) -> str:
-        """
-        Get category name from tags"""
-        tags = market.get("tags", [])
-
-        if not tags:
-            return "other"
-
-        for tag in tags:
-            if isinstance(tag, dict):
-                label = tag.get("label", "").lower()
-            elif isinstance(tag, str):
-                label = tag.lower()
-            else:
-                continue
-
-            if "crypto" in label:
-                return "crypto"
-            elif "fed" in label:
-                return "fed"
-            elif "regulatory" in label or "sec" in label:
-                return "regulatory"
-            elif "economic" in label:
-                return "economic"
-
-        return "other"
-
-    def _calculate_time_to_close(self, end_time_str: str) -> float:
-        """
-        Calculate time to market close in seconds"""
-        try:
-            end_time = datetime.fromisoformat(end_time_str.replace("Z", "+00:00"))
-            now = datetime.now(timezone.utc)
-            time_diff = (end_time - now).total_seconds()
-            return max(0.0, time_diff)
-        except Exception as e:
-            logger.error(f"Error parsing end time: {e}")
-            return 0.0
 
     def get_best_opportunities(
         self, opportunities: List[ArbitrageOpportunity], limit: int = 5
