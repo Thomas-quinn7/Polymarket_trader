@@ -6,8 +6,7 @@ import asyncio
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import requests
-from requests.exceptions import RequestException
+import aiohttp
 
 from pkg.config import get_settings
 from pkg.errors import MarketClientError
@@ -34,14 +33,21 @@ class PolymarketClient(MarketClientProtocol):
         self.settings = settings
         self.base_url = "https://clob.polymarket.com"
 
-        # Initialize session
-        self._session = None
+        # Session is created lazily and must be used within an async context
+        self._session: Optional[aiohttp.ClientSession] = None
 
-    async def _get_session(self) -> requests.Session:
-        """Get or create HTTP session."""
-        if self._session is None:
-            self._session = requests.Session()
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create async HTTP session."""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=10)
+            )
         return self._session
+
+    async def close(self) -> None:
+        """Close the HTTP session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
 
     async def get_markets(
         self,
@@ -73,6 +79,7 @@ class PolymarketClient(MarketClientProtocol):
         Raises:
             MarketClientError: If API call fails
         """
+        logger = get_logger(__name__)
         session = await self._get_session()
 
         try:
@@ -103,30 +110,29 @@ class PolymarketClient(MarketClientProtocol):
             if max_time_to_close is not None:
                 params["max_time_to_close"] = str(max_time_to_close)
 
-            logger = get_logger(__name__)
             logger.info("fetching_markets", params=params)
 
-            # Make API request
-            response = session.get(
+            async with session.get(
                 f"{self.base_url}/markets",
                 params=params,
-                timeout=30,
-            )
+            ) as response:
+                response.raise_for_status()
 
-            response.raise_for_status()
+                try:
+                    markets = await response.json()
+                except (aiohttp.ContentTypeError, ValueError) as e:
+                    raise MarketClientError(f"Failed to parse markets response: {str(e)}")
 
-            markets = response.json()
-            logger.info("markets_received", count=len(markets) if isinstance(markets, list) else 0)
+                logger.info("markets_received", count=len(markets) if isinstance(markets, list) else 0)
+                return markets if isinstance(markets, list) else [markets]
 
-            return markets if isinstance(markets, list) else [markets]
+        except aiohttp.ClientResponseError as e:
+            logger.error("market_fetch_request_failed", status=e.status, error=str(e))
+            raise MarketClientError(f"Failed to fetch markets (HTTP {e.status}): {str(e)}")
 
-        except RequestException as e:
-            logger.error("market_fetch_request_failed", error=str(e))
-            raise MarketClientError(f"Failed to fetch markets: {str(e)}")
-
-        except Exception as e:
-            logger.error("market_fetch_parse_failed", error=str(e))
-            raise MarketClientError(f"Failed to parse market data: {str(e)}")
+        except aiohttp.ClientError as e:
+            logger.error("market_fetch_connection_failed", error=str(e))
+            raise MarketClientError(f"Failed to connect to markets API: {str(e)}")
 
     async def get_market_by_id(self, market_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -138,25 +144,27 @@ class PolymarketClient(MarketClientProtocol):
         Returns:
             Market data or None if not found
         """
+        logger = get_logger(__name__)
         session = await self._get_session()
 
         try:
-            response = session.get(
+            async with session.get(
                 f"{self.base_url}/markets/{market_id}",
-                timeout=30,
-            )
+            ) as response:
+                response.raise_for_status()
 
-            response.raise_for_status()
-            return response.json()
+                try:
+                    return await response.json()
+                except (aiohttp.ContentTypeError, ValueError) as e:
+                    logger.error("market_parse_failed", market_id=market_id, error=str(e))
+                    return None
 
-        except RequestException as e:
-            logger = get_logger(__name__)
-            logger.warning("market_not_found", market_id=market_id, error=str(e))
+        except aiohttp.ClientResponseError as e:
+            logger.warning("market_not_found", market_id=market_id, status=e.status, error=str(e))
             return None
 
-        except Exception as e:
-            logger = get_logger(__name__)
-            logger.error("market_parse_failed", market_id=market_id, error=str(e))
+        except aiohttp.ClientError as e:
+            logger.error("market_fetch_connection_failed", market_id=market_id, error=str(e))
             return None
 
     async def get_current_prices(self, market_ids: List[str]) -> Dict[str, float]:
@@ -169,43 +177,40 @@ class PolymarketClient(MarketClientProtocol):
         Returns:
             Dictionary mapping market IDs to prices
         """
+        logger = get_logger(__name__)
         session = await self._get_session()
 
         try:
-            # Build payload
             payload = {"ids": market_ids}
 
-            response = session.post(
+            async with session.post(
                 f"{self.base_url}/markets/positions/prices",
                 json=payload,
-                timeout=30,
-            )
+            ) as response:
+                response.raise_for_status()
 
-            response.raise_for_status()
+                try:
+                    data = await response.json()
+                except (aiohttp.ContentTypeError, ValueError) as e:
+                    raise MarketClientError(f"Failed to parse prices response: {str(e)}")
 
-            # Parse response
-            data = response.json()
+                prices = {}
+                if isinstance(data, list):
+                    for item in data:
+                        market_id = item.get("marketId")
+                        price = item.get("yesPrice", item.get("price", 0))
+                        if market_id:
+                            prices[market_id] = price
 
-            # Extract prices (format depends on API response)
-            prices = {}
-            if isinstance(data, list):
-                for item in data:
-                    market_id = item.get("marketId")
-                    price = item.get("yesPrice", item.get("price", 0))
-                    if market_id:
-                        prices[market_id] = price
+                return prices
 
-            return prices
+        except aiohttp.ClientResponseError as e:
+            logger.error("price_fetch_failed", status=e.status, error=str(e))
+            raise MarketClientError(f"Failed to fetch prices (HTTP {e.status}): {str(e)}")
 
-        except RequestException as e:
-            logger = get_logger(__name__)
-            logger.error("price_fetch_failed", error=str(e))
-            raise MarketClientError(f"Failed to fetch prices: {str(e)}")
-
-        except Exception as e:
-            logger = get_logger(__name__)
-            logger.error("price_parse_failed", error=str(e))
-            raise MarketClientError(f"Failed to parse price data: {str(e)}")
+        except aiohttp.ClientError as e:
+            logger.error("price_fetch_connection_failed", error=str(e))
+            raise MarketClientError(f"Failed to connect to prices API: {str(e)}")
 
 
 # For backward compatibility with existing code

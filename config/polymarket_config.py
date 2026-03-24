@@ -67,8 +67,20 @@ class PolymarketConfig:
     MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "5"))
     CAPITAL_SPLIT_PERCENT = float(os.getenv("CAPITAL_SPLIT_PERCENT", "0.20"))
 
+    # Fee Configuration
+    # Polymarket charges ~2% taker fee on CLOB. Edge must exceed this to be profitable.
+    TAKER_FEE_PERCENT = float(os.getenv("TAKER_FEE_PERCENT", "2.0"))
+
+    # Liquidity Filter
+    # Markets with volume below this threshold are excluded (too illiquid to trade)
+    MIN_VOLUME_USD = float(os.getenv("MIN_VOLUME_USD", "1000.0"))
+
     # Scanning Configuration
-    SCAN_INTERVAL_MS = int(os.getenv("SCAN_INTERVAL_MS", "500"))
+    # WARNING: Each scan makes ~4 API calls (one per category).
+    # Unverified mode:  200 req/day → max 50 scans/day → minimum 1728000ms (~29 min) between scans
+    # Builder mode:    3000 req/day → max 750 scans/day → minimum 115000ms (~2 min) between scans
+    # Default below is safe for builder mode. Increase significantly if unverified.
+    SCAN_INTERVAL_MS = int(os.getenv("SCAN_INTERVAL_MS", "30000"))  # 30 seconds (builder mode safe minimum)
 
     # Market Categories (all enabled)
     ENABLE_CRYPTO_MARKETS = True
