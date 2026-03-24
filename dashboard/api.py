@@ -6,6 +6,12 @@ REST API for monitoring and controlling the trading bot
 import os
 from datetime import datetime
 from typing import List, Optional, Dict, Any
+
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DOTENV_PATH  = os.path.join(_PROJECT_ROOT, '.env')
+
+# Fields that only take effect after a full process restart
+_RESTART_REQUIRED = {"fake_currency_balance"}
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -49,15 +55,6 @@ import os
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Add CORS middleware
 app.add_middleware(
@@ -112,6 +109,7 @@ class TradeResponse(BaseModel):
     action: str
     market_id: str
     market_slug: str
+    token_id: str
     quantity: float
     price: float
     total: float
@@ -195,7 +193,7 @@ async def get_status():
 
         return BotStatusResponse(
             running=bot.running,
-            mode="paper",
+            mode=config.TRADING_MODE,
             open_positions=bot.position_tracker.get_position_count(),
             max_positions=config.MAX_POSITIONS,
             balance=bot.currency_tracker.get_balance(),
@@ -359,6 +357,185 @@ async def get_config():
         scan_interval_ms=config.SCAN_INTERVAL_MS,
         fake_currency_balance=config.FAKE_CURRENCY_BALANCE,
     )
+
+
+# ── Settings Models ────────────────────────────────────────────────────
+class SettingsResponse(BaseModel):
+    """All user-editable settings (no secrets)"""
+    trading_mode: str
+    fake_currency_balance: float
+    execute_before_close_seconds: int
+    scan_interval_ms: int
+    max_positions: int
+    capital_split_percent: float
+    min_price_threshold: float
+    max_price_threshold: float
+    enable_email_alerts: bool
+    enable_discord_alerts: bool
+    discord_webhook_url: str
+    alert_email_from: str
+    alert_email_to: str
+    smtp_server: str
+    smtp_port: int
+    smtp_username: str
+    log_level: str
+
+
+class SettingsUpdate(BaseModel):
+    """Partial update — any subset of fields"""
+    trading_mode: Optional[str] = None
+    fake_currency_balance: Optional[float] = None
+    execute_before_close_seconds: Optional[int] = None
+    scan_interval_ms: Optional[int] = None
+    max_positions: Optional[int] = None
+    capital_split_percent: Optional[float] = None
+    min_price_threshold: Optional[float] = None
+    max_price_threshold: Optional[float] = None
+    enable_email_alerts: Optional[bool] = None
+    enable_discord_alerts: Optional[bool] = None
+    discord_webhook_url: Optional[str] = None
+    alert_email_from: Optional[str] = None
+    alert_email_to: Optional[str] = None
+    smtp_server: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_username: Optional[str] = None
+    log_level: Optional[str] = None
+
+
+# Map Pydantic field → (.env key, serialiser)
+_ENV_MAP: Dict[str, tuple] = {
+    # trading_mode is a runtime toggle — updated in memory only, not written to .env
+    "fake_currency_balance":         ("FAKE_CURRENCY_BALANCE",         str),
+    "execute_before_close_seconds":  ("EXECUTE_BEFORE_CLOSE_SECONDS",  str),
+    "scan_interval_ms":              ("SCAN_INTERVAL_MS",              str),
+    "max_positions":                 ("MAX_POSITIONS",                 str),
+    "capital_split_percent":         ("CAPITAL_SPLIT_PERCENT",         str),
+    "min_price_threshold":           ("MIN_PRICE_THRESHOLD",           str),
+    "max_price_threshold":           ("MAX_PRICE_THRESHOLD",           str),
+    "enable_email_alerts":           ("ENABLE_EMAIL_ALERTS",           lambda v: "true" if v else "false"),
+    "enable_discord_alerts":         ("ENABLE_DISCORD_ALERTS",         lambda v: "true" if v else "false"),
+    "discord_webhook_url":           ("DISCORD_WEBHOOK_URL",           str),
+    "alert_email_from":              ("ALERT_EMAIL_FROM",              str),
+    "alert_email_to":                ("ALERT_EMAIL_TO",                str),
+    "smtp_server":                   ("SMTP_SERVER",                   str),
+    "smtp_port":                     ("SMTP_PORT",                     str),
+    "smtp_username":                 ("SMTP_USERNAME",                 str),
+    "log_level":                     ("LOG_LEVEL",                     str),
+}
+
+
+@app.get("/api/settings", response_model=SettingsResponse)
+async def get_settings():
+    """Get all editable settings (no secrets)"""
+    return SettingsResponse(
+        trading_mode=config.TRADING_MODE,
+        fake_currency_balance=config.FAKE_CURRENCY_BALANCE,
+        execute_before_close_seconds=config.EXECUTE_BEFORE_CLOSE_SECONDS,
+        scan_interval_ms=config.SCAN_INTERVAL_MS,
+        max_positions=config.MAX_POSITIONS,
+        capital_split_percent=config.CAPITAL_SPLIT_PERCENT,
+        min_price_threshold=config.MIN_PRICE_THRESHOLD,
+        max_price_threshold=config.MAX_PRICE_THRESHOLD,
+        enable_email_alerts=config.ENABLE_EMAIL_ALERTS,
+        enable_discord_alerts=config.ENABLE_DISCORD_ALERTS,
+        discord_webhook_url=config.DISCORD_WEBHOOK_URL,
+        alert_email_from=config.ALERT_EMAIL_FROM,
+        alert_email_to=config.ALERT_EMAIL_TO,
+        smtp_server=config.SMTP_SERVER,
+        smtp_port=config.SMTP_PORT,
+        smtp_username=config.SMTP_USERNAME,
+        log_level=config.LOG_LEVEL,
+    )
+
+
+def _write_env_key(dotenv_path: str, key: str, value: str) -> None:
+    """
+    Update a single key in a .env file with a direct in-place write.
+
+    python-dotenv's set_key() writes to a tmp file then renames it, which
+    fails on Docker bind mounts on Windows ("Device or resource busy").
+    Writing directly to the file avoids that rename entirely.
+    """
+    try:
+        with open(dotenv_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        lines = []
+
+    found = False
+    new_lines = []
+    for line in lines:
+        if line.lstrip().startswith(f"{key}=") or line.lstrip().startswith(f"{key} ="):
+            new_lines.append(f"{key}={value}\n")
+            found = True
+        else:
+            new_lines.append(line)
+
+    if not found:
+        new_lines.append(f"{key}={value}\n")
+
+    with open(dotenv_path, "w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+
+
+@app.post("/api/settings")
+async def update_settings(update: SettingsUpdate):
+    """Write changed values to .env and hot-reload config"""
+    changed = []
+    needs_restart = []
+    payload = update.model_dump(exclude_none=True)
+
+    # trading_mode is a runtime-only toggle — update config in memory, no file write
+    if "trading_mode" in payload:
+        mode = payload.pop("trading_mode").lower()
+        if mode not in ("paper", "simulation"):
+            raise HTTPException(status_code=422, detail="trading_mode must be 'paper' or 'simulation'")
+        config.TRADING_MODE = mode
+        changed.append("trading_mode")
+
+    for field, value in payload.items():
+        env_key, serialiser = _ENV_MAP.get(field, (None, None))
+        if env_key is None:
+            continue
+        try:
+            _write_env_key(_DOTENV_PATH, env_key, serialiser(value))
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not write to .env ({_DOTENV_PATH}): {e}",
+            )
+        changed.append(field)
+        if field in _RESTART_REQUIRED:
+            needs_restart.append(field)
+
+    if any(f != "trading_mode" for f in changed):
+        config.reload()
+
+    return {
+        "updated": changed,
+        "restart_required": needs_restart,
+    }
+
+
+# ── Bot Control Endpoints ──────────────────────────────────────────────
+@app.post("/api/bot/start")
+async def bot_start():
+    """Start the trading loop (reinitialises client for current mode)."""
+    bot = get_bot()
+    if bot.running:
+        raise HTTPException(status_code=409, detail="Trading loop already running")
+    success = bot.start_trading_loop()
+    return {"success": success, "running": bot.running, "mode": config.TRADING_MODE}
+
+
+@app.post("/api/bot/stop")
+async def bot_stop():
+    """Signal the trading loop to stop after its current iteration."""
+    bot = get_bot()
+    if not bot.running:
+        raise HTTPException(status_code=409, detail="Trading loop is not running")
+    success = bot.stop_trading_loop()
+    return {"success": success, "running": bot.running}
 
 
 def start_dashboard(port: int = 8080, host: str = "0.0.0.0"):

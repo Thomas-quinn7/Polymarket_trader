@@ -34,7 +34,7 @@ The 98.5 cent settlement arbitrage strategy works as follows:
 ## Installation
 
 ### Prerequisites
-
+- uv brew install uv https://docs.astral.sh/uv/getting-started/installation/#installation-methods
 - Python 3.11 or higher
 - pip (Python package manager)
 
@@ -46,27 +46,34 @@ cd Polymarket_trading
 ```
 
 2. **Create a virtual environment**:
+Install UV
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+Powershell: powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+Curl: curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-3. **Install dependencies**:
+3. **Create a virtual environment**:
+```bash
+uv venv
+source venv/bin/activate  # On Windows: .venv\Scripts\activate
+```
+
+4. **Install dependencies**:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Configure environment variables**:
+5. **Configure environment variables**:
 ```bash
 cp .env.example .env
 # Edit .env with your configuration
 ```
 
-5. **Set up your Polymarket credentials**:
+6. **Set up your Polymarket credentials**:
    - Get your Polymarket private key from [polymarket.com](https://polymarket.com)
    - Add to `.env` file: `POLYMARKET_PRIVATE_KEY=your_key_here`
 
-6. **[Optional but Recommended]** Get Builder Verification:
+7. **[Optional but Recommended]** Get Builder Verification:
    - Follow the [Builder Verification Guide](BUILDER_VERIFICATION.md)
    - Get 3000 requests/day (vs 200 unverified)
    - Enable builder features and leaderboard access
@@ -512,3 +519,8 @@ This bot is for educational purposes only. Trading on Polymarket involves financ
 ## License
 
 This project is provided as-is for educational purposes.
+
+
+uv sync 
+.venv\Scripts\activate
+uv run python main.py
