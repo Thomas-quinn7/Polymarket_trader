@@ -3,6 +3,7 @@ Main Polymarket Arbitrage Bot
 Orchestrates all components and runs the trading loop
 """
 
+import os
 import time
 import signal
 import sys
@@ -436,7 +437,34 @@ class TradingBot:
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Polymarket Trading Bot")
+    parser.add_argument(
+        "--simulation", action="store_true",
+        help="Run in simulation mode (synthetic data, no real API calls)",
+    )
+    parser.add_argument(
+        "--auto-start", action="store_true",
+        help="Automatically start the trading loop on launch (skips WebUI trigger)",
+    )
+    args = parser.parse_args()
+
+    if args.simulation:
+        os.environ["TRADING_MODE"] = "simulation"
+        # Reload config so the override is picked up
+        config.TRADING_MODE = "simulation"
+
     bot = TradingBot()
+
+    if args.simulation or args.auto_start:
+        # Start trading loop in a background thread right after the dashboard
+        # comes up, without waiting for a WebUI command.
+        import threading as _threading
+        def _deferred_start():
+            time.sleep(3)   # let dashboard finish initialising
+            bot.start_trading_loop()
+        _threading.Thread(target=_deferred_start, daemon=True).start()
+
     bot.start()
 
 
