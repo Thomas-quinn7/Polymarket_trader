@@ -6,22 +6,22 @@ WORKDIR /app
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PYTHONDONTWRITEBYTECODE=1
 
-# Install system dependencies
+# Install system dependencies and uv
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    && rm -rf /var/lib/apt/lists/*
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install uv
 
-# Copy requirements first for better layer caching
-COPY requirements.txt ./
+# Copy project files needed for install
+COPY pyproject.toml requirements.txt ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Pre-install dependencies (cached layer — only rebuilds when pyproject.toml changes)
+RUN uv pip install --system -r requirements.txt
 
-# Copy application code
+# Copy full application code
 COPY . .
 
 # Create runtime directories
@@ -41,5 +41,8 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Run the bot or API based on command
-CMD ["python", "main.py"]
+# Install the project itself (registers console scripts like 'polymarket')
+RUN uv pip install --system -e .
+
+# Run the bot
+CMD ["polymarket"]
