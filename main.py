@@ -14,7 +14,7 @@ from data.polymarket_client import PolymarketClient
 from data.polymarket_models import ArbitrageOpportunity
 from data.database import TradeDatabase
 from data.order_book_store import OrderBookStore, OrderBookSnapshot, OrderBookLevel
-from strategies.settlement_arbitrage import SettlementArbitrage
+from strategies.examples.settlement_arbitrage import SettlementArbitrage
 from portfolio.fake_currency_tracker import FakeCurrencyTracker
 from portfolio.position_tracker import PositionTracker
 from execution.order_executor import OrderExecutor
