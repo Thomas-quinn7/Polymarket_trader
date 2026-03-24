@@ -67,9 +67,10 @@ class PositionTracker:
     """
 
     def __init__(self, pnl_tracker: PnLTracker):
+        from config.polymarket_config import config
         self.pnl_tracker = pnl_tracker
         self.positions: Dict[str, Position] = {}
-        self.max_positions = 5
+        self.max_positions = config.MAX_POSITIONS
 
         logger.info("Position tracker initialized")
 
@@ -79,6 +80,7 @@ class PositionTracker:
         shares: float,
         allocated_capital: float,
         expected_profit: float,
+        position_id: Optional[str] = None,
     ) -> str:
         """
         Create a new position from an opportunity
@@ -88,11 +90,13 @@ class PositionTracker:
             shares: Number of shares
             allocated_capital: Capital allocated
             expected_profit: Expected profit
+            position_id: Optional caller-supplied ID; generated if not provided
 
         Returns:
             Position ID
         """
-        position_id = f"{opportunity.market_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        if position_id is None:
+            position_id = f"{opportunity.market_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
         position = Position(
             position_id=position_id,

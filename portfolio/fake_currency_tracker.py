@@ -64,8 +64,8 @@ class FakeCurrencyTracker:
             )
             return False
 
-        if len(self.positions) >= 5:
-            logger.warning("Max 5 positions reached")
+        if len(self.positions) >= config.MAX_POSITIONS:
+            logger.warning(f"Max {config.MAX_POSITIONS} positions reached")
             return False
 
         # 20% of starting balance per position

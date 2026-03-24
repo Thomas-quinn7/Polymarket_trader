@@ -80,13 +80,22 @@ class OrderExecutor:
                 logger.warning(f"Failed to allocate currency for {position_id}")
                 return False
 
-            # Create position
-            self.position_tracker.create_position(
-                opportunity=opportunity,
-                shares=shares,
-                allocated_capital=capital_to_allocate,
-                expected_profit=expected_profit,
-            )
+            # Create position — pass the same position_id so callers can look it up
+            try:
+                self.position_tracker.create_position(
+                    opportunity=opportunity,
+                    shares=shares,
+                    allocated_capital=capital_to_allocate,
+                    expected_profit=expected_profit,
+                    position_id=position_id,
+                )
+            except Exception:
+                # Roll back the currency allocation so balance stays consistent
+                self.currency_tracker.return_to_balance(
+                    position_id=position_id,
+                    return_amount=capital_to_allocate,
+                )
+                raise
 
             # Log trade
             trade_logger.log_position_opened(
