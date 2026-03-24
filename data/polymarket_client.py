@@ -178,8 +178,9 @@ class PolymarketClient:
 
             all_markets.extend(page_markets)
 
-            # Stop when API returned fewer events than requested (last page)
-            if len(events) < page_size:
+            # Stop when the API returned a short page (last page of events)
+            # or when a full page yielded no active markets (all filtered out)
+            if len(events) < page_size or not page_markets:
                 break
 
             offset += page_size
