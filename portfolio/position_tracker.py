@@ -3,6 +3,7 @@ Position Tracker Module
 Tracks individual positions and settlements
 """
 
+import threading
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -71,6 +72,7 @@ class PositionTracker:
         self.pnl_tracker = pnl_tracker
         self.positions: Dict[str, Position] = {}
         self.max_positions = config.MAX_POSITIONS
+        self._lock = threading.Lock()
 
         logger.info("Position tracker initialized")
 
@@ -113,7 +115,8 @@ class PositionTracker:
             edge_percent=opportunity.edge_percent,
         )
 
-        self.positions[position_id] = position
+        with self._lock:
+            self.positions[position_id] = position
 
         # Track in PnL tracker
         self.pnl_tracker.open_position(
@@ -146,20 +149,21 @@ class PositionTracker:
         Returns:
             Realized PnL
         """
-        if position_id not in self.positions:
-            logger.warning(f"Position {position_id} not found")
-            return None
-
-        position = self.positions[position_id]
+        with self._lock:
+            if position_id not in self.positions:
+                logger.warning(f"Position {position_id} not found")
+                return None
+            position = self.positions[position_id]
 
         # Calculate PnL
         pnl = (settlement_price - position.entry_price) * position.shares
         pnl_percent = (pnl / (position.entry_price * position.shares)) * 100
 
-        position.settlement_price = settlement_price
-        position.settled_at = datetime.now()
-        position.realized_pnl = pnl
-        position.status = "SETTLED"
+        with self._lock:
+            position.settlement_price = settlement_price
+            position.settled_at = datetime.now()
+            position.realized_pnl = pnl
+            position.status = "SETTLED"
 
         # Update PnL tracker
         self.pnl_tracker.close_position(
@@ -184,19 +188,23 @@ class PositionTracker:
 
     def get_position(self, position_id: str) -> Optional[Position]:
         """Get a position by ID"""
-        return self.positions.get(position_id)
+        with self._lock:
+            return self.positions.get(position_id)
 
     def get_open_positions(self) -> List[Position]:
-        """Get all open positions"""
-        return [p for p in self.positions.values() if p.status == "OPEN"]
+        """Get a snapshot of all open positions (safe to iterate after return)."""
+        with self._lock:
+            return [p for p in self.positions.values() if p.status == "OPEN"]
 
     def get_settled_positions(self) -> List[Position]:
-        """Get all settled positions"""
-        return [p for p in self.positions.values() if p.status == "SETTLED"]
+        """Get a snapshot of all settled positions."""
+        with self._lock:
+            return [p for p in self.positions.values() if p.status == "SETTLED"]
 
     def get_all_positions(self) -> List[Position]:
-        """Get all positions"""
-        return list(self.positions.values())
+        """Get a snapshot of all positions."""
+        with self._lock:
+            return list(self.positions.values())
 
     def get_position_count(self) -> int:
         """Get number of open positions"""

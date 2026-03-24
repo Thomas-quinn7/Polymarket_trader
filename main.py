@@ -14,7 +14,8 @@ from data.polymarket_client import PolymarketClient
 from data.polymarket_models import ArbitrageOpportunity
 from data.database import TradeDatabase
 from data.order_book_store import OrderBookStore, OrderBookSnapshot, OrderBookLevel
-from strategies.examples.settlement_arbitrage import SettlementArbitrage
+from strategies.registry import load_strategy
+from strategies.base import TradingStrategy
 from portfolio.fake_currency_tracker import FakeCurrencyTracker
 from portfolio.position_tracker import PositionTracker
 from execution.order_executor import OrderExecutor
@@ -40,7 +41,7 @@ class TradingBot:
 
         # Initialize client & strategy (may be re-created on each trading start)
         self.client = PolymarketClient()
-        self.strategy = SettlementArbitrage(self.client)
+        self.strategy: TradingStrategy = load_strategy(config.STRATEGY, self.client)
 
         # Initialize trackers (persist across start/stop cycles)
         self.currency_tracker = FakeCurrencyTracker()
@@ -136,7 +137,7 @@ class TradingBot:
                 if port != original_port:
                     logger.warning(f"Port {original_port} in use, using port {port}")
                 logger.info(f"Dashboard: http://localhost:{port}")
-                dashboard.api.bot_instance = self
+                dashboard.api.set_bot_instance(self)
                 threading.Thread(
                     target=self._start_dashboard, args=(port,), daemon=True
                 ).start()
@@ -174,9 +175,9 @@ class TradingBot:
             return False
 
         # Reinitialize client so new TRADING_MODE takes effect
-        logger.info(f"Starting trading loop (mode={config.TRADING_MODE})")
+        logger.info(f"Starting trading loop (mode={config.TRADING_MODE}, strategy={config.STRATEGY})")
         self.client = PolymarketClient()
-        self.strategy = SettlementArbitrage(self.client)
+        self.strategy = load_strategy(config.STRATEGY, self.client)
 
         # Reset scan cache and timers for a clean run
         self.markets_cache = []

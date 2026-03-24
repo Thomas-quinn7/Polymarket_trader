@@ -4,6 +4,7 @@ REST API for monitoring and controlling the trading bot
 """
 
 import os
+import threading
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
@@ -28,8 +29,25 @@ from execution.order_executor import OrderExecutor
 from config.polymarket_config import config
 
 
-# Global bot instance (will be set by main.py)
-bot_instance = None
+# Bot instance — written by main.py via set_bot_instance() before the
+# dashboard thread starts, then read from dashboard endpoint handlers.
+# _bot_lock protects the reference itself; individual tracker reads are
+# safe under CPython's GIL for simple attribute/float access.
+_bot_lock = threading.Lock()
+_bot_instance = None
+
+
+def set_bot_instance(bot) -> None:
+    """Register the TradingBot with the dashboard. Called once by main.py."""
+    global _bot_instance
+    with _bot_lock:
+        _bot_instance = bot
+
+
+def _get_bot_instance():
+    """Return the current bot instance (thread-safe read)."""
+    with _bot_lock:
+        return _bot_instance
 
 
 @asynccontextmanager
@@ -149,17 +167,19 @@ class ConfigResponse(BaseModel):
 
 # Helper function to get bot instance
 def get_bot():
-    """Get the global bot instance"""
-    if bot_instance is None:
+    """Get the bot instance or raise 503 if not yet registered."""
+    bot = _get_bot_instance()
+    if bot is None:
         raise HTTPException(
-            status_code=503, detail="Trading bot not initialized or not running. Please start the trading bot first."
+            status_code=503,
+            detail="Trading bot not initialized. Please start the trading bot first.",
         )
-    return bot_instance
+    return bot
 
 
 def is_bot_available():
     """Check if bot instance is available"""
-    return bot_instance is not None
+    return _get_bot_instance() is not None
 
 
 # Dashboard Routes
@@ -214,10 +234,11 @@ async def get_status():
 async def get_health():
     """Get system health"""
     try:
+        bot = _get_bot_instance()
         return {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "bot_running": bot_instance.running if bot_instance else False,
+            "bot_running": bot.running if bot is not None else False,
         }
     except Exception as e:
         logger.error(f"Error getting health: {e}")
