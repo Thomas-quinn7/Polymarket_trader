@@ -181,3 +181,71 @@ class TestStats:
             executor.execute_buy(make_opportunity(market_id="m1"), "p1")
         orders = executor.get_order_history(limit=1)
         assert len(orders) == 1
+
+
+class TestExecuteSell:
+    def _open(self, executor, currency, pnl, positions, pid="p1"):
+        with patch("execution.order_executor.config") as cfg:
+            cfg.PAPER_TRADING_ONLY = True
+            cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            executor.execute_buy(make_opportunity(), pid)
+
+    def test_execute_sell_returns_pnl(self):
+        executor, currency, pnl, positions = _make_executor()
+        self._open(executor, currency, pnl, positions)
+        result = executor.execute_sell("p1", current_price=0.90, reason="stop_loss")
+        assert result is not None
+        assert isinstance(result, float)
+        assert result < 0  # sold below entry of 0.985 → loss
+
+    def test_execute_sell_unknown_position_returns_none(self):
+        executor, currency, pnl, positions = _make_executor()
+        result = executor.execute_sell("ghost", current_price=0.50)
+        assert result is None
+
+    def test_execute_sell_records_order(self):
+        executor, currency, pnl, positions = _make_executor()
+        self._open(executor, currency, pnl, positions)
+        executor.execute_sell("p1", current_price=1.0)
+        sell_orders = [o for o in executor.order_history if o["action"] == "SELL"]
+        assert len(sell_orders) == 1
+
+    def test_real_order_placed_when_not_paper(self):
+        """When PAPER_TRADING_ONLY=False, execute_buy calls polymarket_client."""
+        currency, pnl, positions = _make_deps()
+        mock_client = MagicMock()
+        mock_client.create_market_order.return_value = {"status": "MATCHED"}
+
+        with patch("execution.order_executor.config") as cfg:
+            cfg.PAPER_TRADING_ONLY = False
+            cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            executor = OrderExecutor(
+                pnl_tracker=pnl,
+                position_tracker=positions,
+                currency_tracker=currency,
+                polymarket_client=mock_client,
+            )
+            result = executor.execute_buy(make_opportunity(), "live-p1")
+
+        assert result is True
+        mock_client.create_market_order.assert_called_once()
+
+    def test_failed_real_order_aborts_buy(self):
+        """When exchange returns empty dict, execute_buy returns False without creating position."""
+        currency, pnl, positions = _make_deps()
+        mock_client = MagicMock()
+        mock_client.create_market_order.return_value = {}
+
+        with patch("execution.order_executor.config") as cfg:
+            cfg.PAPER_TRADING_ONLY = False
+            cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            executor = OrderExecutor(
+                pnl_tracker=pnl,
+                position_tracker=positions,
+                currency_tracker=currency,
+                polymarket_client=mock_client,
+            )
+            result = executor.execute_buy(make_opportunity(), "live-p2")
+
+        assert result is False
+        assert positions.get_position("live-p2") is None

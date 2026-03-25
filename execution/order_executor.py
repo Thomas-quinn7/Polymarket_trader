@@ -7,6 +7,7 @@ from typing import Optional, Dict, List
 from datetime import datetime
 import time
 
+from py_clob_client.order_builder.constants import SELL
 from utils.logger import logger, trade_logger
 from utils.alerts import alert_manager
 from utils.pnl_tracker import PnLTracker
@@ -32,10 +33,12 @@ class OrderExecutor:
         pnl_tracker: PnLTracker,
         position_tracker: PositionTracker,
         currency_tracker: FakeCurrencyTracker,
+        polymarket_client=None,
     ):
         self.pnl_tracker = pnl_tracker
         self.position_tracker = position_tracker
         self.currency_tracker = currency_tracker
+        self.polymarket_client = polymarket_client
         self.order_history: List[Dict] = []
 
         # Safety check for paper trading only mode
@@ -68,6 +71,26 @@ class OrderExecutor:
 
             # Expected profit
             expected_profit = shares * (1.00 - opportunity.current_price)
+
+            # Place real order on exchange if live trading is enabled
+            if not config.PAPER_TRADING_ONLY and self.polymarket_client is not None:
+                order_response = self.polymarket_client.create_market_order(
+                    token_id=opportunity.winning_token_id,
+                    amount=capital_to_allocate,
+                )
+                if not order_response:
+                    logger.error(f"Exchange rejected order for {position_id} — aborting")
+                    return False
+                order_status = order_response.get("status", "")
+                if order_status not in ("MATCHED", "DELAYED", "LIVE"):
+                    logger.error(
+                        f"Order not filled for {position_id} (status={order_status!r}) — aborting"
+                    )
+                    return False
+                # Use actual filled size if returned by the exchange
+                filled_size = order_response.get("size_matched")
+                if filled_size:
+                    shares = float(filled_size)
 
             # Allocate currency
             allocated = self.currency_tracker.allocate_to_position(
@@ -142,6 +165,53 @@ class OrderExecutor:
             logger.error(f"Error executing buy order for {position_id}: {e}")
             alert_manager.send_error_alert(str(e), f"Buy order execution failed for {position_id}")
             return False
+
+    def execute_sell(
+        self,
+        position_id: str,
+        current_price: float,
+        reason: str = "manual",
+    ) -> Optional[float]:
+        """
+        Exit a position early by selling at the current market price.
+
+        In live mode this submits a real SELL order to Polymarket before
+        updating the internal books. In paper mode it settles at current_price
+        directly (no exchange call).
+
+        Args:
+            position_id: Position to close
+            current_price: Current market price of the winning token
+            reason: Why the sell was triggered (logged)
+
+        Returns:
+            Realised PnL or None on failure
+        """
+        position = self.position_tracker.get_position(position_id)
+        if not position:
+            logger.warning(f"execute_sell: position {position_id} not found")
+            return None
+
+        logger.info(
+            f"Selling position {position_id} at ${current_price:.4f} "
+            f"(entry ${position.entry_price:.4f}, reason={reason})"
+        )
+
+        # Place real SELL order when live trading is enabled
+        if not config.PAPER_TRADING_ONLY and self.polymarket_client is not None:
+            order_response = self.polymarket_client.create_market_order(
+                token_id=position.winning_token_id,
+                amount=position.shares,
+                side=SELL,
+            )
+            if not order_response:
+                logger.error(f"Exchange rejected SELL order for {position_id}")
+                return None
+            filled_price = order_response.get("price")
+            if filled_price:
+                current_price = float(filled_price)
+
+        return self.settle_position(position_id, settlement_price=current_price)
 
     def settle_position(
         self,

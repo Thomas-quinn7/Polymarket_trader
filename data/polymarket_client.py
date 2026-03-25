@@ -8,9 +8,27 @@ from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import MarketOrderArgs, OrderType
 from py_clob_client.order_builder.constants import BUY, SELL
 import os
+import time as _time
 from utils.logger import logger
 
 from config.polymarket_config import config
+
+
+def _with_retry(fn, retries: int = 3, delays: tuple = (0.1, 0.5, 2.0)):
+    """Call fn(); on exception retry up to `retries` times with backoff."""
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            return fn()
+        except Exception as exc:
+            last_exc = exc
+            if attempt < retries - 1:
+                delay = delays[min(attempt, len(delays) - 1)]
+                logger.warning(
+                    f"Attempt {attempt + 1}/{retries} failed: {exc} — retrying in {delay}s"
+                )
+                _time.sleep(delay)
+    raise last_exc
 
 
 class PolymarketClient:
@@ -131,15 +149,17 @@ class PolymarketClient:
                 params["tag_id"] = tag_map[category]
 
             try:
-                response = requests.get(
-                    f"{config.GAMMA_API_URL}/events",
-                    params=params,
-                    timeout=10,
+                response = _with_retry(
+                    lambda: requests.get(
+                        f"{config.GAMMA_API_URL}/events",
+                        params=params,
+                        timeout=10,
+                    )
                 )
             except requests.exceptions.Timeout:
                 logger.error(f"Timeout fetching markets page (offset={offset}) for category '{category}'")
                 break
-            except requests.exceptions.RequestException as e:
+            except Exception as e:
                 logger.error(f"Request error fetching markets page (offset={offset}) for category '{category}': {e}")
                 break
 
@@ -288,55 +308,47 @@ class PolymarketClient:
             return {"bids": [], "asks": [], "mid_price": 0.0}
 
     def create_market_order(
-        self, token_id: str, amount: float, price: Optional[float] = None
+        self, token_id: str, amount: float, price: Optional[float] = None, side: str = BUY
     ) -> dict:
         """
-        Create a market order (FOK)
+        Create and submit a market order (FOK).
 
         Args:
-            token_id: Token ID to buy
-            amount: Number of shares
-            price: Optional price (None for market order)
+            token_id: Token ID to trade
+            amount: Dollar amount (BUY) or shares (SELL)
+            price: Optional price cap; if None the SDK calculates best market price
+            side: BUY or SELL (default BUY)
 
         Returns:
-            Order response
+            Order response dict from Polymarket, or {} on failure
         """
         if self.client is None:
             logger.warning("ClobClient not initialized — order not submitted")
             return {}
         try:
-            from config.polymarket_config import config
+            order_args = MarketOrderArgs(
+                token_id=token_id,
+                amount=amount,
+                price=price or 0,
+                side=side,
+                order_type=OrderType.FOK,
+            )
 
-            # Create order arguments
-            if price is None:
-                # Market order (no price specified)
-                order_args = MarketOrderArgs(
-                    token_id=token_id,
-                    amount=amount,
-                    side=BUY,
-                    order_type=OrderType.FOK,  # Fill or Kill
-                )
-            else:
-                # Market order with a price cap (won't fill above this price)
-                order_args = MarketOrderArgs(
-                    token_id=token_id,
-                    amount=amount,
-                    price=price,
-                    side=BUY,
-                    order_type=OrderType.FOK,
-                )
-
-            # Sign order
             signed_order = self.client.create_market_order(order_args)
+            response = _with_retry(
+                lambda: self.client.post_order(signed_order, OrderType.FOK),
+                retries=3,
+                delays=(0.1, 0.5, 2.0),
+            )
 
-            # Submit to Polymarket
-            response = self.client.post_order(signed_order, OrderType.FOK)
-
-            logger.info(f"Order created: {token_id}, amount: {amount}, price: {price}")
-            return response
+            logger.info(
+                f"Order submitted: {side} {token_id[:16]}… amount={amount:.4f} "
+                f"price={price} status={response.get('status') if isinstance(response, dict) else response}"
+            )
+            return response if isinstance(response, dict) else {}
 
         except Exception as e:
-            logger.error(f"Error creating order for {token_id}: {e}")
+            logger.error(f"Error submitting order for {token_id}: {e}")
             return {}
 
     def get_order(self, order_id: str) -> dict:
