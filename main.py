@@ -54,6 +54,7 @@ class TradingBot:
             pnl_tracker=self.pnl_tracker,
             position_tracker=self.position_tracker,
             currency_tracker=self.currency_tracker,
+            polymarket_client=self.client,
         )
 
         # Initialize execution timer
@@ -179,6 +180,7 @@ class TradingBot:
         logger.info(f"Starting trading loop (mode={config.TRADING_MODE}, strategy={config.STRATEGY})")
         self.client = PolymarketClient()
         self.strategy = load_strategy(config.STRATEGY, self.client)
+        self.executor.polymarket_client = self.client
 
         # Reset scan cache and timers for a clean run
         self.markets_cache = []
@@ -233,8 +235,9 @@ class TradingBot:
             logger.info(f"{'=' * 70}")
 
             try:
-                self._check_executions()
                 self._settle_expired_positions()
+                self._check_stop_losses()
+                self._check_executions()
                 self._scan_for_opportunities()
                 self._print_status()
 
@@ -307,9 +310,15 @@ class TradingBot:
             if self.order_book_store is not None:
                 self._capture_order_book_snapshots(best_opportunities)
 
+            open_market_ids = {p.market_id for p in self.position_tracker.get_open_positions()}
+
             for opportunity in best_opportunities:
                 if opportunity.market_id in self.execution_timer.active_timers:
                     logger.debug(f"Already tracking market: {opportunity.market_id}")
+                    continue
+
+                if opportunity.market_id in open_market_ids:
+                    logger.debug(f"Already have open position for: {opportunity.market_id}")
                     continue
 
                 timer_started = self.execution_timer.start_timer(
@@ -412,6 +421,34 @@ class TradingBot:
 
             except Exception as e:
                 logger.error(f"Error settling position {pos.position_id}: {e}")
+
+    def _check_stop_losses(self):
+        """
+        Scan open positions and trigger an early sell if the price has dropped
+        more than STOP_LOSS_PERCENT below the entry price.
+        Skipped entirely when STOP_LOSS_PERCENT == 0 (disabled).
+        """
+        if config.STOP_LOSS_PERCENT <= 0:
+            return
+        for pos in self.position_tracker.get_open_positions():
+            try:
+                current_price = self.client.get_price(pos.winning_token_id)
+                if current_price <= 0:
+                    continue
+                price_drop_pct = (pos.entry_price - current_price) / pos.entry_price * 100
+                if price_drop_pct >= config.STOP_LOSS_PERCENT:
+                    logger.warning(
+                        f"Stop-loss triggered: {pos.position_id} — "
+                        f"entry ${pos.entry_price:.4f}, now ${current_price:.4f} "
+                        f"(dropped {price_drop_pct:.1f}% ≥ {config.STOP_LOSS_PERCENT:.1f}% threshold)"
+                    )
+                    self.executor.execute_sell(pos.position_id, current_price, reason="stop_loss")
+                    if self.db:
+                        settled = self.position_tracker.get_position(pos.position_id)
+                        if settled:
+                            self.db.upsert_position(settled)
+            except Exception as e:
+                logger.error(f"Error checking stop-loss for {pos.position_id}: {e}")
 
     def _print_status(self):
         balance = self.currency_tracker.get_balance()

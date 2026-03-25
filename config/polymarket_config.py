@@ -47,7 +47,7 @@ class PolymarketConfig:
     # "paper"      - real Polymarket API prices, simulated order execution (no real money)
     # "simulation" - fully offline, synthetic market data, no API calls
     TRADING_MODE = os.getenv("TRADING_MODE", "paper").lower()
-    PAPER_TRADING_ONLY = True  # real-money execution is never implemented
+    PAPER_TRADING_ONLY = os.getenv("PAPER_TRADING_ONLY", "True").lower() == "true"
 
     # Strategy Selection
     # Name of the strategy to load from strategies/registry.py.
@@ -67,7 +67,7 @@ class PolymarketConfig:
 
     # Arbitrage Strategy Configuration
     EXECUTE_BEFORE_CLOSE_SECONDS = int(os.getenv("EXECUTE_BEFORE_CLOSE_SECONDS", "2"))
-    MIN_PRICE_THRESHOLD = float(os.getenv("MIN_PRICE_THRESHOLD", "0.985"))
+    MIN_PRICE_THRESHOLD = float(os.getenv("MIN_PRICE_THRESHOLD", "0.95"))
     MAX_PRICE_THRESHOLD = float(os.getenv("MAX_PRICE_THRESHOLD", "1.00"))
     MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "5"))
     CAPITAL_SPLIT_PERCENT = float(os.getenv("CAPITAL_SPLIT_PERCENT", "0.20"))
@@ -75,6 +75,10 @@ class PolymarketConfig:
     # Fee Configuration
     # Polymarket charges ~2% taker fee on CLOB. Edge must exceed this to be profitable.
     TAKER_FEE_PERCENT = float(os.getenv("TAKER_FEE_PERCENT", "2.0"))
+
+    # Stop-loss: close a position early if its price drops this many percent below entry.
+    # Set to 0.0 to disable stop-losses entirely.
+    STOP_LOSS_PERCENT = float(os.getenv("STOP_LOSS_PERCENT", "0.0"))
 
     # Liquidity Filter
     # Markets with volume below this threshold are excluded (too illiquid to trade)
@@ -121,13 +125,15 @@ class PolymarketConfig:
         from dotenv import dotenv_values
         env = dotenv_values()
         self.TRADING_MODE                = env.get("TRADING_MODE", "paper").lower()
+        self.PAPER_TRADING_ONLY          = env.get("PAPER_TRADING_ONLY", "True").lower() == "true"
         self.FAKE_CURRENCY_BALANCE       = float(env.get("FAKE_CURRENCY_BALANCE", "10000.00"))
         self.EXECUTE_BEFORE_CLOSE_SECONDS= int(env.get("EXECUTE_BEFORE_CLOSE_SECONDS", "2"))
         self.SCAN_INTERVAL_MS            = int(env.get("SCAN_INTERVAL_MS", "500"))
         self.MAX_POSITIONS               = int(env.get("MAX_POSITIONS", "5"))
         self.CAPITAL_SPLIT_PERCENT       = float(env.get("CAPITAL_SPLIT_PERCENT", "0.20"))
-        self.MIN_PRICE_THRESHOLD         = float(env.get("MIN_PRICE_THRESHOLD", "0.985"))
+        self.MIN_PRICE_THRESHOLD         = float(env.get("MIN_PRICE_THRESHOLD", "0.95"))
         self.MAX_PRICE_THRESHOLD         = float(env.get("MAX_PRICE_THRESHOLD", "1.00"))
+        self.STOP_LOSS_PERCENT           = float(env.get("STOP_LOSS_PERCENT", "0.0"))
         self.ENABLE_EMAIL_ALERTS         = env.get("ENABLE_EMAIL_ALERTS", "True").lower() == "true"
         self.ENABLE_DISCORD_ALERTS       = env.get("ENABLE_DISCORD_ALERTS", "True").lower() == "true"
         self.DISCORD_WEBHOOK_URL         = env.get("DISCORD_WEBHOOK_URL", "")
