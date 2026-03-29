@@ -156,11 +156,8 @@ class PnLResponse(BaseModel):
 class ConfigResponse(BaseModel):
     """Configuration response"""
 
-    execute_before_close_seconds: int
     max_positions: int
     capital_split_percent: float
-    min_price_threshold: float
-    max_price_threshold: float
     scan_interval_ms: int
     fake_currency_balance: float
 
@@ -370,11 +367,8 @@ async def get_trades(limit: int = 50):
 async def get_config():
     """Get configuration"""
     return ConfigResponse(
-        execute_before_close_seconds=config.EXECUTE_BEFORE_CLOSE_SECONDS,
         max_positions=config.MAX_POSITIONS,
         capital_split_percent=config.CAPITAL_SPLIT_PERCENT,
-        min_price_threshold=config.MIN_PRICE_THRESHOLD,
-        max_price_threshold=config.MAX_PRICE_THRESHOLD,
         scan_interval_ms=config.SCAN_INTERVAL_MS,
         fake_currency_balance=config.FAKE_CURRENCY_BALANCE,
     )
@@ -385,12 +379,11 @@ class SettingsResponse(BaseModel):
     """All user-editable settings (no secrets)"""
     trading_mode: str
     fake_currency_balance: float
-    execute_before_close_seconds: int
     scan_interval_ms: int
     max_positions: int
     capital_split_percent: float
-    min_price_threshold: float
-    max_price_threshold: float
+    min_confidence: float
+    min_volume_usd: float
     enable_email_alerts: bool
     enable_discord_alerts: bool
     discord_webhook_url: str
@@ -406,12 +399,11 @@ class SettingsUpdate(BaseModel):
     """Partial update — any subset of fields"""
     trading_mode: Optional[str] = None
     fake_currency_balance: Optional[float] = None
-    execute_before_close_seconds: Optional[int] = None
     scan_interval_ms: Optional[int] = None
     max_positions: Optional[int] = None
     capital_split_percent: Optional[float] = None
-    min_price_threshold: Optional[float] = None
-    max_price_threshold: Optional[float] = None
+    min_confidence: Optional[float] = None
+    min_volume_usd: Optional[float] = None
     enable_email_alerts: Optional[bool] = None
     enable_discord_alerts: Optional[bool] = None
     discord_webhook_url: Optional[str] = None
@@ -426,22 +418,21 @@ class SettingsUpdate(BaseModel):
 # Map Pydantic field → (.env key, serialiser)
 _ENV_MAP: Dict[str, tuple] = {
     # trading_mode is a runtime toggle — updated in memory only, not written to .env
-    "fake_currency_balance":         ("FAKE_CURRENCY_BALANCE",         str),
-    "execute_before_close_seconds":  ("EXECUTE_BEFORE_CLOSE_SECONDS",  str),
-    "scan_interval_ms":              ("SCAN_INTERVAL_MS",              str),
-    "max_positions":                 ("MAX_POSITIONS",                 str),
-    "capital_split_percent":         ("CAPITAL_SPLIT_PERCENT",         str),
-    "min_price_threshold":           ("MIN_PRICE_THRESHOLD",           str),
-    "max_price_threshold":           ("MAX_PRICE_THRESHOLD",           str),
-    "enable_email_alerts":           ("ENABLE_EMAIL_ALERTS",           lambda v: "true" if v else "false"),
-    "enable_discord_alerts":         ("ENABLE_DISCORD_ALERTS",         lambda v: "true" if v else "false"),
-    "discord_webhook_url":           ("DISCORD_WEBHOOK_URL",           str),
-    "alert_email_from":              ("ALERT_EMAIL_FROM",              str),
-    "alert_email_to":                ("ALERT_EMAIL_TO",                str),
-    "smtp_server":                   ("SMTP_SERVER",                   str),
-    "smtp_port":                     ("SMTP_PORT",                     str),
-    "smtp_username":                 ("SMTP_USERNAME",                 str),
-    "log_level":                     ("LOG_LEVEL",                     str),
+    "fake_currency_balance":  ("FAKE_CURRENCY_BALANCE",  str),
+    "scan_interval_ms":       ("SCAN_INTERVAL_MS",       str),
+    "max_positions":          ("MAX_POSITIONS",          str),
+    "capital_split_percent":  ("CAPITAL_SPLIT_PERCENT",  str),
+    "min_confidence":         ("MIN_CONFIDENCE",         str),
+    "min_volume_usd":         ("MIN_VOLUME_USD",         str),
+    "enable_email_alerts":    ("ENABLE_EMAIL_ALERTS",    lambda v: "true" if v else "false"),
+    "enable_discord_alerts":  ("ENABLE_DISCORD_ALERTS",  lambda v: "true" if v else "false"),
+    "discord_webhook_url":    ("DISCORD_WEBHOOK_URL",    str),
+    "alert_email_from":       ("ALERT_EMAIL_FROM",       str),
+    "alert_email_to":         ("ALERT_EMAIL_TO",         str),
+    "smtp_server":            ("SMTP_SERVER",            str),
+    "smtp_port":              ("SMTP_PORT",              str),
+    "smtp_username":          ("SMTP_USERNAME",          str),
+    "log_level":              ("LOG_LEVEL",              str),
 }
 
 
@@ -451,12 +442,11 @@ async def get_settings():
     return SettingsResponse(
         trading_mode=config.TRADING_MODE,
         fake_currency_balance=config.FAKE_CURRENCY_BALANCE,
-        execute_before_close_seconds=config.EXECUTE_BEFORE_CLOSE_SECONDS,
         scan_interval_ms=config.SCAN_INTERVAL_MS,
         max_positions=config.MAX_POSITIONS,
         capital_split_percent=config.CAPITAL_SPLIT_PERCENT,
-        min_price_threshold=config.MIN_PRICE_THRESHOLD,
-        max_price_threshold=config.MAX_PRICE_THRESHOLD,
+        min_confidence=config.MIN_CONFIDENCE,
+        min_volume_usd=config.MIN_VOLUME_USD,
         enable_email_alerts=config.ENABLE_EMAIL_ALERTS,
         enable_discord_alerts=config.ENABLE_DISCORD_ALERTS,
         discord_webhook_url=config.DISCORD_WEBHOOK_URL,

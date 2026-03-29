@@ -106,29 +106,25 @@ class PolymarketConfig:
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     LOG_TO_FILE = os.getenv("LOG_TO_FILE", "True").lower() == "true"
 
-    # Arbitrage Strategy Configuration
-    EXECUTE_BEFORE_CLOSE_SECONDS = int(os.getenv("EXECUTE_BEFORE_CLOSE_SECONDS", "2"))
-    MIN_PRICE_THRESHOLD = float(os.getenv("MIN_PRICE_THRESHOLD", "0.95"))
-    MAX_PRICE_THRESHOLD = float(os.getenv("MAX_PRICE_THRESHOLD", "1.00"))
+    # ── Strategy execution ─────────────────────────────────────────────
     MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "5"))
     CAPITAL_SPLIT_PERCENT = float(os.getenv("CAPITAL_SPLIT_PERCENT", "0.20"))
 
-    # Fee Configuration
-    # Polymarket charges ~2% taker fee on CLOB. Edge must exceed this to be profitable.
-    TAKER_FEE_PERCENT = float(os.getenv("TAKER_FEE_PERCENT", "2.0"))
-
-    # Stop-loss: close a position early if its price drops this many percent below entry.
-    # Set to 0.0 to disable stop-losses entirely.
+    # Stop-loss: close a position when price drops this % below entry (0 = disabled).
     STOP_LOSS_PERCENT = float(os.getenv("STOP_LOSS_PERCENT", "0.0"))
 
-    # Minimum confidence threshold (0.0–1.0).
-    # Opportunities scored below this value are discarded before execution.
-    # Confidence is calculated from price proximity, time-to-close, and edge size.
+    # Minimum confidence threshold (0.0–1.0); strategy-computed, discards low-quality signals.
     MIN_CONFIDENCE = float(os.getenv("MIN_CONFIDENCE", "0.5"))
 
-    # Liquidity Filter
-    # Markets with volume below this threshold are excluded (too illiquid to trade)
+    # Liquidity filter: skip markets below this USD volume threshold.
     MIN_VOLUME_USD = float(os.getenv("MIN_VOLUME_USD", "1000.0"))
+
+    # Market categories to scan (comma-separated). Strategies may override this.
+    SCAN_CATEGORIES = [
+        c.strip()
+        for c in os.getenv("SCAN_CATEGORIES", "crypto,fed,regulatory,other").split(",")
+        if c.strip()
+    ]
 
     # Scanning Configuration
     # WARNING: Each scan makes ~4 API calls (one per market category).
@@ -172,17 +168,19 @@ class PolymarketConfig:
         """Re-read .env and update all live-configurable fields in-place."""
         from dotenv import dotenv_values
         env = dotenv_values()
-        self.TRADING_MODE                = env.get("TRADING_MODE", "paper").lower()
-        self.PAPER_TRADING_ONLY          = env.get("PAPER_TRADING_ONLY", "True").lower() == "true"
-        self.FAKE_CURRENCY_BALANCE       = float(env.get("FAKE_CURRENCY_BALANCE", "10000.00"))
-        self.EXECUTE_BEFORE_CLOSE_SECONDS= int(env.get("EXECUTE_BEFORE_CLOSE_SECONDS", "2"))
-        self.SCAN_INTERVAL_MS            = int(env.get("SCAN_INTERVAL_MS", "500"))
-        self.MAX_POSITIONS               = int(env.get("MAX_POSITIONS", "5"))
-        self.CAPITAL_SPLIT_PERCENT       = float(env.get("CAPITAL_SPLIT_PERCENT", "0.20"))
-        self.MIN_PRICE_THRESHOLD         = float(env.get("MIN_PRICE_THRESHOLD", "0.95"))
-        self.MAX_PRICE_THRESHOLD         = float(env.get("MAX_PRICE_THRESHOLD", "1.00"))
-        self.STOP_LOSS_PERCENT           = float(env.get("STOP_LOSS_PERCENT", "0.0"))
-        self.MIN_CONFIDENCE              = float(env.get("MIN_CONFIDENCE", "0.5"))
+        self.TRADING_MODE          = env.get("TRADING_MODE", "paper").lower()
+        self.PAPER_TRADING_ONLY    = env.get("PAPER_TRADING_ONLY", "True").lower() == "true"
+        self.FAKE_CURRENCY_BALANCE = float(env.get("FAKE_CURRENCY_BALANCE", "10000.00"))
+        self.SCAN_INTERVAL_MS      = int(env.get("SCAN_INTERVAL_MS", "30000"))
+        self.MAX_POSITIONS         = int(env.get("MAX_POSITIONS", "5"))
+        self.CAPITAL_SPLIT_PERCENT = float(env.get("CAPITAL_SPLIT_PERCENT", "0.20"))
+        self.STOP_LOSS_PERCENT     = float(env.get("STOP_LOSS_PERCENT", "0.0"))
+        self.MIN_CONFIDENCE        = float(env.get("MIN_CONFIDENCE", "0.5"))
+        self.SCAN_CATEGORIES       = [
+            c.strip()
+            for c in env.get("SCAN_CATEGORIES", "crypto,fed,regulatory,other").split(",")
+            if c.strip()
+        ]
         self.BUILDER_ENABLED             = env.get("BUILDER_ENABLED", "False").lower() == "true"
         self.BUILDER_TIER                = env.get("BUILDER_TIER", "unverified").lower()
         self.ENABLE_EMAIL_ALERTS         = env.get("ENABLE_EMAIL_ALERTS", "True").lower() == "true"

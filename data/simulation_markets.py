@@ -11,12 +11,18 @@ from typing import List, Dict
 
 # Fixed synthetic markets — prices and close times shift each call to simulate live data
 _MARKET_TEMPLATES = [
-    {"slug": "sim-btc-above-100k-eod", "question": "Will BTC be above $100k end of day?", "category": "crypto"},
-    {"slug": "sim-eth-above-4k-eod",   "question": "Will ETH be above $4k end of day?",   "category": "crypto"},
-    {"slug": "sim-sol-above-200-eod",  "question": "Will SOL be above $200 end of day?",  "category": "crypto"},
-    {"slug": "sim-btc-weekly-high",    "question": "Will BTC set a weekly high this week?","category": "crypto"},
-    {"slug": "sim-fed-rate-hold",      "question": "Will Fed hold rates at next meeting?", "category": "fed"},
-    {"slug": "sim-eth-etf-approved",   "question": "Will ETH ETF get approved this month?","category": "regulatory"},
+    {"slug": "sim-btc-above-100k-eod",   "question": "Will BTC be above $100k end of day?",        "category": "crypto"},
+    {"slug": "sim-eth-above-4k-eod",     "question": "Will ETH be above $4k end of day?",          "category": "crypto"},
+    {"slug": "sim-sol-above-200-eod",    "question": "Will SOL be above $200 end of day?",         "category": "crypto"},
+    {"slug": "sim-btc-weekly-high",      "question": "Will BTC set a weekly high this week?",      "category": "crypto"},
+    {"slug": "sim-eth-merge-v2",         "question": "Will ETH introduce major protocol change?",  "category": "crypto"},
+    {"slug": "sim-fed-rate-hold",        "question": "Will Fed hold rates at next meeting?",        "category": "fed"},
+    {"slug": "sim-fed-rate-cut-25bps",   "question": "Will Fed cut rates by 25bps this quarter?",  "category": "fed"},
+    {"slug": "sim-eth-etf-approved",     "question": "Will ETH ETF get approved this month?",      "category": "regulatory"},
+    {"slug": "sim-sec-crypto-guidance",  "question": "Will SEC issue new crypto guidance this quarter?", "category": "regulatory"},
+    {"slug": "sim-btc-etf-inflows",      "question": "Will BTC ETF see positive inflows this week?", "category": "other"},
+    {"slug": "sim-macro-recession-2026", "question": "Will US enter recession in 2026?",           "category": "other"},
+    {"slug": "sim-inflation-above-3pct", "question": "Will CPI remain above 3% next month?",       "category": "other"},
 ]
 
 
@@ -28,8 +34,8 @@ def _make_token_id(seed: str) -> str:
 def generate_simulation_markets(category: str = None) -> list:
     """
     Return a list of synthetic market dicts that match the shape the strategy expects.
-    Prices are randomised each call within realistic ranges so the strategy
-    occasionally finds opportunities in the [0.985, 1.00] window.
+    Prices are randomised each call across a realistic distribution so strategies
+    see genuine uncertainty rather than a fixed near-certain window.
     """
     now = datetime.now(timezone.utc)
     markets = []
@@ -38,14 +44,21 @@ def generate_simulation_markets(category: str = None) -> list:
         if category and tmpl["category"] != category:
             continue
 
-        # Randomise: ~20% chance the price is in the arb window [0.985, 1.00]
-        if random.random() < 0.20:
-            yes_price = round(random.uniform(0.985, 0.999), 4)
-            # Close in 5–30 seconds so timers fire quickly during testing
-            seconds_to_close = random.randint(5, 30)
+        # Distribute prices realistically: most markets trade mid-range,
+        # a smaller fraction near resolution.
+        r = random.random()
+        if r < 0.10:
+            # Near-certain YES (0.90–0.99)
+            yes_price = round(random.uniform(0.90, 0.99), 4)
+            seconds_to_close = random.randint(30, 600)
+        elif r < 0.20:
+            # Near-certain NO (0.01–0.10)
+            yes_price = round(random.uniform(0.01, 0.10), 4)
+            seconds_to_close = random.randint(30, 600)
         else:
-            yes_price = round(random.uniform(0.50, 0.984), 4)
-            seconds_to_close = random.randint(60, 3600)
+            # Genuinely uncertain (0.20–0.80)
+            yes_price = round(random.uniform(0.20, 0.80), 4)
+            seconds_to_close = random.randint(600, 86400)
 
         no_price = round(1.0 - yes_price, 4)
         end_date = (now + timedelta(seconds=seconds_to_close)).strftime("%Y-%m-%dT%H:%M:%SZ")

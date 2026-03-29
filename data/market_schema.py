@@ -53,6 +53,7 @@ class PolymarketMarket:
     category: str
     volume: float
     end_time: Optional[datetime] = None
+    outcome_prices: List[float] = field(default_factory=list)  # YES price at [0], NO at [1]
 
     # Keep raw dict for any fields not explicitly mapped
     _raw: dict = field(default_factory=dict, repr=False, compare=False)
@@ -99,6 +100,9 @@ class PolymarketMarket:
         # --- category from tags ---
         category = _classify_category(raw.get("tags", []))
 
+        # --- outcome prices (YES at [0], NO at [1]) ---
+        outcome_prices = _parse_outcome_prices(raw)
+
         return cls(
             market_id=str(market_id),
             slug=slug,
@@ -107,6 +111,7 @@ class PolymarketMarket:
             category=category,
             volume=volume,
             end_time=end_time,
+            outcome_prices=outcome_prices,
             _raw=raw,
         )
 
@@ -119,6 +124,26 @@ class PolymarketMarket:
 
     def has_sufficient_liquidity(self, min_volume: float) -> bool:
         return self.volume >= min_volume
+
+
+def _parse_outcome_prices(raw: dict) -> List[float]:
+    """
+    Parse outcomePrices from the Gamma API market dict.
+
+    The field may arrive as a JSON-encoded string '["0.985","0.015"]'
+    or as a plain Python list.  Returns a list of floats (empty on failure).
+    """
+    import json as _json
+
+    raw_prices = raw.get("outcomePrices")
+    if not raw_prices:
+        return []
+    try:
+        if isinstance(raw_prices, str):
+            raw_prices = _json.loads(raw_prices)
+        return [float(p) for p in raw_prices]
+    except Exception:
+        return []
 
 
 def _parse_end_time(raw: dict) -> Optional[datetime]:
