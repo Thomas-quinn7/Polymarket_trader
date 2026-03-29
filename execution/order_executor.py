@@ -308,13 +308,10 @@ class OrderExecutor:
             return None
 
     def get_order_history(self, limit: Optional[int] = None) -> List[Dict]:
-        """Get order history"""
-        orders = sorted(self.order_history, key=lambda x: x["executed_at"], reverse=True)
-
+        """Get order history (newest first; orders are appended chronologically)"""
         if limit:
-            return orders[:limit]
-
-        return orders
+            return self.order_history[-limit:][::-1]
+        return self.order_history[::-1]
 
     def get_recent_orders(self, limit: int = 10) -> List[Dict]:
         """Get recent orders"""
@@ -323,21 +320,26 @@ class OrderExecutor:
     def get_execution_stats(self) -> Dict:
         """Get execution statistics"""
         total_orders = len(self.order_history)
-        buy_orders = [o for o in self.order_history if o["action"] == "BUY"]
-        sell_orders = [o for o in self.order_history if o["action"] == "SELL"]
 
-        filled_orders = [o for o in self.order_history if o["status"] == "FILLED"]
-        failed_orders = [o for o in self.order_history if o["status"] != "FILLED"]
-
-        total_volume = sum(o["total"] for o in filled_orders)
+        # Single pass over order history
+        buy_count = sell_count = filled_count = 0
+        total_volume = 0.0
+        for o in self.order_history:
+            if o["action"] == "BUY":
+                buy_count += 1
+            else:
+                sell_count += 1
+            if o["status"] == "FILLED":
+                filled_count += 1
+                total_volume += o["total"]
 
         return {
             "total_orders": total_orders,
-            "buy_orders": len(buy_orders),
-            "sell_orders": len(sell_orders),
-            "filled_orders": len(filled_orders),
-            "failed_orders": len(failed_orders),
-            "fill_rate": (len(filled_orders) / total_orders * 100) if total_orders > 0 else 0.0,
+            "buy_orders": buy_count,
+            "sell_orders": sell_count,
+            "filled_orders": filled_count,
+            "failed_orders": total_orders - filled_count,
+            "fill_rate": (filled_count / total_orders * 100) if total_orders > 0 else 0.0,
             "total_volume": total_volume,
         }
 

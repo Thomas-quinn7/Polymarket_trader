@@ -118,9 +118,13 @@ class WebhookSender:
         return self.send_webhook(payload)
 
     def _get_discord_mention(self) -> str:
-        """Get Discord mention string"""
+        """Get Discord mention string.
+        If the value is already a formatted mention (<@ID>), use it directly.
+        Otherwise format as @username (display only, no ping).
+        """
         if self.mention_user and self.discord_username:
-            # Format as @username for Discord
+            if self.discord_username.startswith("<@"):
+                return self.discord_username
             return f"@{self.discord_username}"
         return ""
 
@@ -288,15 +292,13 @@ class WebhookSender:
         else:
             embed["footer"] = {"text": "Polymarket Arbitrage Bot"}
 
+        # Use "users" parse mode only when the mention is a proper <@ID> so Discord
+        # fires the ping; fall back to empty parse for plain @username text mentions.
+        mention_is_id = bool(mention and mention.startswith("<@"))
         return {
-            "content": display_title
-            if should_mention
-            else None,  # Mention in content for visibility
+            "content": display_title if should_mention else None,
             "embeds": [embed],
-            "allowed_mentions": {
-                "parse": ["users"],
-                "users": [self.discord_username] if self.discord_username else [],
-            },
+            "allowed_mentions": {"parse": ["users"]} if mention_is_id else {"parse": []},
         }
 
     def test_connection(self) -> bool:

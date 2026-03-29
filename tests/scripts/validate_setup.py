@@ -166,16 +166,35 @@ def validate_polymarket_credentials():
 
 
 def validate_builder_credentials():
-    """Validate Builder credentials"""
+    """Validate Builder credentials and tier configuration"""
     print_header("Builder Configuration (Optional)")
 
     builder_enabled = os.getenv("BUILDER_ENABLED", "False").lower() == "true"
+    builder_tier = os.getenv("BUILDER_TIER", "unverified").lower()
+
+    _tier_limits = {
+        "unverified": "100 relay tx/day  (~57 min safe scan interval)",
+        "verified":   "3,000 relay tx/day (~2 min safe scan interval)",
+        "partner":    "unlimited          (30s safe scan interval)",
+    }
+
+    if builder_tier not in _tier_limits:
+        print_warning(
+            f"Unknown BUILDER_TIER '{builder_tier}'. "
+            f"Valid values: unverified, verified, partner. Defaulting to unverified."
+        )
+        builder_tier = "unverified"
+
+    print_info(f"Builder tier: {builder_tier} — {_tier_limits[builder_tier]}")
 
     if not builder_enabled:
-        print_warning("Builder mode disabled (will use 200 req/day)")
+        print_warning(
+            "BUILDER_ENABLED=False — builder auth headers will NOT be attached to orders. "
+            "Rate limit is determined by BUILDER_TIER regardless."
+        )
         return True
 
-    print_info("Builder mode enabled (will use 3000 req/day)")
+    print_info("BUILDER_ENABLED=True — builder auth headers will be attached to orders")
 
     # Check builder credentials
     api_key_ok = check_env_var("BUILDER_API_KEY", "Builder API Key", required=False)
@@ -188,7 +207,7 @@ def validate_builder_credentials():
     if api_key_ok and secret_ok and passphrase_ok and sdk_ok:
         print_success("All builder credentials configured")
     else:
-        print_warning("Some builder credentials missing (will fall back to unverified mode)")
+        print_warning("Some builder credentials missing — will fall back to standard mode")
 
     return True  # Builder is optional
 

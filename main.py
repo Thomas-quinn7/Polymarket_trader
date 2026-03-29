@@ -85,6 +85,7 @@ class TradingBot:
         self.running = False
         self.markets_cache = []
         self.last_scan_time = 0
+        self._last_opportunities: dict = {}  # market_id → ArbitrageOpportunity (from last scan)
         self._trading_thread: Optional[threading.Thread] = None
 
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -185,6 +186,7 @@ class TradingBot:
         # Reset scan cache and timers for a clean run
         self.markets_cache = []
         self.last_scan_time = 0
+        self._last_opportunities = {}
         self.execution_timer = ExecutionTimer()
 
         self.running = True
@@ -299,6 +301,9 @@ class TradingBot:
 
             opportunities = self.strategy.scan_for_opportunities(self.markets_cache)
 
+            # Cache by market_id so timer callbacks can look up without rescanning
+            self._last_opportunities = {opp.market_id: opp for opp in opportunities}
+
             if not opportunities:
                 logger.debug("No opportunities found in this scan")
                 return
@@ -366,11 +371,7 @@ class TradingBot:
                 logger.debug("Snapshot capture failed for %s: %s", opp.market_slug, e)
 
     def _find_opportunity_by_market(self, market_id: str) -> Optional[ArbitrageOpportunity]:
-        opportunities = self.strategy.scan_for_opportunities(self.markets_cache)
-        for opp in opportunities:
-            if opp.market_id == market_id:
-                return opp
-        return None
+        return self._last_opportunities.get(market_id)
 
     def _settle_expired_positions(self):
         """
@@ -380,16 +381,22 @@ class TradingBot:
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc)
 
+        # Build a single lookup dict from the cache (O(n) once vs O(n×m) per position)
+        market_end_dates: dict = {}
+        for m in self.markets_cache:
+            end = m.get("endDate")
+            if end:
+                mid = m.get("id", "")
+                slug = m.get("slug", "")
+                if mid:
+                    market_end_dates[mid] = end
+                if slug:
+                    market_end_dates[slug] = end
+
         for pos in self.position_tracker.get_open_positions():
             try:
-                # Look up the market's end date from our cached data
-                end_date_str = None
-                for m in self.markets_cache:
-                    if m.get("id") == pos.market_id or pos.market_slug in (
-                        m.get("slug", ""), m.get("id", "")
-                    ):
-                        end_date_str = m.get("endDate")
-                        break
+                # Look up the market's end date from our pre-built dict
+                end_date_str = market_end_dates.get(pos.market_id) or market_end_dates.get(pos.market_slug)
 
                 # Fall back to the expiry time stored on the position itself
                 # (important for simulation where the market cache regenerates with new end dates)

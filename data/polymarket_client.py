@@ -46,6 +46,7 @@ class PolymarketClient:
         """Initialize Polymarket client"""
         self._simulation = config.TRADING_MODE == "simulation"
         self._sim_markets: list = []  # cache for the current sim market set
+        self._sim_price_index: dict = {}  # token_id → yes_price (O(1) lookup)
 
         if self._simulation:
             self.client = None
@@ -90,7 +91,10 @@ class PolymarketClient:
                 # Update client with builder config
                 self.client.builder_config = builder_config
 
-                logger.info("Polymarket client initialized with Builder credentials (verified mode)")
+                logger.info(
+                    f"Polymarket client initialized with Builder credentials "
+                    f"— tier: {config.builder_tier_label}"
+                )
 
             except Exception as e:
                 logger.warning(f"Failed to initialize Builder credentials: {e}, falling back to standard mode")
@@ -114,7 +118,9 @@ class PolymarketClient:
                 self.client.create_or_derive_api_creds()
             )
 
-            logger.info("Polymarket client initialized (unverified mode - 200 req/day limit)")
+            logger.info(
+                f"Polymarket client initialized — tier: {config.builder_tier_label}"
+            )
         except Exception as e:
             self.client = None
             logger.info(f"ClobClient unavailable (no valid private key) — price fetching disabled: {e}")
@@ -132,6 +138,13 @@ class PolymarketClient:
         if self._simulation:
             from data.simulation_markets import generate_simulation_markets
             self._sim_markets = generate_simulation_markets(category)
+            # Build O(1) price lookup index keyed by token_id
+            self._sim_price_index = {
+                tid: m["_sim_yes_price"]
+                for m in self._sim_markets
+                if m.get("clobTokenIds")
+                for tid in m["clobTokenIds"]
+            }
             logger.debug(f"[SIM] Generated {len(self._sim_markets)} synthetic markets (category={category})")
             return self._sim_markets
 
@@ -247,11 +260,7 @@ class PolymarketClient:
             Current price in dollars (0-100)
         """
         if self._simulation:
-            # Look up the baked-in price from the last generated market set
-            for m in self._sim_markets:
-                if m.get("clobTokenIds") and m["clobTokenIds"][0] == token_id:
-                    return m["_sim_yes_price"]
-            return 0.0
+            return self._sim_price_index.get(token_id, 0.0)
         if self.client is None:
             return 0.0
         try:
@@ -274,11 +283,7 @@ class PolymarketClient:
         """
         if self._simulation:
             from data.simulation_markets import generate_sim_order_book
-            mid = 0.5
-            for m in self._sim_markets:
-                if m.get("clobTokenIds") and token_id in m["clobTokenIds"]:
-                    mid = m["_sim_yes_price"]
-                    break
+            mid = self._sim_price_index.get(token_id, 0.5)
             return generate_sim_order_book(token_id, mid, levels=levels)
 
         if self.client is None:

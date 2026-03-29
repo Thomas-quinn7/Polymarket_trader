@@ -191,8 +191,10 @@ yarn.lock
 
 # Notes
 NOTES.md
-TODO.md
 PERSONAL.md
+
+# Claude Code session memory and project context
+.claude/
 
 # Backup files
 *.bak
@@ -222,8 +224,6 @@ PERSONAL.md
 # Do NOT ignore these:
 # .env.example          (contains only placeholders, safe to commit)
 # config.example.json   (contains only placeholders, safe to commit)
-
-Notes
 
 # ============================================================
 # STRATEGIES (ignore live strategies, keep framework + examples)

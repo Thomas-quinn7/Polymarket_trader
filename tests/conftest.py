@@ -5,14 +5,6 @@ Pytest configuration and fixtures.
 import pytest
 from datetime import datetime
 
-try:
-    from internal.core.scanner.domain import MarketOpportunity
-    from internal.core.execution.domain import ExecutionResult
-    from internal.core.notifications.domain import Alert
-    _INTERNAL_AVAILABLE = True
-except Exception:  # missing deps or broken imports
-    _INTERNAL_AVAILABLE = False
-
 
 @pytest.fixture
 def mock_settings():
@@ -62,81 +54,20 @@ def mock_settings():
 
 
 @pytest.fixture
-def mock_market_opportunity():
-    """Create a mock market opportunity."""
-    if not _INTERNAL_AVAILABLE:
-        pytest.skip("internal.core not available")
-    close_time = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
-    return MarketOpportunity(
-        market_id="market_001",
-        outcome="YES",
-        price=0.98,
-        close_time=close_time,
-        title="Test Market",
-    )
-
-
-@pytest.fixture
-def mock_execution_result():
-    """Create a mock execution result."""
-    if not _INTERNAL_AVAILABLE:
-        pytest.skip("internal.core not available")
-    from internal.core.execution.domain import OrderStatus, OrderSide, OrderType
-
-    return ExecutionResult(
-        order_id="order_001",
-        status=OrderStatus.FILLED,
-        side=OrderSide.BUY,
-        price=0.98,
-        amount=100.0,
-        market_id="market_001",
-        filled_amount=100.0,
-        timestamp=datetime.utcnow(),
-    )
-
-
-@pytest.fixture
 def logger_capture():
     """Capture log output for testing."""
     import logging
     from io import StringIO
 
-    # Create a string buffer to capture log output
     log_buffer = StringIO()
-
-    # Set up logging to capture output
     handler = logging.StreamHandler(log_buffer)
     handler.setLevel(logging.DEBUG)
-
-    # Add to root logger
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
 
     yield log_buffer
 
-    # Cleanup
     root_logger.removeHandler(handler)
-
-
-@pytest.fixture
-def sample_positions():
-    """Create sample positions for testing."""
-    if not _INTERNAL_AVAILABLE:
-        pytest.skip("internal.core not available")
-    from internal.core.portfolio.domain import Position
-
-    return [
-        Position(
-            position_id="pos_001",
-            market_id="market_001",
-            outcome="YES",
-            side="BUY",
-            quantity=100.0,
-            entry_price=0.98,
-            current_price=0.99,
-            timestamp=datetime.utcnow(),
-        )
-    ]
 
 
 @pytest.fixture
@@ -153,27 +84,4 @@ def sample_markets():
             "title": "Will Ethereum reach $5000?",
             "closeTime": "2026-06-30T23:59:59Z",
         },
-    ]
-
-
-@pytest.fixture
-def sample_alerts():
-    """Create sample alerts for testing."""
-    if not _INTERNAL_AVAILABLE:
-        pytest.skip("internal.core not available")
-    from internal.core.notifications.domain import AlertSeverity, AlertType
-
-    return [
-        Alert(
-            type=AlertType.WIN,
-            severity=AlertSeverity.INFO,
-            title="Position Won",
-            message="Market resolved in favor of YES",
-        ),
-        Alert(
-            type=AlertType.LOSS,
-            severity=AlertSeverity.WARNING,
-            title="Position Lost",
-            message="Market resolved in favor of NO",
-        ),
     ]

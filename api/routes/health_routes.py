@@ -5,6 +5,7 @@ Health routes - Health check endpoints.
 from typing import Dict
 
 from fastapi import APIRouter
+from config.polymarket_config import config
 
 router = APIRouter(prefix="/api", tags=["health"])
 
@@ -48,7 +49,13 @@ async def health_check_details() -> Dict:
             "scanner": {
                 "status": "healthy",
                 "type": "PolymarketClient",
-                "rate_limit": "3000 req/day (verified)",
+                "builder_tier": config.BUILDER_TIER,
+                "rate_limit": (
+                    "unlimited" if config.daily_request_limit is None
+                    else f"{config.daily_request_limit:,} relay tx/day"
+                ),
+                "builder_auth": config.BUILDER_ENABLED,
+                "safe_scan_interval_ms": config.safe_scan_interval_ms,
             },
             "executor": {
                 "status": "healthy",

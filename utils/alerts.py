@@ -3,6 +3,7 @@ Alert Notification System
 Manages alert creation and dispatch via email and webhooks
 """
 
+import threading
 from typing import Dict, List, Optional
 from datetime import datetime
 from enum import Enum
@@ -60,6 +61,7 @@ class AlertManager:
         # Rate limiting
         self.alert_history: List[Dict] = []
         self.cooldown_period = 300  # 5 minutes between similar alerts
+        self._history_lock = threading.Lock()
 
         # Import senders if needed
         self.email_sender = None
@@ -164,26 +166,23 @@ class AlertManager:
     def _should_send_alert(self, alert_type: AlertType, message: str) -> bool:
         """Check if alert should be sent based on rate limiting"""
         now = datetime.now()
-
-        # Remove old entries
-        self.alert_history = [
-            entry
-            for entry in self.alert_history
-            if (now - entry["timestamp"]).total_seconds() < self.cooldown_period
-        ]
-
-        # Check if similar alert was sent recently
-        for entry in self.alert_history:
-            if entry["type"] == alert_type and entry["message"] == message:
-                return False
-
+        with self._history_lock:
+            self.alert_history = [
+                entry
+                for entry in self.alert_history
+                if (now - entry["timestamp"]).total_seconds() < self.cooldown_period
+            ]
+            for entry in self.alert_history:
+                if entry["type"] == alert_type and entry["message"] == message:
+                    return False
         return True
 
     def _track_alert(self, alert_type: AlertType, message: str):
         """Track alert for rate limiting"""
-        self.alert_history.append(
-            {"type": alert_type, "message": message, "timestamp": datetime.now()}
-        )
+        with self._history_lock:
+            self.alert_history.append(
+                {"type": alert_type, "message": message, "timestamp": datetime.now()}
+            )
 
     def send_trade_alert(
         self,

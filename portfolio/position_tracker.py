@@ -228,23 +228,32 @@ class PositionTracker:
 
     def get_summary(self) -> Dict:
         """Get position summary"""
-        open_positions = self.get_open_positions()
-        settled_positions = self.get_settled_positions()
-
-        total_allocated = sum(p.allocated_capital for p in open_positions)
-        total_realized_pnl = sum(p.realized_pnl for p in settled_positions if p.realized_pnl)
-
-        wins = [p for p in settled_positions if p.realized_pnl and p.realized_pnl > 0]
-        losses = [p for p in settled_positions if p.realized_pnl and p.realized_pnl <= 0]
+        # Single lock acquisition + single pass over positions
+        with self._lock:
+            open_count = settled_count = total_count = wins = losses = 0
+            total_allocated = total_realized_pnl = 0.0
+            for p in self.positions.values():
+                total_count += 1
+                if p.status == "OPEN":
+                    open_count += 1
+                    total_allocated += p.allocated_capital
+                elif p.status == "SETTLED":
+                    settled_count += 1
+                    if p.realized_pnl:
+                        total_realized_pnl += p.realized_pnl
+                        if p.realized_pnl > 0:
+                            wins += 1
+                        else:
+                            losses += 1
 
         return {
-            "open_positions": len(open_positions),
-            "settled_positions": len(settled_positions),
-            "total_positions": len(self.positions),
+            "open_positions": open_count,
+            "settled_positions": settled_count,
+            "total_positions": total_count,
             "allocated_capital": total_allocated,
             "realized_pnl": total_realized_pnl,
-            "wins": len(wins),
-            "losses": len(losses),
+            "wins": wins,
+            "losses": losses,
         }
 
     def reset(self):
