@@ -117,7 +117,8 @@ class TestExecuteBuy:
 
         positions.create_position = MagicMock(side_effect=RuntimeError("boom"))
 
-        with patch("execution.order_executor.config") as cfg:
+        with patch("execution.order_executor.config") as cfg, \
+             patch("execution.order_executor.alert_manager"):
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
             result = executor.execute_buy(make_opportunity(), "p1")

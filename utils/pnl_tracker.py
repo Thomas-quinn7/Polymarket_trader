@@ -219,23 +219,29 @@ class PnLTracker:
                 initial_balance=self.initial_balance,
             )
 
-        wins = [t for t in closed_trades if t.pnl > 0]
-        losses = [t for t in closed_trades if t.pnl <= 0]
+        # Single pass over closed trades
+        wins_count = losses_count = 0
+        total_pnl = total_win_pnl = total_loss_pnl = 0.0
+        for t in closed_trades:
+            total_pnl += t.pnl
+            if t.pnl > 0:
+                wins_count += 1
+                total_win_pnl += t.pnl
+            else:
+                losses_count += 1
+                total_loss_pnl += t.pnl
 
-        total_pnl = sum(t.pnl for t in closed_trades)
-        win_rate = (len(wins) / len(closed_trades) * 100) if closed_trades else 0.0
-        average_win = sum(t.pnl for t in wins) / len(wins) if wins else 0.0
-        average_loss = sum(t.pnl for t in losses) / len(losses) if losses else 0.0
-
-        # Profit factor: total profit / total loss (absolute)
-        total_profit = sum(t.pnl for t in wins)
-        total_loss = abs(sum(t.pnl for t in losses))
-        profit_factor = total_profit / total_loss if total_loss > 0 else 0.0
+        total_trades = len(closed_trades)
+        win_rate = wins_count / total_trades * 100
+        average_win = total_win_pnl / wins_count if wins_count else 0.0
+        average_loss = total_loss_pnl / losses_count if losses_count else 0.0
+        abs_loss = abs(total_loss_pnl)
+        profit_factor = total_win_pnl / abs_loss if abs_loss > 0 else 0.0
 
         return PnLSummary(
-            total_trades=len(closed_trades),
-            wins=len(wins),
-            losses=len(losses),
+            total_trades=total_trades,
+            wins=wins_count,
+            losses=losses_count,
             total_pnl=total_pnl,
             win_rate=win_rate,
             average_win=average_win,

@@ -21,11 +21,52 @@ class PolymarketConfig:
     GAMMA_API_URL = "https://gamma-api.polymarket.com"
     CHAIN_ID = 137  # Polygon chain ID
 
-    # Builder Configuration (for verified status and 3000 req/day)
+    # Builder Configuration
+    # BUILDER_TIER controls which rate limit applies:
+    #   unverified — 100 relay transactions/day  (default, no approval needed)
+    #   verified   — 3,000 relay transactions/day (manual approval via builder@polymarket.com)
+    #   partner    — unlimited                    (enterprise / strategic partner)
+    # BUILDER_ENABLED must also be True for the SDK to attach builder auth headers to orders.
     BUILDER_ENABLED = os.getenv("BUILDER_ENABLED", "False").lower() == "true"
+    BUILDER_TIER = os.getenv("BUILDER_TIER", "unverified").lower()  # unverified | verified | partner
     BUILDER_API_KEY = os.getenv("BUILDER_API_KEY")
     BUILDER_SECRET = os.getenv("BUILDER_SECRET")
     BUILDER_PASSPHRASE = os.getenv("BUILDER_PASSPHRASE")
+
+    # Per-tier daily relay transaction limits (used for logging and safe-interval calculation)
+    _TIER_DAILY_LIMITS = {
+        "unverified": 100,
+        "verified":   3_000,
+        "partner":    None,   # None = unlimited
+    }
+
+    @property
+    def daily_request_limit(self):
+        """Return the daily relay transaction limit for the configured builder tier."""
+        return self._TIER_DAILY_LIMITS.get(self.BUILDER_TIER, 100)
+
+    @property
+    def safe_scan_interval_ms(self) -> int:
+        """
+        Return the minimum safe scan interval in ms for the current builder tier.
+        Each full scan consumes ~4 API calls (one per market category).
+        Unverified: 100/day ÷ 4 = 25 scans → 86400000ms / 25 = 3,456,000ms (~57 min)
+        Verified:   3000/day ÷ 4 = 750 scans → 86400000ms / 750 = 115,200ms (~2 min)
+        Partner:    unlimited → 30,000ms (30s) as a sensible default
+        """
+        limit = self.daily_request_limit
+        if limit is None:
+            return 30_000
+        scans_per_day = limit // 4
+        return int(86_400_000 / scans_per_day) if scans_per_day > 0 else 86_400_000
+
+    @property
+    def builder_tier_label(self) -> str:
+        """Human-readable label for the current builder tier and rate limit."""
+        limit = self.daily_request_limit
+        limit_str = "unlimited" if limit is None else f"{limit:,}/day"
+        enabled = "enabled" if self.BUILDER_ENABLED else "disabled"
+        return f"{self.BUILDER_TIER} ({limit_str}, builder auth {enabled})"
 
     # Alert Configuration
     ENABLE_EMAIL_ALERTS = os.getenv("ENABLE_EMAIL_ALERTS", "True").lower() == "true"
@@ -80,16 +121,23 @@ class PolymarketConfig:
     # Set to 0.0 to disable stop-losses entirely.
     STOP_LOSS_PERCENT = float(os.getenv("STOP_LOSS_PERCENT", "0.0"))
 
+    # Minimum confidence threshold (0.0–1.0).
+    # Opportunities scored below this value are discarded before execution.
+    # Confidence is calculated from price proximity, time-to-close, and edge size.
+    MIN_CONFIDENCE = float(os.getenv("MIN_CONFIDENCE", "0.5"))
+
     # Liquidity Filter
     # Markets with volume below this threshold are excluded (too illiquid to trade)
     MIN_VOLUME_USD = float(os.getenv("MIN_VOLUME_USD", "1000.0"))
 
     # Scanning Configuration
-    # WARNING: Each scan makes ~4 API calls (one per category).
-    # Unverified mode:  200 req/day → max 50 scans/day → minimum 1728000ms (~29 min) between scans
-    # Builder mode:    3000 req/day → max 750 scans/day → minimum 115000ms (~2 min) between scans
-    # Default below is safe for builder mode. Increase significantly if unverified.
-    SCAN_INTERVAL_MS = int(os.getenv("SCAN_INTERVAL_MS", "30000"))  # 30 seconds (builder mode safe minimum)
+    # WARNING: Each scan makes ~4 API calls (one per market category).
+    # Safe minimums per builder tier (use safe_scan_interval_ms property for the computed value):
+    #   unverified — 100 relay tx/day  →  25 scans/day  → ~3,456,000 ms (~57 min)
+    #   verified   — 3,000 relay tx/day → 750 scans/day → ~115,200 ms  (~2 min)
+    #   partner    — unlimited          →  no hard limit → 30,000 ms   (30s default)
+    # Override via SCAN_INTERVAL_MS in .env. Defaults to 30s (safe for verified/partner).
+    SCAN_INTERVAL_MS = int(os.getenv("SCAN_INTERVAL_MS", "30000"))
 
     # Market Categories (all enabled)
     ENABLE_CRYPTO_MARKETS = True
@@ -134,6 +182,9 @@ class PolymarketConfig:
         self.MIN_PRICE_THRESHOLD         = float(env.get("MIN_PRICE_THRESHOLD", "0.95"))
         self.MAX_PRICE_THRESHOLD         = float(env.get("MAX_PRICE_THRESHOLD", "1.00"))
         self.STOP_LOSS_PERCENT           = float(env.get("STOP_LOSS_PERCENT", "0.0"))
+        self.MIN_CONFIDENCE              = float(env.get("MIN_CONFIDENCE", "0.5"))
+        self.BUILDER_ENABLED             = env.get("BUILDER_ENABLED", "False").lower() == "true"
+        self.BUILDER_TIER                = env.get("BUILDER_TIER", "unverified").lower()
         self.ENABLE_EMAIL_ALERTS         = env.get("ENABLE_EMAIL_ALERTS", "True").lower() == "true"
         self.ENABLE_DISCORD_ALERTS       = env.get("ENABLE_DISCORD_ALERTS", "True").lower() == "true"
         self.DISCORD_WEBHOOK_URL         = env.get("DISCORD_WEBHOOK_URL", "")

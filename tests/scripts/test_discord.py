@@ -41,14 +41,16 @@ def test_discord_webhook():
         return False
 
     print(f"   Webhook URL: {webhook_url[:50]}...")
-    print(f"   Mention User: @{discord_username or 'none'}")
+    # Build the mention string — use as-is if already in <@ID> format
+    mention = discord_username if discord_username.startswith("<@") else f"@{discord_username}" if discord_username else "everyone"
+    print(f"   Mention User: {mention}")
 
     # Test webhook
     print("\n🔗 Testing Discord webhook...")
     try:
         # Create test payload
         test_payload = {
-            "content": f"@{discord_username or 'everyone'} **[TEST] Discord Webhook Test** ✅",
+            "content": f"{mention} **[TEST] Discord Webhook Test** ✅",
             "embeds": [
                 {
                     "title": "📧 Discord Alert Test",
@@ -62,7 +64,7 @@ def test_discord_webhook():
                         },
                         {
                             "name": "Mentions",
-                            "value": f"@{discord_username or 'none'}",
+                            "value": mention,
                             "inline": True
                         }
                     ],
@@ -72,8 +74,7 @@ def test_discord_webhook():
                 }
             ],
             "allowed_mentions": {
-                "parse": ["users"],
-                "users": [discord_username] if discord_username else []
+                "parse": ["users"]
             }
         }
 

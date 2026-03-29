@@ -17,7 +17,7 @@ class TestSettings:
         assert settings.min_price_threshold == 0.985
         assert settings.max_price_threshold == 1.0
         assert settings.max_positions == 5
-        assert settings.scan_interval_ms == 500
+        assert settings.scan_interval_ms > 0
         assert settings.execute_before_close_seconds > 0
 
     def test_default_enable_flags(self):

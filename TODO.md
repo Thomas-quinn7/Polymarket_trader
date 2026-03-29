@@ -40,11 +40,16 @@ fetches return `0.0`, so the strategy never finds opportunities.
 
 Current `.env` default is `30000` — safe only if you have builder credentials.
 
-### 7. Get Builder credentials (optional but recommended)
-Without them you're limited to 200 API requests per day which allows roughly
-6 scans. Apply for verified/builder status on Polymarket to get 3000 req/day.
-Set `BUILDER_ENABLED=true` and fill `BUILDER_API_KEY`, `BUILDER_SECRET`,
-`BUILDER_PASSPHRASE` in `.env`.
+### 7. Apply for Verified Builder status
+Builder credentials are already in `.env`. Unverified accounts are limited to
+**100 relay transactions/day** (~1 scan every 14 min). Verified unlocks **3,000/day**
+(1 scan every 30s) plus USDC weekly rewards and leaderboard visibility.
+
+**To apply:**
+1. Email **builder@polymarket.com** with your `BUILDER_API_KEY`, use case description
+   (settlement arbitrage bot), and expected volume
+2. Await approval (a few business days)
+3. Once approved: set `BUILDER_ENABLED=True` and `SCAN_INTERVAL_MS=30000` in `.env`
 
 ---
 
@@ -60,10 +65,9 @@ ScyllaDB order-book snapshot storage requires Docker. On Windows 10 Home:
 Until Docker is running, `SCYLLA_ENABLED=false` (current default) is the
 correct setting and the bot runs fine with SQLite only.
 
-### 9. Verify SQLite persistence end-to-end
-`DB_ENABLED=true` and `DB_PATH=./storage/trading.db` are set but the database
-write path has not been exercised in tests. Confirm that trades, positions, and
-PnL history are actually written and readable after a restart.
+### ~~9. Verify SQLite persistence end-to-end~~ — Done
+Tested write → close → reconnect → read cycle. PnL snapshots survive a restart correctly.
+`DB_ENABLED=true` and `DB_PATH=./storage/trading.db` are confirmed working.
 
 ---
 
@@ -74,15 +78,15 @@ PnL history are actually written and readable after a restart.
 confidence score could factor in: time to close, order book depth, historical
 win rate for that market category, and current balance drawdown.
 
-### 11. Alert configuration
-Discord webhook and email alerts are wired up but untested with real credentials.
-Fill in `DISCORD_WEBHOOK_URL`, `DISCORD_MENTION_USER`, and SMTP settings in
-`.env` and do a manual alert test before relying on them for live monitoring.
+### ~~11. Alert configuration~~ — Done
+- ✅ **Discord** — webhook tested and confirmed working
+- ✅ **Email** — SMTP connection and test email confirmed working (tq3435@gmail.com)
 
-### 12. Review `internal/` directory
-`internal/core/execution/service/executor_service.py` (~390 lines) appears to be
-an alternative execution engine that duplicates some of the `main.py` logic. Decide
-whether to keep it, integrate it, or remove it to reduce confusion.
+### ~~12. Review `internal/` directory~~ — Done
+Entire `internal/` tree removed. It was a fully disconnected async framework
+(never imported by `main.py`) with its own executor, scanner, portfolio, and
+notification services. The 9 unit tests that only tested that dead code were
+also removed. 137/137 remaining tests pass.
 
 ---
 
@@ -90,7 +94,7 @@ whether to keep it, integrate it, or remove it to reduce confusion.
 
 | Area | Status |
 |------|--------|
-| Simulation mode | ✅ Fully working — 146/146 tests pass |
+| Simulation mode | ✅ Fully working — 137/137 tests pass |
 | Paper mode (real prices) | ⚠️ Needs credentials in `.env` |
 | Real order execution | ✅ Implemented — set `PAPER_TRADING_ONLY=false` to enable |
 | Stop-loss / early exit | ✅ Implemented — set `STOP_LOSS_PERCENT` to enable |
@@ -98,5 +102,5 @@ whether to keep it, integrate it, or remove it to reduce confusion.
 | Settlement arbitrage logic | ✅ Price window fixed — finds opportunities with 2% fee |
 | Position tracking / PnL | ✅ Fixed and verified |
 | Docker / ScyllaDB | ⚠️ Needs WSL2 + Docker Desktop on Windows |
-| SQLite persistence | ⚠️ Configured but unverified |
+| SQLite persistence | ✅ Verified end-to-end |
 | Alerts | ⚠️ Wired up — credentials not set |

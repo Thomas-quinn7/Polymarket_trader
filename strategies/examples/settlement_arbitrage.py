@@ -31,6 +31,53 @@ class SettlementArbitrage:
         self.client = client
         self.active_positions: List = []
 
+    def _calculate_confidence(
+        self, yes_price: float, time_to_close: float, net_edge: float
+    ) -> float:
+        """
+        Calculate a confidence score (0.0–1.0) for a settlement arbitrage opportunity.
+
+        Three factors, each normalised to [0, 1]:
+
+        - Price proximity (40%): how close the YES price is to 1.0 within the
+          configured scan window.  A price of 0.999 is far more certain to settle
+          YES than one at the MIN_PRICE_THRESHOLD.
+
+        - Time-to-close (40%): whether the market is in the execution sweet spot.
+          Too far from close and outcome uncertainty is high; inside
+          EXECUTE_BEFORE_CLOSE_SECONDS and there may not be time to fill.
+
+        - Edge size (20%): larger net edge provides more buffer against slippage
+          and fee variation.  Normalised against a 5% maximum expected edge.
+        """
+        price_range = config.MAX_PRICE_THRESHOLD - config.MIN_PRICE_THRESHOLD
+        price_factor = (
+            (yes_price - config.MIN_PRICE_THRESHOLD) / price_range
+            if price_range > 0
+            else 0.0
+        )
+
+        execute_floor = config.EXECUTE_BEFORE_CLOSE_SECONDS
+        if time_to_close <= 0:
+            time_factor = 0.0
+        elif time_to_close < execute_floor:
+            # Inside the execution window but right at the edge — risky fill
+            time_factor = 0.2
+        elif time_to_close <= 300:
+            # Sweet spot: imminent close, still time to fill
+            time_factor = 1.0
+        elif time_to_close <= 3600:
+            # Approaching — outcome still reasonably certain
+            time_factor = 0.6
+        else:
+            # Far from close — high outcome uncertainty
+            time_factor = 0.3
+
+        edge_factor = min(net_edge / 5.0, 1.0)
+
+        confidence = (0.4 * price_factor) + (0.4 * time_factor) + (0.2 * edge_factor)
+        return round(min(max(confidence, 0.0), 1.0), 4)
+
     def scan_for_opportunities(self, markets: list) -> List[ArbitrageOpportunity]:
         """
         Scan markets for 98.5 cent arbitrage opportunities
@@ -70,7 +117,7 @@ class SettlementArbitrage:
                 if yes_price == 0:
                     continue
 
-                # Check if price is in [0.985, 1.00]
+                # Check if price is in [MIN_PRICE_THRESHOLD, MAX_PRICE_THRESHOLD]
                 if (
                     config.MIN_PRICE_THRESHOLD
                     <= yes_price
@@ -88,6 +135,14 @@ class SettlementArbitrage:
                         continue
 
                     time_to_close = market.seconds_to_close() or 0.0
+                    confidence = self._calculate_confidence(yes_price, time_to_close, net_edge)
+
+                    if confidence < config.MIN_CONFIDENCE:
+                        logger.debug(
+                            f"Skipping {market.slug}: confidence {confidence:.2f} "
+                            f"below minimum {config.MIN_CONFIDENCE:.2f}"
+                        )
+                        continue
 
                     opportunity = ArbitrageOpportunity(
                         market_id=market.market_id,
@@ -99,7 +154,7 @@ class SettlementArbitrage:
                         winning_token_id=token_id_yes,
                         current_price=yes_price,
                         edge_percent=net_edge,
-                        confidence=1.0,
+                        confidence=confidence,
                         time_to_close_seconds=time_to_close,
                         detected_at=datetime.now(timezone.utc),
                         status=ArbitrageStatus.DETECTED,
@@ -110,6 +165,7 @@ class SettlementArbitrage:
                         f"Opportunity: {market.slug} - "
                         f"Price: ${yes_price:.4f}, "
                         f"Net edge: {net_edge:.2f}% (gross {gross_edge:.2f}% - {config.TAKER_FEE_PERCENT:.1f}% fee), "
+                        f"Confidence: {confidence:.2f}, "
                         f"Time to close: {time_to_close:.0f}s"
                     )
                 else:
@@ -128,7 +184,7 @@ class SettlementArbitrage:
         self, opportunities: List[ArbitrageOpportunity], limit: int = 5
     ) -> List[ArbitrageOpportunity]:
         """
-        Get best opportunities prioritized by edge
+        Get best opportunities ranked by risk-adjusted score (edge × confidence).
 
         Args:
             opportunities: List of opportunities
@@ -137,9 +193,11 @@ class SettlementArbitrage:
         Returns:
             Sorted list of best opportunities
         """
-        # Sort by edge percent descending
-        sorted_ops = sorted(opportunities, key=lambda x: x.edge_percent, reverse=True)
-
+        sorted_ops = sorted(
+            opportunities,
+            key=lambda x: x.edge_percent * (x.confidence or 0.0),
+            reverse=True,
+        )
         return sorted_ops[:limit]
 
     def execute_opportunity(
