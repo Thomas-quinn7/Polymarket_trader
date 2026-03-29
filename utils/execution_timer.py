@@ -1,115 +1,90 @@
 """
-Execution Timer System
-Times market close and triggers execution
+Generic Task Scheduler
+Schedules one-shot tasks to fire at a specific UTC datetime.
+Strategies can use this to time entries or exits without coupling
+the infrastructure to any particular strategy's logic.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List
-from datetime import datetime, timedelta, timezone
-import time
+from typing import Callable, Dict, List, Optional
+from datetime import datetime, timezone
 
 from utils.logger import logger
-from config.polymarket_config import config
 
 
 @dataclass
-class TimedExecution:
-    """Represents a timed execution"""
+class ScheduledTask:
+    """A task to be executed at a specific time."""
 
-    market_id: str
+    task_id: str
     execute_at: datetime
-    opportunity: dict
+    callback: Callable[[], None]
+    label: str = ""
 
 
-class ExecutionTimer:
+class TaskScheduler:
     """
-    Manages execution timing for arbitrage opportunities
+    In-process scheduler for one-shot time-based callbacks.
 
-    Key Features:
-    - Tracks time to market close
-    - Triggers execution X seconds before close
-    - Configurable delay
+    Usage:
+        scheduler = TaskScheduler()
+        scheduler.schedule("exit-pos-123", execute_at=dt, callback=fn)
+        ready = scheduler.pop_ready()   # call each loop iteration
+        for task in ready:
+            task.callback()
     """
 
-    def __init__(self):
-        from config.polymarket_config import config
+    def __init__(self) -> None:
+        self._tasks: Dict[str, ScheduledTask] = {}
 
-        self.execute_before_close = config.EXECUTE_BEFORE_CLOSE_SECONDS
-        self.active_timers: Dict[str, TimedExecution] = {}
-
-    def start_timer(self, market_id: str, opportunity: dict) -> bool:
+    def schedule(
+        self,
+        task_id: str,
+        execute_at: datetime,
+        callback: Callable[[], None],
+        label: str = "",
+    ) -> bool:
         """
-        Start countdown to market close
-
-        Args:
-            market_id: Market ID
-            opportunity: Opportunity data
-
-        Returns:
-            True if timer started
+        Register a task to fire at execute_at (UTC).
+        Returns False if execute_at is already in the past.
         """
-        end_time = opportunity.get("end_time")
-        if not end_time:
-            logger.warning(f"Market {market_id} has no end time")
-            return False
-
-        try:
-            close_time = datetime.fromisoformat(end_time)
-            execute_time = close_time - timedelta(seconds=self.execute_before_close)
-
-            now = datetime.now(timezone.utc)
-            # Check if we should still execute
-            if execute_time <= now:
-                timed_exec = TimedExecution(
-                    market_id=market_id,
-                    execute_at=execute_time,
-                    opportunity=opportunity,
-                )
-
-                self.active_timers[market_id] = timed_exec
-                logger.info(
-                    f"⏱️ Timer started: {market_id} - "
-                    f"Execute in {(execute_time - now).total_seconds():.0f}s"
-                )
-                return True
-            else:
-                logger.warning(
-                    f"⏰ Too late to execute: {market_id} - "
-                    f"Market closes in {(close_time - now).total_seconds():.0f}s"
-                )
-                return False
-
-        except Exception as e:
-            logger.error(f"Error starting timer for {market_id}: {e}")
-            return False
-
-    def check_executions(self) -> List[str]:
-        """
-        Check which timers should trigger execution now
-
-        Returns:
-            List of market IDs to execute
-        """
-        ready_to_execute = []
         now = datetime.now(timezone.utc)
+        if execute_at <= now:
+            logger.warning(
+                "TaskScheduler: %s is already past (%s) — not scheduled",
+                task_id,
+                execute_at.isoformat(),
+            )
+            return False
+        self._tasks[task_id] = ScheduledTask(
+            task_id=task_id,
+            execute_at=execute_at,
+            callback=callback,
+            label=label,
+        )
+        delay = (execute_at - now).total_seconds()
+        logger.debug("TaskScheduler: scheduled %s in %.1fs (%s)", task_id, delay, label)
+        return True
 
-        for market_id, timed_exec in self.active_timers.items():
-            if now >= timed_exec.execute_at:
-                ready_to_execute.append(market_id)
-                logger.info(f"⏰ Time to execute: {market_id}")
+    def cancel(self, task_id: str) -> bool:
+        """Remove a scheduled task. Returns True if it existed."""
+        return self._tasks.pop(task_id, None) is not None
 
-        if ready_to_execute:
-            logger.info(f"📈 Ready to execute {len(ready_to_execute)} markets")
-
-        return ready_to_execute
-
-    def remove_timer(self, market_id: str):
+    def pop_ready(self) -> List[ScheduledTask]:
         """
-        Remove timer after execution
-
-        Args:
-            market_id: Market ID
+        Return and remove all tasks whose execute_at has passed.
+        Call once per trading-loop iteration.
         """
-        if market_id in self.active_timers:
-            del self.active_timers[market_id]
-            logger.info(f"✅ Timer removed: {market_id}")
+        now = datetime.now(timezone.utc)
+        ready = [t for t in self._tasks.values() if now >= t.execute_at]
+        for t in ready:
+            del self._tasks[t.task_id]
+            logger.debug("TaskScheduler: task %s ready (%s)", t.task_id, t.label)
+        return ready
+
+    @property
+    def pending_count(self) -> int:
+        return len(self._tasks)
+
+    def clear(self) -> None:
+        self._tasks.clear()

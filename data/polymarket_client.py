@@ -264,7 +264,11 @@ class PolymarketClient:
         if self.client is None:
             return 0.0
         try:
-            return self.client.get_price(token_id, side="BUY")
+            result = self.client.get_price(token_id, side="BUY")
+            # CLOB client may return a dict {"price": "0.97"}, a str, or a float
+            if isinstance(result, dict):
+                return float(result.get("price", 0) or 0)
+            return float(result) if result else 0.0
         except Exception as e:
             logger.error(f"Error fetching price for {token_id}: {e}")
             return 0.0

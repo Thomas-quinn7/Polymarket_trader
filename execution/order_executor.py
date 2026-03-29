@@ -69,8 +69,8 @@ class OrderExecutor:
             # Calculate shares
             shares = capital_to_allocate / opportunity.current_price
 
-            # Expected profit
-            expected_profit = shares * (1.00 - opportunity.current_price)
+            # Expected profit based on the strategy's reported edge
+            expected_profit = capital_to_allocate * (opportunity.edge_percent / 100.0)
 
             # Place real order on exchange if live trading is enabled
             if not config.PAPER_TRADING_ONLY and self.polymarket_client is not None:
@@ -216,7 +216,7 @@ class OrderExecutor:
     def settle_position(
         self,
         position_id: str,
-        settlement_price: float = 1.0,  # Default to $1.00 (YES token wins)
+        settlement_price: float = 0.0,
     ) -> Optional[float]:
         """
         Settle a position (paper trading)
