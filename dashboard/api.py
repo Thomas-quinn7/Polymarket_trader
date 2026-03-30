@@ -249,11 +249,17 @@ async def get_portfolio():
     try:
         bot = get_bot()
 
+        balance = bot.currency_tracker.get_balance()
+        deployed = bot.currency_tracker.get_deployed()
         return {
-            "balance": bot.currency_tracker.get_balance(),
-            "deployed": bot.currency_tracker.get_deployed(),
+            "balance": balance,
+            "deployed": deployed,
             "available": bot.currency_tracker.get_available(),
             "starting_balance": bot.currency_tracker.starting_balance,
+            # total_value = cash-in-hand + deployed capital (at cost basis).
+            # Used to compute unrealised gain so an open position doesn't
+            # show as a loss simply because cash left the balance.
+            "total_value": balance + deployed,
         }
     except HTTPException:
         raise
