@@ -162,8 +162,11 @@ function renderPortfolioKV(data) {
   if (!el) return;
   if (!data) { el.innerHTML = '<div class="kv-empty">Bot not running</div>'; return; }
 
-  const gain = data.balance != null && data.starting_balance != null
-    ? data.balance - data.starting_balance : null;
+  // Use total_value (cash + deployed at cost) so open positions don't
+  // appear as losses just because capital left the available balance.
+  const portfolioValue = data.total_value ?? data.balance;
+  const gain = portfolioValue != null && data.starting_balance != null
+    ? portfolioValue - data.starting_balance : null;
 
   el.innerHTML = [
     ['Balance',          fmt(data.balance)],
