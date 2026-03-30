@@ -267,8 +267,15 @@ class PolymarketClient:
             result = self.client.get_price(token_id, side="BUY")
             # CLOB client may return a dict {"price": "0.97"}, a str, or a float
             if isinstance(result, dict):
-                return float(result.get("price", 0) or 0)
-            return float(result) if result else 0.0
+                raw = float(result.get("price", 0) or 0)
+            else:
+                raw = float(result) if result else 0.0
+            # Reject NaN / Infinity — these propagate silently into calculations
+            import math
+            if not math.isfinite(raw):
+                logger.warning(f"Non-finite price {raw!r} for {token_id} — treating as 0")
+                return 0.0
+            return raw
         except Exception as e:
             logger.error(f"Error fetching price for {token_id}: {e}")
             return 0.0

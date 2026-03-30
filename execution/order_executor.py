@@ -81,12 +81,29 @@ class OrderExecutor:
 
             # Place real order on exchange if live trading is enabled
             if not config.PAPER_TRADING_ONLY and self.polymarket_client is not None:
-                order_response = self.polymarket_client.create_market_order(
-                    token_id=opportunity.winning_token_id,
-                    amount=capital_to_allocate,
-                )
+                order_response = None
+                retry_delay = config.RETRY_DELAY_MS / 1000.0
+                for attempt in range(1, config.MAX_RETRIES + 1):
+                    try:
+                        order_response = self.polymarket_client.create_market_order(
+                            token_id=opportunity.winning_token_id,
+                            amount=capital_to_allocate,
+                        )
+                        if order_response:
+                            break
+                    except Exception as exc:
+                        logger.warning(
+                            f"Order attempt {attempt}/{config.MAX_RETRIES} failed for "
+                            f"{position_id}: {exc}"
+                        )
+                    if attempt < config.MAX_RETRIES:
+                        time.sleep(retry_delay)
+
                 if not order_response:
-                    logger.error(f"Exchange rejected order for {position_id} — aborting")
+                    logger.error(
+                        f"Exchange rejected order for {position_id} after "
+                        f"{config.MAX_RETRIES} attempt(s) — aborting"
+                    )
                     return False
                 order_status = order_response.get("status", "")
                 if order_status not in ("MATCHED", "DELAYED", "LIVE"):
@@ -256,6 +273,22 @@ class OrderExecutor:
                 logger.warning(f"Position {position_id} not found for settlement")
                 return None
 
+            # Clamp settlement price to [0, 1] — Polymarket tokens can only
+            # resolve to values in this range; anything outside is a bad input.
+            import math
+            if not math.isfinite(settlement_price) or settlement_price < 0:
+                logger.warning(
+                    f"Invalid settlement price {settlement_price!r} for {position_id} "
+                    f"— clamping to 0"
+                )
+                settlement_price = 0.0
+            elif settlement_price > 1.0:
+                logger.warning(
+                    f"Settlement price {settlement_price:.4f} > 1.0 for {position_id} "
+                    f"— clamping to 1.0"
+                )
+                settlement_price = 1.0
+
             # Calculate return amount
             return_amount = position.shares * settlement_price
 
@@ -330,7 +363,7 @@ class OrderExecutor:
 
     def get_order_history(self, limit: Optional[int] = None) -> List[Dict]:
         """Get order history (newest first; orders are appended chronologically)"""
-        if limit:
+        if limit is not None and limit > 0:
             return self.order_history[-limit:][::-1]
         return self.order_history[::-1]
 
