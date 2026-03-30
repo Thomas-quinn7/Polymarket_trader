@@ -100,7 +100,7 @@ class PositionTracker:
             Position ID
         """
         if position_id is None:
-            position_id = f"{opportunity.market_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            position_id = f"{opportunity.market_id}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
 
         # Compute absolute expiry from the opportunity's close time
         expires_at = None
@@ -169,7 +169,8 @@ class PositionTracker:
 
         # Calculate PnL
         pnl = (settlement_price - position.entry_price) * position.shares
-        pnl_percent = (pnl / (position.entry_price * position.shares)) * 100
+        cost_basis = position.entry_price * position.shares
+        pnl_percent = (pnl / cost_basis * 100) if cost_basis != 0 else 0.0
 
         with self._lock:
             position.settlement_price = settlement_price

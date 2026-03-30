@@ -347,7 +347,7 @@ class TradingBot:
                     break
 
                 position_id = (
-                    f"{opp.market_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                    f"{opp.market_id}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
                 )
                 success = self.executor.execute_buy(opp, position_id)
 
