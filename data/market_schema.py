@@ -123,7 +123,9 @@ class PolymarketMarket:
         return max(0.0, delta.total_seconds())
 
     def has_sufficient_liquidity(self, min_volume: float) -> bool:
-        return self.volume >= min_volume
+        # Also require volume > 0 so markets with missing volume data
+        # (stored as 0.0) never pass when min_volume is set to 0.
+        return self.volume > 0 and self.volume >= min_volume
 
 
 def _parse_outcome_prices(raw: dict) -> List[float]:

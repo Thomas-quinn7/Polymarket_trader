@@ -120,6 +120,11 @@ class PnLTracker:
         Returns:
             Trade ID
         """
+        if quantity <= 0:
+            raise ValueError(
+                f"quantity must be positive, got {quantity!r} for position {position_id}"
+            )
+
         trade_id = f"{position_id}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
 
         trade = TradeRecord(

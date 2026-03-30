@@ -60,6 +60,22 @@ class PolymarketClient:
 
         # Check if builder credentials are configured
         if config.BUILDER_ENABLED:
+            missing = [
+                name for name, val in (
+                    ("BUILDER_API_KEY",    config.BUILDER_API_KEY),
+                    ("BUILDER_SECRET",     config.BUILDER_SECRET),
+                    ("BUILDER_PASSPHRASE", config.BUILDER_PASSPHRASE),
+                )
+                if not val
+            ]
+            if missing:
+                logger.warning(
+                    f"BUILDER_ENABLED=True but the following .env keys are missing or empty: "
+                    f"{', '.join(missing)} — falling back to standard mode"
+                )
+                self._initialize_standard_mode()
+                return
+
             try:
                 from py_builder_signing_sdk import BuilderConfig, BuilderApiKeyCreds
 
