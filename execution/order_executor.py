@@ -66,6 +66,13 @@ class OrderExecutor:
             # Calculate position size (20% of starting balance)
             capital_to_allocate = self.currency_tracker.starting_balance * config.CAPITAL_SPLIT_PERCENT
 
+            # Guard: invalid price means we cannot safely size the position
+            if not opportunity.current_price or opportunity.current_price <= 0:
+                logger.error(
+                    f"Invalid price {opportunity.current_price!r} for {position_id} — aborting buy"
+                )
+                return False
+
             # Calculate shares
             shares = capital_to_allocate / opportunity.current_price
 
@@ -87,10 +94,18 @@ class OrderExecutor:
                         f"Order not filled for {position_id} (status={order_status!r}) — aborting"
                     )
                     return False
-                # Use actual filled size if returned by the exchange
+                # Use actual filled size if returned by the exchange.
+                # Explicit None check — filled_size of 0 means nothing was filled,
+                # which is handled by the status check above; only update shares
+                # when we got a real positive fill.
                 filled_size = order_response.get("size_matched")
-                if filled_size:
-                    shares = float(filled_size)
+                if filled_size is not None:
+                    try:
+                        parsed = float(filled_size)
+                        if parsed > 0:
+                            shares = parsed
+                    except (ValueError, TypeError):
+                        logger.warning(f"Could not parse size_matched={filled_size!r}, using estimated shares")
 
             # Allocate currency
             allocated = self.currency_tracker.allocate_to_position(
@@ -114,10 +129,16 @@ class OrderExecutor:
                 )
             except Exception:
                 # Roll back the currency allocation so balance stays consistent
-                self.currency_tracker.return_to_balance(
+                rolled_back = self.currency_tracker.return_to_balance(
                     position_id=position_id,
                     return_amount=capital_to_allocate,
                 )
+                if not rolled_back:
+                    logger.critical(
+                        f"BALANCE INCONSISTENCY: could not roll back ${capital_to_allocate:.2f} "
+                        f"for {position_id} after position creation failure — "
+                        f"deployed capital and balance are now out of sync"
+                    )
                 raise
 
             # Log trade

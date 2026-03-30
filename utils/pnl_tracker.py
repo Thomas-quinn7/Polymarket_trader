@@ -3,6 +3,7 @@ PnL Tracker Module
 Tracks wins, losses, and PnL evolution for paper trading
 """
 
+import threading
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -96,6 +97,7 @@ class PnLTracker:
         self.open_positions: Dict[str, TradeRecord] = {}
         self.max_drawdown = 0.0
         self.current_drawdown = 0.0
+        self._lock = threading.Lock()
 
         logger.info(f"PnL tracker initialized with ${initial_balance:.2f}")
 
@@ -118,7 +120,7 @@ class PnLTracker:
         Returns:
             Trade ID
         """
-        trade_id = f"{position_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        trade_id = f"{position_id}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
 
         trade = TradeRecord(
             trade_id=trade_id,
@@ -130,8 +132,9 @@ class PnLTracker:
             entry_time=datetime.now(),
         )
 
-        self.open_positions[position_id] = trade
-        self.trades.append(trade)
+        with self._lock:
+            self.open_positions[position_id] = trade
+            self.trades.append(trade)
 
         logger.debug(f"Position opened: {trade_id} - {quantity:.4f} @ ${entry_price:.4f}")
 
@@ -154,41 +157,41 @@ class PnLTracker:
         Returns:
             Realized PnL
         """
-        if position_id not in self.open_positions:
-            logger.warning(f"Position {position_id} not found")
-            return None
-
-        trade = self.open_positions[position_id]
+        with self._lock:
+            if position_id not in self.open_positions:
+                logger.warning(f"Position {position_id} not found")
+                return None
+            trade = self.open_positions[position_id]
 
         settlement_price = exit_price
 
         # Calculate PnL
-        # If YES token settles at $1.00, we get $1.00 per share
-        # If NO token settles at $0.00, we get $0.00 per share
         pnl = (settlement_price - trade.entry_price) * trade.quantity
-        pnl_percent = (pnl / (trade.entry_price * trade.quantity)) * 100
+        cost_basis = trade.entry_price * trade.quantity
+        pnl_percent = (pnl / cost_basis * 100) if cost_basis != 0 else 0.0
 
         trade.exit_price = settlement_price
         trade.exit_time = datetime.now()
         trade.pnl = pnl
         trade.pnl_percent = pnl_percent
 
-        # Update balance
-        self.current_balance += pnl
+        with self._lock:
+            # Update balance
+            self.current_balance += pnl
 
-        # Update peak balance and drawdown
-        if self.current_balance > self.peak_balance:
-            self.peak_balance = self.current_balance
-            self.current_drawdown = 0.0
-        else:
-            self.current_drawdown = (
-                (self.peak_balance - self.current_balance) / self.peak_balance * 100
-            )
-            if abs(self.current_drawdown) > self.max_drawdown:
-                self.max_drawdown = abs(self.current_drawdown)
+            # Update peak balance and drawdown
+            if self.current_balance > self.peak_balance:
+                self.peak_balance = self.current_balance
+                self.current_drawdown = 0.0
+            else:
+                self.current_drawdown = (
+                    (self.peak_balance - self.current_balance) / self.peak_balance * 100
+                )
+                if abs(self.current_drawdown) > self.max_drawdown:
+                    self.max_drawdown = abs(self.current_drawdown)
 
-        # Remove from open positions
-        del self.open_positions[position_id]
+            # Remove from open positions
+            del self.open_positions[position_id]
 
         # Log result
         if pnl >= 0:
@@ -211,11 +214,15 @@ class PnLTracker:
         Returns:
             PnLSummary object
         """
-        closed_trades = [t for t in self.trades if t.exit_price is not None]
+        with self._lock:
+            closed_trades = [t for t in self.trades if t.exit_price is not None]
+            peak_balance = self.peak_balance
+            max_drawdown = self.max_drawdown
+            current_drawdown = self.current_drawdown
 
         if not closed_trades:
             return PnLSummary(
-                peak_balance=self.peak_balance,
+                peak_balance=peak_balance,
                 initial_balance=self.initial_balance,
             )
 
@@ -247,19 +254,21 @@ class PnLTracker:
             average_win=average_win,
             average_loss=average_loss,
             profit_factor=profit_factor,
-            max_drawdown=self.max_drawdown,
-            current_drawdown=self.current_drawdown,
-            peak_balance=self.peak_balance,
+            max_drawdown=max_drawdown,
+            current_drawdown=current_drawdown,
+            peak_balance=peak_balance,
             initial_balance=self.initial_balance,
         )
 
     def get_open_positions(self) -> List[TradeRecord]:
         """Get list of open positions"""
-        return list(self.open_positions.values())
+        with self._lock:
+            return list(self.open_positions.values())
 
     def get_trade_history(self, limit: Optional[int] = None) -> List[TradeRecord]:
         """Get trade history"""
-        trades = [t for t in self.trades if t.exit_price is not None]
+        with self._lock:
+            trades = [t for t in self.trades if t.exit_price is not None]
         trades.sort(key=lambda x: x.exit_time or x.entry_time, reverse=True)
 
         if limit:
@@ -276,8 +285,11 @@ class PnLTracker:
         history = []
         running_balance = self.initial_balance
 
+        with self._lock:
+            trades_snapshot = list(self.trades)
+
         for trade in sorted(
-            self.trades, key=lambda x: x.exit_time or x.entry_time
+            trades_snapshot, key=lambda x: x.exit_time or x.entry_time
         ):
             if trade.exit_price is not None:
                 running_balance += trade.pnl
@@ -294,13 +306,14 @@ class PnLTracker:
 
     def reset(self, new_balance: Optional[float] = None):
         """Reset tracker"""
-        self.initial_balance = new_balance or self.initial_balance
-        self.current_balance = self.initial_balance
-        self.peak_balance = self.initial_balance
-        self.trades = []
-        self.open_positions = {}
-        self.max_drawdown = 0.0
-        self.current_drawdown = 0.0
+        with self._lock:
+            self.initial_balance = new_balance or self.initial_balance
+            self.current_balance = self.initial_balance
+            self.peak_balance = self.initial_balance
+            self.trades = []
+            self.open_positions = {}
+            self.max_drawdown = 0.0
+            self.current_drawdown = 0.0
 
         logger.info(f"PnL tracker reset with ${self.initial_balance:.2f}")
 
