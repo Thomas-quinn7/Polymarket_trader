@@ -85,7 +85,6 @@ def _make_opportunity(**kwargs):
         current_price=0.985,
         edge_percent=1.5,
         confidence=0.8,
-        time_to_close_seconds=300.0,
         detected_at=datetime(2026, 1, 1, 12, 0, 0),
         status=TradeStatus.DETECTED,
     )
@@ -100,30 +99,12 @@ class TestTradeOpportunityToDict:
         for key in ("market_id", "market_slug", "question", "category",
                     "winning_token_id", "winning_price", "side",
                     "opportunity_type", "edge_percent", "confidence",
-                    "time_to_close_seconds", "end_time", "detected_at",
-                    "executed_at", "status"):
+                    "detected_at", "executed_at", "status"):
             assert key in d, f"Missing key: {key}"
 
     def test_status_is_string(self):
         opp = _make_opportunity()
         assert opp.to_dict()["status"] == "detected"
-
-    def test_end_time_computed_from_detected_at_and_ttc(self):
-        detected = datetime(2026, 1, 1, 12, 0, 0)
-        opp = _make_opportunity(detected_at=detected, time_to_close_seconds=300.0)
-        d = opp.to_dict()
-        assert d["end_time"] is not None
-        # Should be 5 minutes after detected_at
-        end = datetime.fromisoformat(d["end_time"])
-        assert abs((end - detected).total_seconds() - 300) < 1
-
-    def test_end_time_none_when_ttc_missing(self):
-        opp = _make_opportunity(time_to_close_seconds=None)
-        assert opp.to_dict()["end_time"] is None
-
-    def test_end_time_none_when_detected_at_missing(self):
-        opp = _make_opportunity(detected_at=None)
-        assert opp.to_dict()["end_time"] is None
 
     def test_detected_at_isoformat(self):
         detected = datetime(2026, 3, 15, 10, 30, 0)

@@ -153,13 +153,11 @@ class TradeLogger:
         market_id: str,
         price: float,
         edge: float,
-        time_to_close: float
     ):
         """Log arbitrage opportunity detection"""
         self.logger.info(
             f"Opportunity detected: {market_id} - "
-            f"Price: ${price:.4f}, Edge: {edge:.2f}%, "
-            f"Time to close: {time_to_close:.0f}s"
+            f"Price: ${price:.4f}, Edge: {edge:.2f}%"
         )
 
     def log_position_opened(

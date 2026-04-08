@@ -6,7 +6,7 @@ Tracks individual positions and settlements
 import threading
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 from config.polymarket_config import config
 from utils.logger import logger
@@ -102,14 +102,7 @@ class PositionTracker:
         if position_id is None:
             position_id = f"{opportunity.market_id}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
 
-        # Compute absolute expiry from the opportunity's close time
-        expires_at = None
-        detected_at = getattr(opportunity, "detected_at", None)
-        time_to_close = getattr(opportunity, "time_to_close_seconds", None)
-        if detected_at and time_to_close is not None:
-            if detected_at.tzinfo is None:
-                detected_at = detected_at.replace(tzinfo=timezone.utc)
-            expires_at = detected_at + timedelta(seconds=time_to_close)
+        expires_at = getattr(opportunity, "expires_at", None)
 
         position = Position(
             position_id=position_id,

@@ -366,7 +366,6 @@ class TradingBot:
                         market_id=opp.market_slug,
                         price=opp.current_price,
                         edge=opp.edge_percent,
-                        time_to_close=opp.time_to_close_seconds or 0,
                     )
 
         except Exception as e:

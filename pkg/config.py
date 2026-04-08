@@ -29,10 +29,6 @@ class Settings(BaseSettings):
     max_positions: int = Field(default=5, description="Maximum concurrent positions")
     capital_split_percent: float = Field(default=0.2, description="Capital split per position")
     scan_interval_ms: int = Field(default=500, description="Scanning interval in milliseconds")
-    execute_before_close_seconds: int = Field(
-        default=2, description="Execute before market close (seconds)"
-    )
-
     # Email Notifications
     enable_email_alerts: bool = Field(default=True, description="Enable email alerts")
     smtp_server: str = Field(default="smtp.gmail.com", description="SMTP server")
@@ -90,10 +86,6 @@ class Settings(BaseSettings):
         default="trump,biden,presidential,prediction,speculative,gambling,uncertain", description="Exclude keywords"
     )
     exclude_slugs: str = Field(default="", description="Exclude market slugs (comma-separated)")
-
-    # Time Filters
-    min_time_to_close: int = Field(default=60, description="Minimum time to close (seconds)")
-    max_time_to_close: int = Field(default=86400, description="Maximum time to close (seconds)")
 
     # Edge Filters
     min_edge: float = Field(default=0.5, description="Minimum arbitrage edge percentage")

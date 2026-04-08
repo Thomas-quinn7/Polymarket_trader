@@ -8,7 +8,7 @@ with no price or edge filter.  Exits each position after a short hold period
 Never use this strategy with real money.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List
 
 from data.polymarket_client import PolymarketClient
@@ -69,10 +69,10 @@ class DemoBuy(BaseStrategy):
                     current_price=yes_price,
                     edge_percent=0.0,
                     confidence=1.0,
-                    time_to_close_seconds=float(_DEMO_HOLD_SECONDS),
                     detected_at=datetime.now(timezone.utc),
                     status=TradeStatus.DETECTED,
                 )
+                opportunity.expires_at = datetime.now(timezone.utc) + timedelta(seconds=_DEMO_HOLD_SECONDS)
 
                 opportunities.append(opportunity)
                 logger.info(

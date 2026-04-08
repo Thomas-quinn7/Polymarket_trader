@@ -220,6 +220,8 @@ class TestExecuteSell:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = False
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            cfg.MAX_RETRIES = 3
+            cfg.RETRY_DELAY_MS = 0
             executor = OrderExecutor(
                 pnl_tracker=pnl,
                 position_tracker=positions,
@@ -240,6 +242,8 @@ class TestExecuteSell:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = False
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            cfg.MAX_RETRIES = 3
+            cfg.RETRY_DELAY_MS = 0
             executor = OrderExecutor(
                 pnl_tracker=pnl,
                 position_tracker=positions,
