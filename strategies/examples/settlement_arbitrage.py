@@ -178,10 +178,10 @@ class SettlementArbitrage(BaseStrategy):
                         current_price=yes_price,
                         edge_percent=net_edge,
                         confidence=confidence,
-                        time_to_close_seconds=time_to_close,
                         detected_at=datetime.now(timezone.utc),
                         status=TradeStatus.DETECTED,
                     )
+                    opportunity.expires_at = market.end_time
 
                     opportunities.append(opportunity)
                     logger.info(

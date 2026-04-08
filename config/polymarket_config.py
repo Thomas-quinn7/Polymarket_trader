@@ -21,6 +21,16 @@ class PolymarketConfig:
     GAMMA_API_URL = "https://gamma-api.polymarket.com"
     CHAIN_ID = 137  # Polygon chain ID
 
+    # Relayer API Configuration
+    # Relayer keys provide unlimited relay transactions for a single wallet without tier approval.
+    # Generate at: https://polymarket.com/settings?tab=api-keys
+    # Docs: https://docs.polymarket.com/trading/gasless
+    # When RELAYER_ENABLED=True, Relayer auth headers are injected alongside L2 CLOB headers.
+    # Relayer mode takes priority over Builder mode if both are configured.
+    RELAYER_ENABLED = os.getenv("RELAYER_ENABLED", "False").lower() == "true"
+    RELAYER_API_KEY = os.getenv("RELAYER_API_KEY")
+    RELAYER_API_KEY_ADDRESS = os.getenv("RELAYER_API_KEY_ADDRESS")
+
     # Builder Configuration
     # BUILDER_TIER controls which rate limit applies:
     #   unverified — 100 relay transactions/day  (default, no approval needed)
@@ -42,17 +52,19 @@ class PolymarketConfig:
 
     @property
     def daily_request_limit(self):
-        """Return the daily relay transaction limit for the configured builder tier."""
+        """Return the daily relay transaction limit. None = unlimited (relayer or partner tier)."""
+        if self.RELAYER_ENABLED:
+            return None  # Relayer keys have no daily transaction limit
         return self._TIER_DAILY_LIMITS.get(self.BUILDER_TIER, 100)
 
     @property
     def safe_scan_interval_ms(self) -> int:
         """
-        Return the minimum safe scan interval in ms for the current builder tier.
+        Return the minimum safe scan interval in ms for the current auth mode.
         Each full scan consumes ~4 API calls (one per market category).
-        Unverified: 100/day ÷ 4 = 25 scans → 86400000ms / 25 = 3,456,000ms (~57 min)
+        Relayer / Partner: unlimited → 30,000ms (30s) as a sensible default
         Verified:   3000/day ÷ 4 = 750 scans → 86400000ms / 750 = 115,200ms (~2 min)
-        Partner:    unlimited → 30,000ms (30s) as a sensible default
+        Unverified: 100/day ÷ 4 = 25 scans → 86400000ms / 25 = 3,456,000ms (~57 min)
         """
         limit = self.daily_request_limit
         if limit is None:
@@ -62,7 +74,9 @@ class PolymarketConfig:
 
     @property
     def builder_tier_label(self) -> str:
-        """Human-readable label for the current builder tier and rate limit."""
+        """Human-readable label for the current auth mode and rate limit."""
+        if self.RELAYER_ENABLED:
+            return "relayer (unlimited, relayer auth enabled)"
         limit = self.daily_request_limit
         limit_str = "unlimited" if limit is None else f"{limit:,}/day"
         enabled = "enabled" if self.BUILDER_ENABLED else "disabled"
@@ -194,6 +208,11 @@ class PolymarketConfig:
         self.SLIPPAGE_TOLERANCE_PERCENT = float(env.get("SLIPPAGE_TOLERANCE_PERCENT", "5.0"))
         self.MAX_RETRIES               = int(env.get("MAX_RETRIES", "3"))
         self.RETRY_DELAY_MS            = int(env.get("RETRY_DELAY_MS", "100"))
+
+        # Relayer
+        self.RELAYER_ENABLED          = env.get("RELAYER_ENABLED", "False").lower() == "true"
+        self.RELAYER_API_KEY          = env.get("RELAYER_API_KEY")
+        self.RELAYER_API_KEY_ADDRESS  = env.get("RELAYER_API_KEY_ADDRESS")
 
         # Builder
         self.BUILDER_ENABLED    = env.get("BUILDER_ENABLED", "False").lower() == "true"

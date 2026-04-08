@@ -125,10 +125,10 @@ class PaperDemo(BaseStrategy):
             current_price=yes_price,
             edge_percent=0.0,       # No edge filter — this is a demo
             confidence=1.0,
-            time_to_close_seconds=float(_HOLD_SECONDS),
             detected_at=datetime.now(timezone.utc),
             status=TradeStatus.DETECTED,
         )
+        opp.expires_at = expires_at
 
         logger.info(
             "[PaperDemo] Selected market: %s\n"

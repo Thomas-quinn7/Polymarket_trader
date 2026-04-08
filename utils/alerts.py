@@ -274,7 +274,7 @@ Loss: ${abs(loss):.2f}
         self.create_alert(AlertType.POSITION_LOSS, title, message.strip(), AlertSeverity.WARNING, data)
 
     def send_opportunity_detected_alert(
-        self, market_id: str, price: float, edge: float, time_to_close: float
+        self, market_id: str, price: float, edge: float
     ):
         """Send opportunity detected alert"""
         title = f"Arbitrage Opportunity: {market_id}"
@@ -282,10 +282,9 @@ Loss: ${abs(loss):.2f}
 Market: {market_id}
 Price: ${price:.4f}
 Edge: {edge:.2f}%
-Time to close: {time_to_close:.0f}s
 """
 
-        data = {"market_id": market_id, "price": price, "edge": edge, "time_to_close": time_to_close}
+        data = {"market_id": market_id, "price": price, "edge": edge}
 
         self.create_alert(
             AlertType.OPPORTUNITY_DETECTED,

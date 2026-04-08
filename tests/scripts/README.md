@@ -1,82 +1,85 @@
 # Test and Validation Scripts
 
-This folder contains test and validation scripts for the Polymarket Trading Bot.
+Manual scripts for validating setup, testing alerts, and running integration checks. These are not part of the automated test suite (`pytest tests/unit/`) — run them directly from the project root.
 
-## Files
-
-### `test_dashboard.py`
-Simple standalone dashboard runner for testing. Not recommended for production use.
-
-**Usage:**
-```bash
-uv run python test_dashboard.py
-```
-
-### `start_dashboard.bat`
-Quick launcher for running the dashboard in a new terminal.
-
-**Usage:**
-Double-click to run
+## Scripts
 
 ### `validate_setup.py`
-Validates your configuration and checks that all required settings are present.
+Validates your `.env` configuration and checks that all required settings are present and reachable.
 
-**Usage:**
 ```bash
-uv run python validate_setup.py
+python tests/scripts/validate_setup.py
 ```
 
 ### `test_email.py`
-Tests email notification configuration by sending a test email.
+Sends a test email using your configured SMTP settings. Useful for verifying alert credentials before going live.
 
-**Usage:**
 ```bash
-uv run python test_email.py
+python tests/scripts/test_email.py
 ```
 
-### `test_discord.py`
-Tests Discord webhook configuration by sending a test notification.
+> Gmail users: use an App Password, not your account password — [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
 
-**Usage:**
+### `test_discord.py`
+Sends a test notification to your configured Discord webhook.
+
 ```bash
-uv run python test_discord.py
+python tests/scripts/test_discord.py
+```
+
+### `test_dashboard.py`
+Standalone dashboard runner for manual UI testing. For production use, run `python main.py` instead so the dashboard and trading loop are integrated.
+
+```bash
+python tests/scripts/test_dashboard.py
 ```
 
 ### `run_dashboard.py`
-Alternative dashboard runner script.
+Alternative dashboard runner (starts FastAPI without the trading loop).
 
-**Usage:**
 ```bash
-uv run python run_dashboard.py
+python tests/scripts/run_dashboard.py
 ```
 
 ### `quick_start.py`
-Helper script for quick project setup and validation.
-
-**Usage:**
-```bash
-uv run python quick_start.py
-```
-
-## Important Notes
-
-1. **Dashboard Integration**: For production use, run `uv run main.py` instead of test_dashboard.py to ensure the dashboard and trading bot communicate properly.
-
-2. **Configuration**: Make sure your `.env` file has all required variables configured before running test scripts.
-
-3. **Test Files**: These scripts are designed for testing and validation purposes. They use absolute imports from the main project structure, so they work correctly from this subfolder.
-
-## Running Tests
-
-After activating the virtual environment with `.\\venv\\Scripts\\Activate.ps1`, you can run any test file from the project root:
+Guided setup helper — walks through credential checks and fires a test run.
 
 ```bash
-# Validate setup
-uv run python test_setup/validate_setup.py
-
-# Test email
-uv run python test_setup/test_email.py
-
-# Test Discord
-uv run python test_setup/test_discord.py
+python tests/scripts/quick_start.py
 ```
+
+### `test_simple_scanner.py`
+Runs a single market scan pass and prints the results. Useful for verifying that the Gamma API is reachable and markets are being parsed correctly.
+
+```bash
+python tests/scripts/test_simple_scanner.py
+```
+
+### `test_enhanced_scanner.py`
+Same as above but uses the enhanced market scanner with keyword filtering and category classification.
+
+```bash
+python tests/scripts/test_enhanced_scanner.py
+```
+
+## Running Automated Unit Tests
+
+The full unit test suite (455 tests) is run with pytest from the project root:
+
+```bash
+python -m pytest tests/unit/
+```
+
+For a specific module:
+
+```bash
+python -m pytest tests/unit/test_order_executor.py
+python -m pytest tests/unit/test_data_pipeline.py
+python -m pytest tests/unit/test_data_validation.py
+```
+
+## Notes
+
+- Scripts use absolute imports from the project root — run them from the project root directory, not from inside `tests/scripts/`.
+- Ensure your virtual environment is active before running: `.venv\Scripts\activate` (Windows) or `source .venv/bin/activate` (macOS/Linux).
+- Scripts that hit live APIs require `POLYMARKET_PRIVATE_KEY` and `POLYMARKET_FUNDER_ADDRESS` set in `.env`.

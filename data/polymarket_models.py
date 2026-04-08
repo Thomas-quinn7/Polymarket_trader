@@ -54,8 +54,6 @@ class TradeOpportunity(Base):
     current_price        = Column(Float,       nullable=False)
     edge_percent         = Column(Float,       nullable=False)
     confidence           = Column(Float,       nullable=True)
-    # Optional — only relevant when the strategy cares about time to close
-    time_to_close_seconds = Column(Float,      nullable=True)
     detected_at          = Column(DateTime,    nullable=False, index=True)
     status               = Column(
         Enum(TradeStatus), default=TradeStatus.DETECTED, nullable=False
@@ -63,28 +61,21 @@ class TradeOpportunity(Base):
     executed_at          = Column(DateTime, nullable=True)
 
     def to_dict(self):
-        from datetime import timedelta
-        end_time = None
-        if self.detected_at and self.time_to_close_seconds is not None:
-            end_time = self.detected_at + timedelta(seconds=self.time_to_close_seconds)
-
         return {
-            "id":                    self.id,
-            "market_id":             self.market_id,
-            "market_slug":           self.market_slug,
-            "question":              self.question,
-            "category":              self.category,
-            "winning_token_id":      self.winning_token_id,
-            "winning_price":         self.current_price,
-            "side":                  self.side,
-            "opportunity_type":      self.opportunity_type,
-            "edge_percent":          self.edge_percent,
-            "confidence":            self.confidence,
-            "time_to_close_seconds": self.time_to_close_seconds,
-            "end_time":              end_time.isoformat() if end_time else None,
-            "detected_at":           self.detected_at.isoformat() if self.detected_at else None,
-            "executed_at":           self.executed_at.isoformat() if self.executed_at else None,
-            "status":                self.status.value if self.status else None,
+            "id":               self.id,
+            "market_id":        self.market_id,
+            "market_slug":      self.market_slug,
+            "question":         self.question,
+            "category":         self.category,
+            "winning_token_id": self.winning_token_id,
+            "winning_price":    self.current_price,
+            "side":             self.side,
+            "opportunity_type": self.opportunity_type,
+            "edge_percent":     self.edge_percent,
+            "confidence":       self.confidence,
+            "detected_at":      self.detected_at.isoformat() if self.detected_at else None,
+            "executed_at":      self.executed_at.isoformat() if self.executed_at else None,
+            "status":           self.status.value if self.status else None,
         }
 
 

@@ -47,6 +47,7 @@ class PolymarketClient:
         self._simulation = config.TRADING_MODE == "simulation"
         self._sim_markets: list = []  # cache for the current sim market set
         self._sim_price_index: dict = {}  # token_id → yes_price (O(1) lookup)
+        self._relayer_headers: Optional[Dict[str, str]] = None  # set in relayer mode
 
         if self._simulation:
             self.client = None
@@ -58,8 +59,10 @@ class PolymarketClient:
         self.private_key = config.POLYMARKET_PRIVATE_KEY
         self.funder_address = config.POLYMARKET_FUNDER_ADDRESS
 
-        # Check if builder credentials are configured
-        if config.BUILDER_ENABLED:
+        # Auth priority: Relayer > Builder > Standard
+        if config.RELAYER_ENABLED:
+            self._initialize_relayer_mode()
+        elif config.BUILDER_ENABLED:
             missing = [
                 name for name, val in (
                     ("BUILDER_API_KEY",    config.BUILDER_API_KEY),
@@ -116,6 +119,54 @@ class PolymarketClient:
                 logger.warning(f"Failed to initialize Builder credentials: {e}, falling back to standard mode")
                 self._initialize_standard_mode()
         else:
+            self._initialize_standard_mode()
+
+    def _initialize_relayer_mode(self):
+        """
+        Initialize with Relayer API key authentication.
+
+        Relayer keys (generated at polymarket.com/settings?tab=api-keys) provide unlimited
+        relay transactions for a single wallet without tier approval. Orders are submitted
+        with standard L2 CLOB headers plus RELAYER_API_KEY and RELAYER_API_KEY_ADDRESS headers.
+        """
+        missing = [
+            name for name, val in (
+                ("RELAYER_API_KEY",         config.RELAYER_API_KEY),
+                ("RELAYER_API_KEY_ADDRESS", config.RELAYER_API_KEY_ADDRESS),
+            )
+            if not val
+        ]
+        if missing:
+            logger.warning(
+                f"RELAYER_ENABLED=True but the following .env keys are missing or empty: "
+                f"{', '.join(missing)} — falling back to standard mode"
+            )
+            self._initialize_standard_mode()
+            return
+
+        try:
+            self.client = ClobClient(
+                host=self.host,
+                chain_id=self.chain_id,
+                key=self.private_key,
+                signature_type=1,
+                funder=self.funder_address,
+            )
+            self.client.set_api_creds(
+                self.client.create_or_derive_api_creds()
+            )
+            # Store relayer headers to inject into every order submission
+            self._relayer_headers = {
+                "RELAYER_API_KEY":         config.RELAYER_API_KEY,
+                "RELAYER_API_KEY_ADDRESS": config.RELAYER_API_KEY_ADDRESS,
+            }
+            logger.info(
+                f"Polymarket client initialized with Relayer credentials "
+                f"— tier: {config.builder_tier_label}"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to initialize Relayer credentials: {e} — falling back to standard mode")
+            self._relayer_headers = None
             self._initialize_standard_mode()
 
     def _initialize_standard_mode(self):
@@ -367,11 +418,50 @@ class PolymarketClient:
             )
 
             signed_order = self.client.create_market_order(order_args)
-            response = _with_retry(
-                lambda: self.client.post_order(signed_order, OrderType.FOK),
-                retries=3,
-                delays=(0.1, 0.5, 2.0),
-            )
+
+            if self._relayer_headers:
+                # Relayer mode: submit to the relayer endpoint with L2 CLOB headers
+                # merged with RELAYER_API_KEY / RELAYER_API_KEY_ADDRESS headers so
+                # that orders are attributed to the relayer account (unlimited relay
+                # transactions, no tier approval required).
+                import json as _json
+                import requests as _requests
+                from py_clob_client.headers.headers import create_level_2_headers
+                from py_clob_client.clob_types import RequestArgs
+                from py_clob_client.utilities import order_to_json
+
+                _RELAYER_URL = "https://relayer-v2.polymarket.com"
+                _ORDER_PATH  = "/order"
+
+                body = order_to_json(signed_order, self.client.creds.api_key, OrderType.FOK, False)
+                serialized = _json.dumps(body, separators=(",", ":"), ensure_ascii=False)
+                req_args = RequestArgs(
+                    method="POST",
+                    request_path=_ORDER_PATH,
+                    body=body,
+                    serialized_body=serialized,
+                )
+                l2_headers = create_level_2_headers(self.client.signer, self.client.creds, req_args)
+                merged_headers = {**l2_headers, **self._relayer_headers}
+
+                def _submit_via_relayer():
+                    resp = _requests.post(
+                        f"{_RELAYER_URL}{_ORDER_PATH}",
+                        headers=merged_headers,
+                        data=serialized,
+                        timeout=10,
+                    )
+                    if not resp.ok:
+                        raise RuntimeError(f"Relayer returned {resp.status_code}: {resp.text[:200]}")
+                    return resp.json()
+
+                response = _with_retry(_submit_via_relayer, retries=3, delays=(0.1, 0.5, 2.0))
+            else:
+                response = _with_retry(
+                    lambda: self.client.post_order(signed_order, OrderType.FOK),
+                    retries=3,
+                    delays=(0.1, 0.5, 2.0),
+                )
 
             logger.info(
                 f"Order submitted: {side} {token_id[:16]}… amount={amount:.4f} "
