@@ -3,7 +3,7 @@ Demo Buy Strategy — proof of concept only.
 
 Buys the YES token of every market that passes a basic liquidity check,
 with no price or edge filter.  Exits each position after a short hold period
-(_DEMO_HOLD_SECONDS) to prove the full open → monitor → close path works.
+(hold_seconds) to prove the full open → monitor → close path works.
 
 Never use this strategy with real money.
 """
@@ -15,24 +15,30 @@ from data.polymarket_client import PolymarketClient
 from data.polymarket_models import TradeOpportunity, TradeStatus
 from data.market_schema import PolymarketMarket
 from strategies.base import BaseStrategy
+from strategies.config_loader import load_strategy_config
 from utils.logger import logger
 
-# Hold each demo position for this many seconds before exiting.
-_DEMO_HOLD_SECONDS: int = 60
+_DEFAULTS = dict(
+    hold_seconds=60,
+    scan_categories=["crypto"],
+)
 
 
 class DemoBuy(BaseStrategy):
     """
     Demo strategy: enter YES on every liquid market, exit after
-    _DEMO_HOLD_SECONDS at whatever the current market price is.
+    hold_seconds at whatever the current market price is.
     """
 
     def __init__(self, client: PolymarketClient):
         self.client = client
 
+        cfg = {**_DEFAULTS, **load_strategy_config("demo_buy")}
+        self._hold_seconds: int = int(cfg["hold_seconds"])
+        self._scan_categories: List[str] = list(cfg["scan_categories"])
+
     def get_scan_categories(self) -> List[str]:
-        # Demo only needs a narrow scope to keep noise low
-        return ["crypto"]
+        return self._scan_categories
 
     def scan_for_opportunities(self, markets: list) -> List[TradeOpportunity]:
         opportunities = []
@@ -72,12 +78,12 @@ class DemoBuy(BaseStrategy):
                     detected_at=datetime.now(timezone.utc),
                     status=TradeStatus.DETECTED,
                 )
-                opportunity.expires_at = datetime.now(timezone.utc) + timedelta(seconds=_DEMO_HOLD_SECONDS)
+                opportunity.expires_at = datetime.now(timezone.utc) + timedelta(seconds=self._hold_seconds)
 
                 opportunities.append(opportunity)
                 logger.info(
                     f"[DEMO] Opportunity: {market.slug} YES @ ${yes_price:.4f} "
-                    f"— will exit in {_DEMO_HOLD_SECONDS}s"
+                    f"— will exit in {self._hold_seconds}s"
                 )
 
             except Exception as e:

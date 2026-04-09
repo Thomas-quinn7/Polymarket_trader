@@ -232,4 +232,5 @@ strategies/*.py
 !strategies/__init__.py
 !strategies/base.py
 !strategies/registry.py
+!strategies/config_loader.py
 !strategies/examples/

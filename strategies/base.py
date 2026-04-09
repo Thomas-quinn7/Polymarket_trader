@@ -28,6 +28,9 @@ class BaseStrategy(ABC):
     get_scan_categories     – list of Polymarket categories this strategy scans
     """
 
+    # Framework provenance — inherited by all strategy subclasses.
+    _framework_id: str = "pmf-7e3f-tq343"
+
     # ── Required ───────────────────────────────────────────────────────────
 
     @abstractmethod

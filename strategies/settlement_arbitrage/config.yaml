@@ -1,0 +1,45 @@
+# generated: pmf-7e3f-tq343
+strategy: settlement_arbitrage
+
+# ---------------------------------------------------------------------------
+# Price window
+# ---------------------------------------------------------------------------
+# Only markets whose YES token price falls in [min, max] are considered.
+min_price_threshold: 0.985
+max_price_threshold: 1.00
+
+# ---------------------------------------------------------------------------
+# Execution timing
+# ---------------------------------------------------------------------------
+# Enter only when the market closes within this many seconds.
+execute_before_close_seconds: 30
+
+# ---------------------------------------------------------------------------
+# Edge filter mode
+# ---------------------------------------------------------------------------
+# Controls how a candidate opportunity's net edge is evaluated before entry.
+#
+#   net_edge          — Original behaviour. Entry is allowed when:
+#                         net_edge = gross_edge - taker_fee > 0
+#                       Any positive net edge after fees is sufficient.
+#
+#   slippage_adjusted — Stricter mode. Entry is allowed only when:
+#                         net_edge > expected_slippage_buffer_pct
+#                       This ensures the trade remains profitable even
+#                       after typical fill slippage is absorbed.
+#
+edge_filter_mode: net_edge
+
+# ---------------------------------------------------------------------------
+# Slippage buffer (used only when edge_filter_mode = slippage_adjusted)
+# ---------------------------------------------------------------------------
+# Minimum net edge (%) that must remain *after* fees before entry is
+# allowed.  Acts as the expected slippage headroom.
+#
+# Example: fee = 2%, buffer = 1%
+#   price = 0.985 → gross = 1.5% → net = -0.5%  → REJECTED (fee wipes it)
+#   price = 0.975 → gross = 2.5% → net =  0.5%  → REJECTED (< 1% buffer)
+#   price = 0.970 → gross = 3.0% → net =  1.0%  → ACCEPTED (= buffer)
+#   price = 0.960 → gross = 4.0% → net =  2.0%  → ACCEPTED (> buffer)
+#
+expected_slippage_buffer_pct: 1.0

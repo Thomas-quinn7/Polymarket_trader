@@ -8,14 +8,13 @@ Behaviour
 ---------
 1. On the first scan, finds the single most-liquid active market.
 2. Buys the YES side at the current real market price (paper only).
-3. Holds the position for HOLD_SECONDS, then exits at the live price.
+3. Holds the position for hold_seconds, then exits at the live price.
 
 This deliberately has NO edge filter — the point is to prove that
 real prices are fetched, a paper order lands correctly, and the
 position shows up in the dashboard/logs. Do not use with real funds.
 """
 
-import os
 from datetime import datetime, timezone, timedelta
 from typing import List
 
@@ -23,16 +22,15 @@ from data.polymarket_client import PolymarketClient
 from data.polymarket_models import TradeOpportunity, TradeStatus
 from data.market_schema import PolymarketMarket
 from strategies.base import BaseStrategy
+from strategies.config_loader import load_strategy_config
 from utils.logger import logger
 
-# How long (seconds) to hold the paper position before exiting.
-_HOLD_SECONDS: int = int(os.getenv("PAPER_DEMO_HOLD_SECONDS", "300"))  # 5 min default
-
-# Minimum USD volume — keeps us out of ghost markets with no liquidity data.
-_MIN_VOLUME: float = float(os.getenv("PAPER_DEMO_MIN_VOLUME", "500.0"))
-
-# Which category to scan first.
-_SCAN_CATEGORY: str = os.getenv("PAPER_DEMO_CATEGORY", "crypto")
+_DEFAULTS = dict(
+    hold_seconds=300,
+    min_volume=500.0,
+    primary_scan_category="crypto",
+    scan_categories=["crypto", "fed", "regulatory", "other"],
+)
 
 
 class PaperDemo(BaseStrategy):
@@ -40,7 +38,7 @@ class PaperDemo(BaseStrategy):
     Minimal paper-trading demo:
     - Finds the first real, liquid market from the Polymarket API.
     - Enters a YES paper position at the live price.
-    - Exits after PAPER_DEMO_HOLD_SECONDS at the live price.
+    - Exits after hold_seconds at the live price.
 
     Useful for verifying that end-to-end order flow works correctly
     (real API → paper buy → position tracker → dashboard → paper sell).
@@ -50,9 +48,20 @@ class PaperDemo(BaseStrategy):
         self.client = client
         self._entered = False      # True once we have an open position
 
+        cfg = {**_DEFAULTS, **load_strategy_config("paper_demo")}
+        self._hold_seconds: int = int(cfg["hold_seconds"])
+        self._min_volume: float = float(cfg["min_volume"])
+        self._primary_scan_category: str = str(cfg["primary_scan_category"])
+        self._scan_categories: List[str] = list(cfg["scan_categories"])
+
+        logger.info(
+            f"PaperDemo initialised — hold={self._hold_seconds}s, "
+            f"min_volume=${self._min_volume:.0f}, "
+            f"primary_category={self._primary_scan_category!r}"
+        )
+
     def get_scan_categories(self) -> List[str]:
-        # Scan the configured category first; fall back to all if needed.
-        return [_SCAN_CATEGORY, "fed", "regulatory", "other"]
+        return self._scan_categories
 
     # ------------------------------------------------------------------
     # scan_for_opportunities
@@ -78,7 +87,7 @@ class PaperDemo(BaseStrategy):
                     continue
                 if len(market.token_ids) < 2:
                     continue
-                if market.volume < _MIN_VOLUME:
+                if market.volume < self._min_volume:
                     continue
 
                 if market.volume > best_volume:
@@ -110,7 +119,7 @@ class PaperDemo(BaseStrategy):
             )
             return []
 
-        expires_at = datetime.now(timezone.utc) + timedelta(seconds=_HOLD_SECONDS)
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=self._hold_seconds)
 
         opp = TradeOpportunity(
             market_id=best_market.market_id,
@@ -140,7 +149,7 @@ class PaperDemo(BaseStrategy):
             best_market.question,
             yes_price,
             best_volume,
-            _HOLD_SECONDS,
+            self._hold_seconds,
             expires_at.strftime("%H:%M:%S"),
         )
 
