@@ -171,6 +171,7 @@ class TradingBot:
 
         self._print_final_report()
         alert_manager.send_system_stop_alert()
+        _release_power_policy()
         logger.info("Trading Bot stopped")
 
     # ── Trading loop control ───────────────────────────────────────────
@@ -429,6 +430,54 @@ class TradingBot:
         )
 
 
+def _apply_power_policy() -> None:
+    """
+    Block Windows idle sleep while the bot runs (PREVENT_SLEEP=true in .env).
+
+    Uses SetThreadExecutionState to hold ES_SYSTEM_REQUIRED and
+    ES_AWAYMODE_REQUIRED so the system won't sleep due to inactivity.
+
+    Note: this prevents *idle* sleep only. To keep the bot running when
+    the laptop lid is closed you must also change Windows power settings:
+        Settings → System → Power & sleep → Additional power settings
+        → Choose what closing the lid does → "Do nothing" (on battery + plugged in)
+    """
+    if not config.PREVENT_SLEEP:
+        return
+
+    if sys.platform != "win32":
+        logger.warning("PREVENT_SLEEP is only supported on Windows — ignoring")
+        return
+
+    import ctypes
+
+    ES_CONTINUOUS = 0x80000000
+    ES_SYSTEM_REQUIRED = 0x00000001
+    ES_AWAYMODE_REQUIRED = 0x00000040  # prevents deep sleep in away / lid-closed mode
+
+    result = ctypes.windll.kernel32.SetThreadExecutionState(
+        ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED
+    )
+    if result:
+        logger.info(
+            "Power policy: idle sleep blocked (PREVENT_SLEEP=True). "
+            "For lid-close support set 'When I close the lid' → 'Do nothing' "
+            "in Windows power settings."
+        )
+    else:
+        logger.warning("Power policy: SetThreadExecutionState failed — sleep not blocked")
+
+
+def _release_power_policy() -> None:
+    """Restore normal Windows sleep behaviour on shutdown."""
+    if sys.platform != "win32" or not config.PREVENT_SLEEP:
+        return
+    import ctypes
+
+    ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)  # ES_CONTINUOUS only
+    logger.info("Power policy: sleep restrictions released")
+
+
 _BANNER = (
     "\033[96m"
     "╔══════════════════════════════════════════════════════════════════════╗\n"
@@ -444,6 +493,7 @@ _BANNER = (
 
 def main():
     print(_BANNER)
+    _apply_power_policy()
     import argparse
 
     parser = argparse.ArgumentParser(description="Polymarket Trading Bot")
