@@ -199,6 +199,9 @@ PERSONAL.md
 # Private ownership record — must not be published
 OWNERSHIP.md
 
+# Internal development notes
+TODO.md
+
 # Backup files
 *.bak
 *.backup
