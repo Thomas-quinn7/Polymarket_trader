@@ -41,9 +41,7 @@ class WebhookSender:
         else:
             logger.info("Webhook sender initialized")
             if "discord.com" in webhook_url and self.discord_username:
-                logger.info(
-                    f"Discord mentions configured for user: @{self.discord_username}"
-                )
+                logger.info(f"Discord mentions configured for user: @{self.discord_username}")
 
     def send_webhook(self, payload: Dict) -> bool:
         """
@@ -76,13 +74,9 @@ class WebhookSender:
                     )
 
             except requests.exceptions.Timeout:
-                logger.error(
-                    f"Webhook timeout (attempt {attempt + 1}/{self.retry_count})"
-                )
+                logger.error(f"Webhook timeout (attempt {attempt + 1}/{self.retry_count})")
             except requests.exceptions.ConnectionError:
-                logger.error(
-                    f"Webhook connection error (attempt {attempt + 1}/{self.retry_count})"
-                )
+                logger.error(f"Webhook connection error (attempt {attempt + 1}/{self.retry_count})")
             except requests.exceptions.RequestException as e:
                 logger.error(
                     f"Webhook request error (attempt {attempt + 1}/{self.retry_count}): {e}"
@@ -268,9 +262,7 @@ class WebhookSender:
 
         # Add message with mention for important alerts
         if message:
-            embed["description"] = (
-                f"{mention}\n{message}" if should_mention else message
-            )
+            embed["description"] = f"{mention}\n{message}" if should_mention else message
 
         # Add additional data if available
         if data:
@@ -278,9 +270,7 @@ class WebhookSender:
                 parsed_data = json.loads(data) if isinstance(data, str) else data
                 for key, value in parsed_data.items():
                     if len(embed["fields"]) < 25:  # Discord limit
-                        embed["fields"].append(
-                            {"name": key, "value": str(value), "inline": True}
-                        )
+                        embed["fields"].append({"name": key, "value": str(value), "inline": True})
             except Exception:
                 pass
 

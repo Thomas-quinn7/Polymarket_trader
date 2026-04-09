@@ -64,9 +64,10 @@ class PolymarketClient:
             self._initialize_relayer_mode()
         elif config.BUILDER_ENABLED:
             missing = [
-                name for name, val in (
-                    ("BUILDER_API_KEY",    config.BUILDER_API_KEY),
-                    ("BUILDER_SECRET",     config.BUILDER_SECRET),
+                name
+                for name, val in (
+                    ("BUILDER_API_KEY", config.BUILDER_API_KEY),
+                    ("BUILDER_SECRET", config.BUILDER_SECRET),
                     ("BUILDER_PASSPHRASE", config.BUILDER_PASSPHRASE),
                 )
                 if not val
@@ -89,9 +90,7 @@ class PolymarketClient:
                     passphrase=config.BUILDER_PASSPHRASE,
                 )
 
-                builder_config = BuilderConfig(
-                    local_builder_creds=builder_creds
-                )
+                builder_config = BuilderConfig(local_builder_creds=builder_creds)
 
                 # Initialize SDK client with credentials
                 self.client = ClobClient(
@@ -103,9 +102,7 @@ class PolymarketClient:
                 )
 
                 # Set user API credentials
-                self.client.set_api_creds(
-                    self.client.create_or_derive_api_creds()
-                )
+                self.client.set_api_creds(self.client.create_or_derive_api_creds())
 
                 # Update client with builder config
                 self.client.builder_config = builder_config
@@ -116,7 +113,9 @@ class PolymarketClient:
                 )
 
             except Exception as e:
-                logger.warning(f"Failed to initialize Builder credentials: {e}, falling back to standard mode")
+                logger.warning(
+                    f"Failed to initialize Builder credentials: {e}, falling back to standard mode"
+                )
                 self._initialize_standard_mode()
         else:
             self._initialize_standard_mode()
@@ -130,8 +129,9 @@ class PolymarketClient:
         with standard L2 CLOB headers plus RELAYER_API_KEY and RELAYER_API_KEY_ADDRESS headers.
         """
         missing = [
-            name for name, val in (
-                ("RELAYER_API_KEY",         config.RELAYER_API_KEY),
+            name
+            for name, val in (
+                ("RELAYER_API_KEY", config.RELAYER_API_KEY),
                 ("RELAYER_API_KEY_ADDRESS", config.RELAYER_API_KEY_ADDRESS),
             )
             if not val
@@ -152,12 +152,10 @@ class PolymarketClient:
                 signature_type=1,
                 funder=self.funder_address,
             )
-            self.client.set_api_creds(
-                self.client.create_or_derive_api_creds()
-            )
+            self.client.set_api_creds(self.client.create_or_derive_api_creds())
             # Store relayer headers to inject into every order submission
             self._relayer_headers = {
-                "RELAYER_API_KEY":         config.RELAYER_API_KEY,
+                "RELAYER_API_KEY": config.RELAYER_API_KEY,
                 "RELAYER_API_KEY_ADDRESS": config.RELAYER_API_KEY_ADDRESS,
             }
             logger.info(
@@ -165,7 +163,9 @@ class PolymarketClient:
                 f"— tier: {config.builder_tier_label}"
             )
         except Exception as e:
-            logger.warning(f"Failed to initialize Relayer credentials: {e} — falling back to standard mode")
+            logger.warning(
+                f"Failed to initialize Relayer credentials: {e} — falling back to standard mode"
+            )
             self._relayer_headers = None
             self._initialize_standard_mode()
 
@@ -181,16 +181,14 @@ class PolymarketClient:
             )
 
             # Set API credentials
-            self.client.set_api_creds(
-                self.client.create_or_derive_api_creds()
-            )
+            self.client.set_api_creds(self.client.create_or_derive_api_creds())
 
-            logger.info(
-                f"Polymarket client initialized — tier: {config.builder_tier_label}"
-            )
+            logger.info(f"Polymarket client initialized — tier: {config.builder_tier_label}")
         except Exception as e:
             self.client = None
-            logger.info(f"ClobClient unavailable (no valid private key) — price fetching disabled: {e}")
+            logger.info(
+                f"ClobClient unavailable (no valid private key) — price fetching disabled: {e}"
+            )
 
     def get_all_markets(self, category: Optional[str] = None) -> list:  # noqa: C901
         """
@@ -204,6 +202,7 @@ class PolymarketClient:
         """
         if self._simulation:
             from data.simulation_markets import generate_simulation_markets
+
             self._sim_markets = generate_simulation_markets(category)
             # Build O(1) price lookup index keyed by token_id
             self._sim_price_index = {
@@ -212,7 +211,9 @@ class PolymarketClient:
                 if m.get("clobTokenIds")
                 for tid in m["clobTokenIds"]
             }
-            logger.debug(f"[SIM] Generated {len(self._sim_markets)} synthetic markets (category={category})")
+            logger.debug(
+                f"[SIM] Generated {len(self._sim_markets)} synthetic markets (category={category})"
+            )
             return self._sim_markets
 
         import requests
@@ -237,10 +238,14 @@ class PolymarketClient:
                     )
                 )
             except requests.exceptions.Timeout:
-                logger.error(f"Timeout fetching markets page (offset={offset}) for category '{category}'")
+                logger.error(
+                    f"Timeout fetching markets page (offset={offset}) for category '{category}'"
+                )
                 break
             except Exception as e:
-                logger.error(f"Request error fetching markets page (offset={offset}) for category '{category}': {e}")
+                logger.error(
+                    f"Request error fetching markets page (offset={offset}) for category '{category}': {e}"
+                )
                 break
 
             if response.status_code != 200:
@@ -253,7 +258,9 @@ class PolymarketClient:
             try:
                 events = response.json()
             except ValueError as e:
-                logger.error(f"Failed to parse Gamma API response for category '{category}' (offset={offset}): {e}")
+                logger.error(
+                    f"Failed to parse Gamma API response for category '{category}' (offset={offset}): {e}"
+                )
                 break
 
             if not isinstance(events, list):
@@ -302,9 +309,7 @@ class PolymarketClient:
             import requests
             from config.polymarket_config import config
 
-            response = requests.get(
-                f"{config.GAMMA_API_URL}/markets?token_id={market_id}"
-            )
+            response = requests.get(f"{config.GAMMA_API_URL}/markets?token_id={market_id}")
 
             if response.status_code == 200:
                 return response.json()
@@ -339,6 +344,7 @@ class PolymarketClient:
                 raw = float(result) if result else 0.0
             # Reject NaN / Infinity — these propagate silently into calculations
             import math
+
             if not math.isfinite(raw):
                 logger.warning(f"Non-finite price {raw!r} for {token_id} — treating as 0")
                 return 0.0
@@ -361,6 +367,7 @@ class PolymarketClient:
         """
         if self._simulation:
             from data.simulation_markets import generate_sim_order_book
+
             mid = self._sim_price_index.get(token_id, 0.5)
             return generate_sim_order_book(token_id, mid, levels=levels)
 
@@ -375,9 +382,16 @@ class PolymarketClient:
                 out = []
                 for lvl in levels_raw:
                     if isinstance(lvl, dict):
-                        out.append({"price": float(lvl.get("price", 0)), "size": float(lvl.get("size", 0))})
+                        out.append(
+                            {"price": float(lvl.get("price", 0)), "size": float(lvl.get("size", 0))}
+                        )
                     else:
-                        out.append({"price": float(getattr(lvl, "price", 0)), "size": float(getattr(lvl, "size", 0))})
+                        out.append(
+                            {
+                                "price": float(getattr(lvl, "price", 0)),
+                                "size": float(getattr(lvl, "size", 0)),
+                            }
+                        )
                 return out
 
             mid_price = float(self.client.get_midpoint(token_id))
@@ -431,7 +445,7 @@ class PolymarketClient:
                 from py_clob_client.utilities import order_to_json
 
                 _RELAYER_URL = "https://relayer-v2.polymarket.com"
-                _ORDER_PATH  = "/order"
+                _ORDER_PATH = "/order"
 
                 body = order_to_json(signed_order, self.client.creds.api_key, OrderType.FOK, False)
                 serialized = _json.dumps(body, separators=(",", ":"), ensure_ascii=False)
@@ -452,7 +466,9 @@ class PolymarketClient:
                         timeout=10,
                     )
                     if not resp.ok:
-                        raise RuntimeError(f"Relayer returned {resp.status_code}: {resp.text[:200]}")
+                        raise RuntimeError(
+                            f"Relayer returned {resp.status_code}: {resp.text[:200]}"
+                        )
                     return resp.json()
 
                 response = _with_retry(_submit_via_relayer, retries=3, delays=(0.1, 0.5, 2.0))

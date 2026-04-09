@@ -16,7 +16,7 @@ class TestSettings:
 
         assert settings.min_price_threshold == 0.985
         assert settings.max_price_threshold == 1.0
-        assert settings.max_positions > 0       # exact value set by .env; just check it is positive
+        assert settings.max_positions > 0  # exact value set by .env; just check it is positive
         assert settings.scan_interval_ms > 0
 
     def test_default_enable_flags(self):

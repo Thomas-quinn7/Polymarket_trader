@@ -53,7 +53,7 @@ class DemoBuy(BaseStrategy):
                     continue
 
                 token_id_yes = market.token_ids[0]
-                token_id_no  = market.token_ids[1]
+                token_id_no = market.token_ids[1]
 
                 yes_price = (
                     market.outcome_prices[0]
@@ -78,7 +78,9 @@ class DemoBuy(BaseStrategy):
                     detected_at=datetime.now(timezone.utc),
                     status=TradeStatus.DETECTED,
                 )
-                opportunity.expires_at = datetime.now(timezone.utc) + timedelta(seconds=self._hold_seconds)
+                opportunity.expires_at = datetime.now(timezone.utc) + timedelta(
+                    seconds=self._hold_seconds
+                )
 
                 opportunities.append(opportunity)
                 logger.info(

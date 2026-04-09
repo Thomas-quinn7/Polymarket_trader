@@ -7,10 +7,10 @@ from datetime import datetime, timezone, timedelta
 
 from data.market_schema import PolymarketMarket, _classify_category
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _raw(
     market_id="mkt-001",
@@ -47,6 +47,7 @@ def _past_date(seconds=300) -> str:
 # ---------------------------------------------------------------------------
 # from_api — required fields
 # ---------------------------------------------------------------------------
+
 
 class TestFromApiRequired:
     def test_returns_none_when_no_market_id(self):
@@ -91,6 +92,7 @@ class TestFromApiRequired:
 # ---------------------------------------------------------------------------
 # from_api — optional / alternative fields
 # ---------------------------------------------------------------------------
+
 
 class TestFromApiOptionalFields:
     def test_question_fallback_to_title(self):
@@ -147,6 +149,7 @@ class TestFromApiOptionalFields:
 # _classify_category
 # ---------------------------------------------------------------------------
 
+
 class TestClassifyCategory:
     def test_dict_tag_crypto(self):
         assert _classify_category([{"label": "crypto"}]) == "crypto"
@@ -190,6 +193,7 @@ class TestClassifyCategory:
 # seconds_to_close
 # ---------------------------------------------------------------------------
 
+
 class TestSecondsToClose:
     def test_returns_none_when_end_time_unknown(self):
         m = PolymarketMarket.from_api(_raw())
@@ -216,6 +220,7 @@ class TestSecondsToClose:
 # ---------------------------------------------------------------------------
 # has_sufficient_liquidity
 # ---------------------------------------------------------------------------
+
 
 class TestHasSufficientLiquidity:
     def test_passes_when_volume_equals_min(self):

@@ -51,7 +51,9 @@ class Settings(BaseSettings):
     # Paper Trading Settings
     paper_trading_enabled: bool = Field(default=True, description="Enable paper trading")
     paper_trading_only: bool = Field(default=True, description="Only paper trading (no real money)")
-    fake_currency_balance: float = Field(default=10000.0, description="Fake currency starting balance")
+    fake_currency_balance: float = Field(
+        default=10000.0, description="Fake currency starting balance"
+    )
 
     # Logging Configuration
     log_level: str = Field(default="INFO", description="Logging level")
@@ -73,17 +75,23 @@ class Settings(BaseSettings):
     crypto_keywords: str = Field(
         default="bitcoin,ethereum,crypto,defi,web3", description="Crypto market keywords"
     )
-    fed_keywords: str = Field(default="federal,reserve,fed,interest rate,inflation,economy", description="Fed market keywords")
+    fed_keywords: str = Field(
+        default="federal,reserve,fed,interest rate,inflation,economy",
+        description="Fed market keywords",
+    )
     regulatory_keywords: str = Field(
-        default="sec,regulation,compliance,government,fed chair,powell", description="Regulatory keywords"
+        default="sec,regulation,compliance,government,fed chair,powell",
+        description="Regulatory keywords",
     )
     other_keywords: str = Field(
-        default="politics,election,sports,entertainment,celebrity", description="Other market keywords"
+        default="politics,election,sports,entertainment,celebrity",
+        description="Other market keywords",
     )
 
     # Exclude Filters
     exclude_keywords: str = Field(
-        default="trump,biden,presidential,prediction,speculative,gambling,uncertain", description="Exclude keywords"
+        default="trump,biden,presidential,prediction,speculative,gambling,uncertain",
+        description="Exclude keywords",
     )
     exclude_slugs: str = Field(default="", description="Exclude market slugs (comma-separated)")
 
@@ -98,16 +106,22 @@ class Settings(BaseSettings):
 
     # Execution Settings
     order_type: str = Field(default="FOK", description="Order type (FOK, IOC)")
-    slippage_tolerance_percent: float = Field(default=5.0, description="Maximum slippage tolerance %")
+    slippage_tolerance_percent: float = Field(
+        default=5.0, description="Maximum slippage tolerance %"
+    )
     max_retries: int = Field(default=3, description="Maximum retry attempts")
     retry_delay_ms: int = Field(default=100, description="Retry delay in milliseconds")
 
     # Additional Settings
     targeted_scanning_enabled: bool = Field(default=False, description="Enable targeted scanning")
-    targeted_market_scan_interval_minutes: int = Field(default=15, description="Targeted scan interval (minutes)")
+    targeted_market_scan_interval_minutes: int = Field(
+        default=15, description="Targeted scan interval (minutes)"
+    )
     targeted_market_keywords: str = Field(default="", description="Targeted market keywords")
     sleep_on_no_opportunities: bool = Field(default=True, description="Sleep when no opportunities")
-    sleep_duration_minutes: int = Field(default=10, description="Sleep duration when no opportunities")
+    sleep_duration_minutes: int = Field(
+        default=10, description="Sleep duration when no opportunities"
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

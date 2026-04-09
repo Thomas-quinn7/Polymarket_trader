@@ -127,9 +127,7 @@ def load_strategy_config(strategy_name: str) -> Dict[str, Any]:
             cast_type = _TYPE_MAP[key]
             try:
                 raw[key] = _cast(key, env_val, cast_type)
-                logger.debug(
-                    f"[{strategy_name}] config override via env: {env_key}={env_val!r}"
-                )
+                logger.debug(f"[{strategy_name}] config override via env: {env_key}={env_val!r}")
             except (ValueError, TypeError) as exc:
                 logger.warning(
                     f"[{strategy_name}] could not cast env {env_key}={env_val!r} "

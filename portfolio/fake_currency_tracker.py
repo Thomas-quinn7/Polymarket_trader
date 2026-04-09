@@ -15,9 +15,7 @@ class CurrencyPosition:
     """Tracks currency allocation per position"""
 
     market_id: str
-    position_id: str = field(
-        default_factory=lambda: str(int(datetime.now().timestamp()))
-    )
+    position_id: str = field(default_factory=lambda: str(int(datetime.now().timestamp())))
     allocated: float = field(default=0.0)
     returned: float = field(default=0.0)
 
@@ -40,13 +38,9 @@ class FakeCurrencyTracker:
         self.balance = self.starting_balance
         self.deployed = 0.0
 
-        logger.info(
-            f"Fake currency tracker initialized with ${self.starting_balance:.2f}"
-        )
+        logger.info(f"Fake currency tracker initialized with ${self.starting_balance:.2f}")
 
-    def allocate_to_position(
-        self, position_id: str, market_id: str, amount: float
-    ) -> bool:
+    def allocate_to_position(self, position_id: str, market_id: str, amount: float) -> bool:
         """
         Allocate currency to a position (20% split)
 
@@ -59,9 +53,7 @@ class FakeCurrencyTracker:
             True if successful
         """
         if self.balance < amount:
-            logger.warning(
-                f"Insufficient balance: ${self.balance:.2f}, need ${amount:.2f}"
-            )
+            logger.warning(f"Insufficient balance: ${self.balance:.2f}, need ${amount:.2f}")
             return False
 
         if len(self.positions) >= config.MAX_POSITIONS:

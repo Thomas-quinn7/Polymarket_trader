@@ -108,6 +108,7 @@ class TradingBot:
 
     def _start_dashboard(self, port: int):
         import uvicorn
+
         try:
             uvicorn_config = uvicorn.Config(
                 app="dashboard.api:app",
@@ -127,6 +128,7 @@ class TradingBot:
 
         if config.DASHBOARD_ENABLED:
             import socket as _socket
+
             port = config.DASHBOARD_PORT
             original_port = port
             while True:
@@ -147,9 +149,7 @@ class TradingBot:
                     logger.warning(f"Port {original_port} in use, using port {port}")
                 logger.info(f"Dashboard: http://localhost:{port}")
                 dashboard.api.set_bot_instance(self)
-                threading.Thread(
-                    target=self._start_dashboard, args=(port,), daemon=True
-                ).start()
+                threading.Thread(target=self._start_dashboard, args=(port,), daemon=True).start()
                 time.sleep(2)
 
         alert_manager.send_system_start_alert()
@@ -191,9 +191,7 @@ class TradingBot:
         self.last_scan_time = 0
 
         self.running = True
-        self._trading_thread = threading.Thread(
-            target=self._run_loop_thread, daemon=True
-        )
+        self._trading_thread = threading.Thread(target=self._run_loop_thread, daemon=True)
         self._trading_thread.start()
 
         mode_label = (
@@ -268,12 +266,8 @@ class TradingBot:
                     continue
 
                 exit_price = self.strategy.get_exit_price(pos, current_price)
-                logger.info(
-                    f"Strategy exit signal: {pos.position_id} @ ${exit_price:.4f}"
-                )
-                pnl = self.executor.settle_position(
-                    pos.position_id, settlement_price=exit_price
-                )
+                logger.info(f"Strategy exit signal: {pos.position_id} @ ${exit_price:.4f}")
+                pnl = self.executor.settle_position(pos.position_id, settlement_price=exit_price)
 
                 if self.db:
                     settled = self.position_tracker.get_position(pos.position_id)
@@ -308,9 +302,7 @@ class TradingBot:
                         f"entry ${pos.entry_price:.4f}, now ${current_price:.4f} "
                         f"(dropped {drop_pct:.1f}%)"
                     )
-                    self.executor.execute_sell(
-                        pos.position_id, current_price, reason="stop_loss"
-                    )
+                    self.executor.execute_sell(pos.position_id, current_price, reason="stop_loss")
                     if self.db:
                         settled = self.position_tracker.get_position(pos.position_id)
                         if settled:
@@ -349,9 +341,7 @@ class TradingBot:
             if self.order_book_store is not None:
                 self._capture_order_book_snapshots(best)
 
-            open_market_ids = {
-                p.market_id for p in self.position_tracker.get_open_positions()
-            }
+            open_market_ids = {p.market_id for p in self.position_tracker.get_open_positions()}
 
             for opp in best:
                 if opp.market_id in open_market_ids:
@@ -362,9 +352,7 @@ class TradingBot:
                     logger.info("Max positions reached — skipping remaining opportunities")
                     break
 
-                position_id = (
-                    f"{opp.market_id}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
-                )
+                position_id = f"{opp.market_id}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
                 success = self.executor.execute_buy(opp, position_id)
 
                 if success:
@@ -389,6 +377,7 @@ class TradingBot:
 
     def _capture_order_book_snapshots(self, opportunities: list):
         from datetime import datetime, timezone
+
         now = datetime.now(timezone.utc)
         for opp in opportunities:
             try:
@@ -397,8 +386,12 @@ class TradingBot:
                 snapshot = OrderBookSnapshot(
                     token_id=token_id,
                     captured_at=now,
-                    bids=[OrderBookLevel(lvl["price"], lvl["size"]) for lvl in book.get("bids", [])],
-                    asks=[OrderBookLevel(lvl["price"], lvl["size"]) for lvl in book.get("asks", [])],
+                    bids=[
+                        OrderBookLevel(lvl["price"], lvl["size"]) for lvl in book.get("bids", [])
+                    ],
+                    asks=[
+                        OrderBookLevel(lvl["price"], lvl["size"]) for lvl in book.get("asks", [])
+                    ],
                 )
                 self.order_book_store.write_snapshot(snapshot)
             except Exception as e:
@@ -452,13 +445,16 @@ _BANNER = (
 def main():
     print(_BANNER)
     import argparse
+
     parser = argparse.ArgumentParser(description="Polymarket Trading Bot")
     parser.add_argument(
-        "--simulation", action="store_true",
+        "--simulation",
+        action="store_true",
         help="Run in simulation mode (synthetic data, no real API calls)",
     )
     parser.add_argument(
-        "--auto-start", action="store_true",
+        "--auto-start",
+        action="store_true",
         help="Automatically start the trading loop on launch",
     )
     args = parser.parse_args()
@@ -471,9 +467,11 @@ def main():
 
     if args.simulation or args.auto_start:
         import threading as _threading
+
         def _deferred_start():
             time.sleep(3)
             bot.start_trading_loop()
+
         _threading.Thread(target=_deferred_start, daemon=True).start()
 
     bot.start()

@@ -94,7 +94,7 @@ Time: {timestamp}
             smtp_username=smtp_username,
             email_from=email_from,
             email_to=email_to,
-            timestamp="2024-01-01T00:00:00Z"
+            timestamp="2024-01-01T00:00:00Z",
         )
 
         msg.attach(MIMEText(body, "plain"))
@@ -138,4 +138,5 @@ def main():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

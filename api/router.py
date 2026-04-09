@@ -54,11 +54,14 @@ def create_app() -> FastAPI:
     app.include_router(portfolio_routes.router, tags=["portfolio"])
 
     logger = get_logger(__name__)
-    logger.info("api_created", routes=[
-        "/health",
-        "/api/bot",
-        "/api/portfolio",
-    ])
+    logger.info(
+        "api_created",
+        routes=[
+            "/health",
+            "/api/bot",
+            "/api/portfolio",
+        ],
+    )
 
     return app
 

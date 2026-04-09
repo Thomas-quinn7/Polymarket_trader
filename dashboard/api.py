@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_DOTENV_PATH  = os.path.join(_PROJECT_ROOT, '.env')
+_DOTENV_PATH = os.path.join(_PROJECT_ROOT, ".env")
 
 # Fields that only take effect after a full process restart
 _RESTART_REQUIRED = {"fake_currency_balance"}
@@ -27,7 +27,6 @@ from portfolio.position_tracker import Position
 from portfolio.fake_currency_tracker import FakeCurrencyTracker
 from execution.order_executor import OrderExecutor
 from config.polymarket_config import config
-
 
 # Bot instance — written by main.py via set_bot_instance() before the
 # dashboard thread starts, then read from dashboard endpoint handlers.
@@ -194,6 +193,7 @@ async def get_dashboard():
     try:
         # Get working directory path
         import os
+
         dashboard_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
         with open(dashboard_path, "r", encoding="utf-8") as f:
             return f.read()
@@ -370,7 +370,11 @@ async def get_trades(limit: int = 50):
                 total=o["total"],
                 fee=o.get("fee", 0.0),
                 slippage_pct=o.get("slippage_pct", 0.0),
-                executed_at=o["executed_at"].isoformat() if isinstance(o["executed_at"], datetime) else o["executed_at"],
+                executed_at=(
+                    o["executed_at"].isoformat()
+                    if isinstance(o["executed_at"], datetime)
+                    else o["executed_at"]
+                ),
                 status=o["status"],
                 gross_pnl=o.get("gross_pnl"),
                 pnl=o.get("pnl"),
@@ -400,7 +404,8 @@ async def get_execution_stats():
             "net_pnl": pnl_summary.total_pnl,
             "fee_drag_pct": (
                 (pnl_summary.total_fees_paid / abs(pnl_summary.gross_pnl) * 100)
-                if pnl_summary.gross_pnl != 0 else 0.0
+                if pnl_summary.gross_pnl != 0
+                else 0.0
             ),
         }
     except HTTPException:
@@ -425,6 +430,7 @@ async def get_config():
 # ── Settings Models ────────────────────────────────────────────────────
 class SettingsResponse(BaseModel):
     """All user-editable settings (no secrets)"""
+
     trading_mode: str
     fake_currency_balance: float
     scan_interval_ms: int
@@ -445,6 +451,7 @@ class SettingsResponse(BaseModel):
 
 class SettingsUpdate(BaseModel):
     """Partial update — any subset of fields"""
+
     trading_mode: Optional[str] = None
     fake_currency_balance: Optional[float] = None
     scan_interval_ms: Optional[int] = None
@@ -466,21 +473,21 @@ class SettingsUpdate(BaseModel):
 # Map Pydantic field → (.env key, serialiser)
 _ENV_MAP: Dict[str, tuple] = {
     # trading_mode is a runtime toggle — updated in memory only, not written to .env
-    "fake_currency_balance":  ("FAKE_CURRENCY_BALANCE",  str),
-    "scan_interval_ms":       ("SCAN_INTERVAL_MS",       str),
-    "max_positions":          ("MAX_POSITIONS",          str),
-    "capital_split_percent":  ("CAPITAL_SPLIT_PERCENT",  str),
-    "min_confidence":         ("MIN_CONFIDENCE",         str),
-    "min_volume_usd":         ("MIN_VOLUME_USD",         str),
-    "enable_email_alerts":    ("ENABLE_EMAIL_ALERTS",    lambda v: "true" if v else "false"),
-    "enable_discord_alerts":  ("ENABLE_DISCORD_ALERTS",  lambda v: "true" if v else "false"),
-    "discord_webhook_url":    ("DISCORD_WEBHOOK_URL",    str),
-    "alert_email_from":       ("ALERT_EMAIL_FROM",       str),
-    "alert_email_to":         ("ALERT_EMAIL_TO",         str),
-    "smtp_server":            ("SMTP_SERVER",            str),
-    "smtp_port":              ("SMTP_PORT",              str),
-    "smtp_username":          ("SMTP_USERNAME",          str),
-    "log_level":              ("LOG_LEVEL",              str),
+    "fake_currency_balance": ("FAKE_CURRENCY_BALANCE", str),
+    "scan_interval_ms": ("SCAN_INTERVAL_MS", str),
+    "max_positions": ("MAX_POSITIONS", str),
+    "capital_split_percent": ("CAPITAL_SPLIT_PERCENT", str),
+    "min_confidence": ("MIN_CONFIDENCE", str),
+    "min_volume_usd": ("MIN_VOLUME_USD", str),
+    "enable_email_alerts": ("ENABLE_EMAIL_ALERTS", lambda v: "true" if v else "false"),
+    "enable_discord_alerts": ("ENABLE_DISCORD_ALERTS", lambda v: "true" if v else "false"),
+    "discord_webhook_url": ("DISCORD_WEBHOOK_URL", str),
+    "alert_email_from": ("ALERT_EMAIL_FROM", str),
+    "alert_email_to": ("ALERT_EMAIL_TO", str),
+    "smtp_server": ("SMTP_SERVER", str),
+    "smtp_port": ("SMTP_PORT", str),
+    "smtp_username": ("SMTP_USERNAME", str),
+    "log_level": ("LOG_LEVEL", str),
 }
 
 
@@ -548,7 +555,9 @@ async def update_settings(update: SettingsUpdate):
     if "trading_mode" in payload:
         mode = payload.pop("trading_mode").lower()
         if mode not in ("paper", "simulation"):
-            raise HTTPException(status_code=422, detail="trading_mode must be 'paper' or 'simulation'")
+            raise HTTPException(
+                status_code=422, detail="trading_mode must be 'paper' or 'simulation'"
+            )
         config.TRADING_MODE = mode
         changed.append("trading_mode")
 

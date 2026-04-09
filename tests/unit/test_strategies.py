@@ -19,10 +19,10 @@ from strategies.config_loader import load_strategy_config
 from strategies.demo_buy import DemoBuy
 from strategies.settlement_arbitrage import SettlementArbitrage
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_client():
     client = MagicMock()
@@ -87,6 +87,7 @@ def _make_settlement_arb(**yaml_overrides):
 # BaseStrategy ABC
 # ---------------------------------------------------------------------------
 
+
 class TestBaseStrategyABC:
     def test_cannot_instantiate_directly(self):
         with pytest.raises(TypeError):
@@ -96,6 +97,7 @@ class TestBaseStrategyABC:
         class Minimal(BaseStrategy):
             def scan_for_opportunities(self, markets):
                 return []
+
             def get_best_opportunities(self, opps, limit=5):
                 return opps[:limit]
 
@@ -103,16 +105,20 @@ class TestBaseStrategyABC:
 
     def test_missing_scan_raises(self):
         with pytest.raises(TypeError):
+
             class Bad(BaseStrategy):
                 def get_best_opportunities(self, opps, limit=5):
                     return []
+
             Bad()
 
     def test_missing_get_best_raises(self):
         with pytest.raises(TypeError):
+
             class Bad(BaseStrategy):
                 def scan_for_opportunities(self, markets):
                     return []
+
             Bad()
 
     def test_trading_strategy_alias(self):
@@ -120,22 +126,31 @@ class TestBaseStrategyABC:
 
     def test_should_exit_returns_false_by_default(self):
         class Minimal(BaseStrategy):
-            def scan_for_opportunities(self, m): return []
-            def get_best_opportunities(self, o, limit=5): return o[:limit]
+            def scan_for_opportunities(self, m):
+                return []
+
+            def get_best_opportunities(self, o, limit=5):
+                return o[:limit]
 
         assert Minimal().should_exit(_make_position(), 0.99) is False
 
     def test_get_exit_price_returns_current_price(self):
         class Minimal(BaseStrategy):
-            def scan_for_opportunities(self, m): return []
-            def get_best_opportunities(self, o, limit=5): return o[:limit]
+            def scan_for_opportunities(self, m):
+                return []
+
+            def get_best_opportunities(self, o, limit=5):
+                return o[:limit]
 
         assert Minimal().get_exit_price(_make_position(), 0.97) == 0.97
 
     def test_get_scan_categories_returns_all_four(self):
         class Minimal(BaseStrategy):
-            def scan_for_opportunities(self, m): return []
-            def get_best_opportunities(self, o, limit=5): return o[:limit]
+            def scan_for_opportunities(self, m):
+                return []
+
+            def get_best_opportunities(self, o, limit=5):
+                return o[:limit]
 
         assert set(Minimal().get_scan_categories()) == {"crypto", "fed", "regulatory", "other"}
 
@@ -143,6 +158,7 @@ class TestBaseStrategyABC:
 # ---------------------------------------------------------------------------
 # Strategy YAML config loader
 # ---------------------------------------------------------------------------
+
 
 class TestStrategyConfigLoader:
 
@@ -185,6 +201,7 @@ class TestStrategyConfigLoader:
 # Strategy Registry — auto-discovery
 # ---------------------------------------------------------------------------
 
+
 class TestStrategyRegistry:
     def test_available_strategies_lists_known(self):
         strategies = available_strategies()
@@ -192,7 +209,9 @@ class TestStrategyRegistry:
         assert "demo_buy" in strategies
 
     def test_load_settlement_arbitrage(self):
-        assert isinstance(load_strategy("settlement_arbitrage", _make_client()), SettlementArbitrage)
+        assert isinstance(
+            load_strategy("settlement_arbitrage", _make_client()), SettlementArbitrage
+        )
 
     def test_load_demo_buy(self):
         assert isinstance(load_strategy("demo_buy", _make_client()), DemoBuy)
@@ -217,10 +236,12 @@ class TestStrategyRegistry:
     def test_auto_discovery_finds_all_strategy_folders(self):
         """Every subfolder with an __init__.py and a BaseStrategy class is registered."""
         import os
+
         strategies_dir = os.path.join(os.path.dirname(__file__), "..", "..", "strategies")
         skip = {"__pycache__", "examples", "configs"}
         found_folders = [
-            e.name for e in os.scandir(strategies_dir)
+            e.name
+            for e in os.scandir(strategies_dir)
             if e.is_dir()
             and e.name not in skip
             and not e.name.startswith("_")
@@ -237,6 +258,7 @@ class TestStrategyRegistry:
 # ---------------------------------------------------------------------------
 # DemoBuy strategy
 # ---------------------------------------------------------------------------
+
 
 class TestDemoBuy:
     def test_get_scan_categories(self):
@@ -313,6 +335,7 @@ class TestDemoBuy:
 # SettlementArbitrage — core behaviour
 # ---------------------------------------------------------------------------
 
+
 class TestSettlementArbitrage:
     def test_get_scan_categories(self):
         s = _make_settlement_arb()
@@ -375,7 +398,7 @@ class TestSettlementArbitrage:
 
     def test_calculate_confidence_low_price_far_close(self):
         s = _make_settlement_arb()
-        low  = s._calculate_confidence(0.985, 86400, 0.5)
+        low = s._calculate_confidence(0.985, 86400, 0.5)
         high = s._calculate_confidence(0.999, 60, 1.5)
         assert low < high
 
@@ -414,6 +437,7 @@ class TestSettlementArbitrage:
 # SettlementArbitrage — edge filter modes
 # ---------------------------------------------------------------------------
 
+
 class TestEdgeFilterMode:
 
     # ── _passes_edge_filter unit tests ──────────────────────────────────────
@@ -431,25 +455,37 @@ class TestEdgeFilterMode:
         assert s._passes_edge_filter(-0.5, "mkt", 1.5) is False
 
     def test_slippage_adjusted_passes_above_buffer(self):
-        s = _make_settlement_arb(edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=1.0)
+        s = _make_settlement_arb(
+            edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=1.0
+        )
         assert s._passes_edge_filter(1.5, "mkt", 3.5) is True
 
     def test_slippage_adjusted_rejects_at_buffer(self):
-        s = _make_settlement_arb(edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=1.0)
+        s = _make_settlement_arb(
+            edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=1.0
+        )
         assert s._passes_edge_filter(1.0, "mkt", 3.0) is False
 
     def test_slippage_adjusted_rejects_below_buffer(self):
-        s = _make_settlement_arb(edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=1.0)
+        s = _make_settlement_arb(
+            edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=1.0
+        )
         assert s._passes_edge_filter(0.5, "mkt", 2.5) is False
 
     def test_slippage_adjusted_zero_buffer_behaves_like_net_edge(self):
-        s = _make_settlement_arb(edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=0.0)
+        s = _make_settlement_arb(
+            edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=0.0
+        )
         assert s._passes_edge_filter(0.01, "mkt", 2.01) is True
-        assert s._passes_edge_filter(0.0,  "mkt", 2.0) is False
+        assert s._passes_edge_filter(0.0, "mkt", 2.0) is False
 
     def test_larger_buffer_rejects_more_trades(self):
-        s_tight = _make_settlement_arb(edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=0.5)
-        s_loose = _make_settlement_arb(edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=2.0)
+        s_tight = _make_settlement_arb(
+            edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=0.5
+        )
+        s_loose = _make_settlement_arb(
+            edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=2.0
+        )
         assert s_tight._passes_edge_filter(1.0, "mkt", 3.0) is True
         assert s_loose._passes_edge_filter(1.0, "mkt", 3.0) is False
 
@@ -473,12 +509,16 @@ class TestEdgeFilterMode:
 
     def test_slippage_adjusted_rejects_marginal_trade(self):
         """price=0.990, fee=0%, buffer=1.5% → net=1.0% < 1.5% → rejected."""
-        s = _make_settlement_arb(edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=1.5)
+        s = _make_settlement_arb(
+            edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=1.5
+        )
         assert len(self._scan(s, 0.990, 0.0)) == 0
 
     def test_slippage_adjusted_accepts_high_edge_trade(self):
         """price=0.985, fee=0%, buffer=1.0% → net~1.5% > 1.0% → accepted."""
-        s = _make_settlement_arb(edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=1.0)
+        s = _make_settlement_arb(
+            edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=1.0
+        )
         assert len(self._scan(s, 0.985, 0.0)) == 1
 
     def test_net_edge_opportunity_edge_percent_is_net(self):
@@ -488,7 +528,9 @@ class TestEdgeFilterMode:
         assert opps[0].edge_percent == pytest.approx((1.0 - 0.985) * 100 - 0.0, abs=0.01)
 
     def test_slippage_adjusted_opportunity_edge_percent_is_net(self):
-        s = _make_settlement_arb(edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=0.5)
+        s = _make_settlement_arb(
+            edge_filter_mode="slippage_adjusted", expected_slippage_buffer_pct=0.5
+        )
         opps = self._scan(s, 0.985, 0.0)
         assert len(opps) == 1
         assert opps[0].edge_percent == pytest.approx((1.0 - 0.985) * 100 - 0.0, abs=0.01)

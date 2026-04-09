@@ -176,6 +176,7 @@ class TradeDatabase:
             return False
         try:
             from datetime import datetime
+
             self._conn.execute(
                 "INSERT INTO pnl_history (recorded_at, balance, pnl) VALUES (?, ?, ?)",
                 (datetime.now().isoformat(), balance, pnl),

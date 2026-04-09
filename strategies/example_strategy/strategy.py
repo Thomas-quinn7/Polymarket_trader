@@ -62,7 +62,7 @@ _DEFAULTS = dict(
     execute_before_close_seconds=60,
     hold_seconds=0,
     # Edge filter
-    edge_filter_mode="net_edge",          # "net_edge" | "slippage_adjusted"
+    edge_filter_mode="net_edge",  # "net_edge" | "slippage_adjusted"
     expected_slippage_buffer_pct=1.0,
     # Confidence gate
     strategy_min_confidence=0.0,
@@ -120,8 +120,9 @@ class ExampleStrategy(BaseStrategy):
         self._min_confidence: float = float(cfg["strategy_min_confidence"])
 
         # Position cap — env-var overridable via STRATEGY_MAX_POSITIONS
-        self._max_positions: int = int(cfg["strategy_max_positions"]) \
-            if cfg["strategy_max_positions"] is not None else 5
+        self._max_positions: int = (
+            int(cfg["strategy_max_positions"]) if cfg["strategy_max_positions"] is not None else 5
+        )
 
         # Store raw cfg for any custom keys added to config.yaml
         self._cfg = cfg
@@ -131,7 +132,11 @@ class ExampleStrategy(BaseStrategy):
             f"  Price window : [{self._min_price}, {self._max_price}]\n"
             f"  Categories   : {self._scan_categories}\n"
             f"  Edge mode    : {self._edge_filter_mode}"
-            + (f" (buffer={self._slippage_buffer}%)" if self._edge_filter_mode == "slippage_adjusted" else "")
+            + (
+                f" (buffer={self._slippage_buffer}%)"
+                if self._edge_filter_mode == "slippage_adjusted"
+                else ""
+            )
             + f"\n  Max positions: {self._max_positions}"
         )
 
@@ -171,7 +176,7 @@ class ExampleStrategy(BaseStrategy):
                     continue
 
                 token_yes = market.token_ids[0]
-                token_no  = market.token_ids[1]
+                token_no = market.token_ids[1]
 
                 # Prefer the price embedded in the Gamma response to avoid
                 # an extra CLOB API call per market.
@@ -189,7 +194,7 @@ class ExampleStrategy(BaseStrategy):
 
                 # ── SIGNAL: edge filter ───────────────────────────────
                 gross_edge = (1.0 - yes_price) * 100
-                net_edge   = gross_edge - taker_fee
+                net_edge = gross_edge - taker_fee
 
                 if not self._passes_edge_filter(net_edge, market.slug, gross_edge):
                     continue
@@ -219,7 +224,7 @@ class ExampleStrategy(BaseStrategy):
                 if self._hold_seconds > 0:
                     expires_at = datetime.now(timezone.utc) + timedelta(seconds=self._hold_seconds)
                 else:
-                    expires_at = market.end_time   # hold until market settles
+                    expires_at = market.end_time  # hold until market settles
 
                 opp = TradeOpportunity(
                     market_id=market.market_id,
@@ -245,9 +250,7 @@ class ExampleStrategy(BaseStrategy):
                 )
 
             except Exception as exc:
-                logger.error(
-                    f"[Example] Error scanning {raw_market.get('slug', '?')}: {exc}"
-                )
+                logger.error(f"[Example] Error scanning {raw_market.get('slug', '?')}: {exc}")
 
         return opportunities
 
@@ -295,9 +298,7 @@ class ExampleStrategy(BaseStrategy):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _passes_edge_filter(
-        self, net_edge: float, market_slug: str, gross_edge: float
-    ) -> bool:
+    def _passes_edge_filter(self, net_edge: float, market_slug: str, gross_edge: float) -> bool:
         """
         Apply the configured edge filter mode.
 
@@ -343,21 +344,19 @@ class ExampleStrategy(BaseStrategy):
                                     (normalised to a 5% maximum)
         """
         price_range = self._max_price - self._min_price
-        price_factor = (
-            (yes_price - self._min_price) / price_range if price_range > 0 else 0.0
-        )
+        price_factor = (yes_price - self._min_price) / price_range if price_range > 0 else 0.0
 
         gate = self._execute_before_close_seconds
         if time_to_close <= 0:
             time_factor = 0.0
         elif time_to_close < gate:
-            time_factor = 0.2          # Inside the window but cutting it fine
+            time_factor = 0.2  # Inside the window but cutting it fine
         elif time_to_close <= 300:
-            time_factor = 1.0          # Sweet spot — imminent, still fillable
+            time_factor = 1.0  # Sweet spot — imminent, still fillable
         elif time_to_close <= 3600:
-            time_factor = 0.6          # Approaching — reasonably certain
+            time_factor = 0.6  # Approaching — reasonably certain
         else:
-            time_factor = 0.3          # Far out — outcome still uncertain
+            time_factor = 0.3  # Far out — outcome still uncertain
 
         edge_factor = min(net_edge / 5.0, 1.0)
 

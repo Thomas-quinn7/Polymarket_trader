@@ -123,31 +123,41 @@ class EnhancedMarketScanner:
             return cats.get(name, {}).get(key, default)
 
         # ── Category enabled flags ────────────────────────────────────────
-        crypto_enabled     = getattr(config, "ENABLE_CRYPTO_MARKETS",     _cat("crypto",     "enabled", True))
-        fed_enabled        = getattr(config, "ENABLE_FED_MARKETS",        _cat("fed",        "enabled", True))
-        regulatory_enabled = getattr(config, "ENABLE_REGULATORY_MARKETS", _cat("regulatory", "enabled", True))
-        other_enabled      = getattr(config, "ENABLE_OTHER_MARKETS",      _cat("other",      "enabled", True))
+        crypto_enabled = getattr(config, "ENABLE_CRYPTO_MARKETS", _cat("crypto", "enabled", True))
+        fed_enabled = getattr(config, "ENABLE_FED_MARKETS", _cat("fed", "enabled", True))
+        regulatory_enabled = getattr(
+            config, "ENABLE_REGULATORY_MARKETS", _cat("regulatory", "enabled", True)
+        )
+        other_enabled = getattr(config, "ENABLE_OTHER_MARKETS", _cat("other", "enabled", True))
 
         # ── Category priorities ────────────────────────────────────────────
-        crypto_priority     = getattr(config, "PRIORITY_CRYPTO",      _cat("crypto",     "priority", 1))
-        fed_priority        = getattr(config, "PRIORITY_FED",         _cat("fed",        "priority", 2))
-        regulatory_priority = getattr(config, "PRIORITY_REGULATORY",  _cat("regulatory", "priority", 3))
-        other_priority      = getattr(config, "PRIORITY_OTHER",       _cat("other",      "priority", 4))
+        crypto_priority = getattr(config, "PRIORITY_CRYPTO", _cat("crypto", "priority", 1))
+        fed_priority = getattr(config, "PRIORITY_FED", _cat("fed", "priority", 2))
+        regulatory_priority = getattr(
+            config, "PRIORITY_REGULATORY", _cat("regulatory", "priority", 3)
+        )
+        other_priority = getattr(config, "PRIORITY_OTHER", _cat("other", "priority", 4))
 
         # ── Keywords (YAML list; env-var CRYPTO_KEYWORDS=a,b overrides) ──
-        crypto_keywords     = self._parse_list(os.getenv("CRYPTO_KEYWORDS",     "")) or _cat("crypto",     "keywords", [])
-        fed_keywords        = self._parse_list(os.getenv("FED_KEYWORDS",        "")) or _cat("fed",        "keywords", [])
-        regulatory_keywords = self._parse_list(os.getenv("REGULATORY_KEYWORDS", "")) or _cat("regulatory", "keywords", [])
-        other_keywords      = self._parse_list(os.getenv("OTHER_KEYWORDS",      "")) or _cat("other",      "keywords", [])
+        crypto_keywords = self._parse_list(os.getenv("CRYPTO_KEYWORDS", "")) or _cat(
+            "crypto", "keywords", []
+        )
+        fed_keywords = self._parse_list(os.getenv("FED_KEYWORDS", "")) or _cat(
+            "fed", "keywords", []
+        )
+        regulatory_keywords = self._parse_list(os.getenv("REGULATORY_KEYWORDS", "")) or _cat(
+            "regulatory", "keywords", []
+        )
+        other_keywords = self._parse_list(os.getenv("OTHER_KEYWORDS", "")) or _cat(
+            "other", "keywords", []
+        )
 
         # ── Exclusions ────────────────────────────────────────────────────
-        exclude_keywords = (
-            self._parse_list(os.getenv("EXCLUDE_KEYWORDS", ""))
-            or yaml_cfg.get("exclude_keywords", [])
+        exclude_keywords = self._parse_list(os.getenv("EXCLUDE_KEYWORDS", "")) or yaml_cfg.get(
+            "exclude_keywords", []
         )
-        exclude_slugs = (
-            self._parse_list(os.getenv("EXCLUDE_SLUGS", ""))
-            or yaml_cfg.get("exclude_slugs", [])
+        exclude_slugs = self._parse_list(os.getenv("EXCLUDE_SLUGS", "")) or yaml_cfg.get(
+            "exclude_slugs", []
         )
 
         # ── Scalar filters (env var > YAML > None) ────────────────────────
@@ -157,13 +167,15 @@ class EnhancedMarketScanner:
                 return parse_fn(env_val)
             return yaml_cfg.get(yaml_key)
 
-        min_price            = _scalar("MIN_PRICE",            "min_price",            self._parse_float)
-        max_price            = _scalar("MAX_PRICE",            "max_price",            self._parse_float)
-        min_edge             = _scalar("MIN_EDGE",             "min_edge",             self._parse_float)
-        max_edge             = _scalar("MAX_EDGE",             "max_edge",             self._parse_float)
-        min_time_to_close    = _scalar("MIN_TIME_TO_CLOSE",    "min_time_to_close",    self._parse_int)
-        max_time_to_close    = _scalar("MAX_TIME_TO_CLOSE",    "max_time_to_close",    self._parse_int)
-        max_markets_to_track = _scalar("MAX_MARKETS_TO_TRACK", "max_markets_to_track", self._parse_int)
+        min_price = _scalar("MIN_PRICE", "min_price", self._parse_float)
+        max_price = _scalar("MAX_PRICE", "max_price", self._parse_float)
+        min_edge = _scalar("MIN_EDGE", "min_edge", self._parse_float)
+        max_edge = _scalar("MAX_EDGE", "max_edge", self._parse_float)
+        min_time_to_close = _scalar("MIN_TIME_TO_CLOSE", "min_time_to_close", self._parse_int)
+        max_time_to_close = _scalar("MAX_TIME_TO_CLOSE", "max_time_to_close", self._parse_int)
+        max_markets_to_track = _scalar(
+            "MAX_MARKETS_TO_TRACK", "max_markets_to_track", self._parse_int
+        )
 
         # ── Boolean behaviour flags ───────────────────────────────────────
         track_new_markets_only = (
@@ -270,7 +282,10 @@ class EnhancedMarketScanner:
         if self.config.exclude_keywords:
             title_lower = market.question.lower()
             slug_lower = market.slug.lower()
-            if any(kw.lower() in title_lower or kw.lower() in slug_lower for kw in self.config.exclude_keywords):
+            if any(
+                kw.lower() in title_lower or kw.lower() in slug_lower
+                for kw in self.config.exclude_keywords
+            ):
                 return False
 
         if self.config.exclude_slugs and market.slug in self.config.exclude_slugs:
@@ -287,9 +302,15 @@ class EnhancedMarketScanner:
         if self.config.min_time_to_close is not None or self.config.max_time_to_close is not None:
             ttc = market.seconds_to_close()
             if ttc is not None:
-                if self.config.min_time_to_close is not None and ttc < self.config.min_time_to_close:
+                if (
+                    self.config.min_time_to_close is not None
+                    and ttc < self.config.min_time_to_close
+                ):
                     return False
-                if self.config.max_time_to_close is not None and ttc > self.config.max_time_to_close:
+                if (
+                    self.config.max_time_to_close is not None
+                    and ttc > self.config.max_time_to_close
+                ):
                     return False
 
         return True
@@ -357,18 +378,22 @@ class EnhancedMarketScanner:
                     self.seen_markets.add(market.market_id)
 
         if skipped_parse:
-            logger.warning(f"Skipped {skipped_parse} markets with missing required fields for category {category}")
+            logger.warning(
+                f"Skipped {skipped_parse} markets with missing required fields for category {category}"
+            )
 
-        logger.info(f"Scanned {len(filtered_markets)}/{len(raw_markets)} markets for category {category}")
+        logger.info(
+            f"Scanned {len(filtered_markets)}/{len(raw_markets)} markets for category {category}"
+        )
         return filtered_markets
 
     def scan_all_markets(self) -> List[dict]:
         """Scan all enabled market categories."""
         category_map = {
-            "crypto":     (self.config.crypto_enabled,     self.config.crypto_priority),
-            "fed":        (self.config.fed_enabled,        self.config.fed_priority),
+            "crypto": (self.config.crypto_enabled, self.config.crypto_priority),
+            "fed": (self.config.fed_enabled, self.config.fed_priority),
             "regulation": (self.config.regulatory_enabled, self.config.regulatory_priority),
-            "other":      (self.config.other_enabled,      self.config.other_priority),
+            "other": (self.config.other_enabled, self.config.other_priority),
         }
         sorted_categories = sorted(
             [(cat, info) for cat, info in category_map.items() if info[0]],
@@ -396,8 +421,10 @@ class EnhancedMarketScanner:
                 "regulatory_enabled": self.config.regulatory_enabled,
                 "other_enabled": self.config.other_enabled,
                 "keywords_enabled": bool(
-                    self.config.crypto_keywords or self.config.fed_keywords
-                    or self.config.regulatory_keywords or self.config.other_keywords
+                    self.config.crypto_keywords
+                    or self.config.fed_keywords
+                    or self.config.regulatory_keywords
+                    or self.config.other_keywords
                 ),
                 "exclude_enabled": bool(self.config.exclude_keywords or self.config.exclude_slugs),
             },

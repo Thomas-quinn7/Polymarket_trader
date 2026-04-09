@@ -87,6 +87,7 @@ def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     if name is None:
         # Get the caller's module name
         import inspect
+
         frame = inspect.currentframe().f_back
         name = inspect.getmodule(frame).__name__
     return structlog.get_logger(name)

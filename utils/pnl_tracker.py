@@ -67,9 +67,9 @@ class PnLSummary:
     total_trades: int = 0
     wins: int = 0
     losses: int = 0
-    total_pnl: float = 0.0          # Net PnL after fees
-    gross_pnl: float = 0.0          # PnL before fees
-    total_fees_paid: float = 0.0    # All entry + exit fees
+    total_pnl: float = 0.0  # Net PnL after fees
+    gross_pnl: float = 0.0  # PnL before fees
+    total_fees_paid: float = 0.0  # All entry + exit fees
     win_rate: float = 0.0
     average_win: float = 0.0
     average_loss: float = 0.0
@@ -270,7 +270,7 @@ class PnLTracker:
         total_gross_pnl = total_fees = 0.0
         for t in closed_trades:
             total_pnl += t.pnl
-            total_gross_pnl += (t.gross_pnl or 0.0)
+            total_gross_pnl += t.gross_pnl or 0.0
             total_fees += t.total_fees
             if t.pnl > 0:
                 wins_count += 1
@@ -331,9 +331,7 @@ class PnLTracker:
         with self._lock:
             trades_snapshot = list(self.trades)
 
-        for trade in sorted(
-            trades_snapshot, key=lambda x: x.exit_time or x.entry_time
-        ):
+        for trade in sorted(trades_snapshot, key=lambda x: x.exit_time or x.entry_time):
             if trade.exit_price is not None:
                 running_balance += trade.pnl
                 history.append(
@@ -364,8 +362,12 @@ class PnLTracker:
         """Generate formatted PnL report"""
         summary = self.get_summary()
 
-        pnl_pct = summary.total_pnl / summary.initial_balance * 100 if summary.initial_balance else 0
-        gross_pct = summary.gross_pnl / summary.initial_balance * 100 if summary.initial_balance else 0
+        pnl_pct = (
+            summary.total_pnl / summary.initial_balance * 100 if summary.initial_balance else 0
+        )
+        gross_pct = (
+            summary.gross_pnl / summary.initial_balance * 100 if summary.initial_balance else 0
+        )
         W = 50  # inner width between the two ║ chars
 
         def row(label: str, value: str) -> str:
@@ -384,26 +386,26 @@ class PnLTracker:
             f"║{'P&L REPORT':^{W+2}}║",
             f"╠{border}╣",
             section("Balance"),
-            row("Initial:",  f"${summary.initial_balance:>13,.2f}"),
-            row("Current:",  f"${self.current_balance:>13,.2f}"),
-            row("Peak:",     f"${summary.peak_balance:>13,.2f}"),
+            row("Initial:", f"${summary.initial_balance:>13,.2f}"),
+            row("Current:", f"${self.current_balance:>13,.2f}"),
+            row("Peak:", f"${summary.peak_balance:>13,.2f}"),
             row("Net Change:", f"${summary.total_pnl:>13,.2f}  ({pnl_pct:+.2f}%)"),
             blank(),
             section("Trade Statistics"),
             row("Total Trades:", f"{summary.total_trades:>8}"),
-            row("Wins:",         f"{summary.wins:>8}  ({summary.win_rate:>5.1f}%)"),
-            row("Losses:",       f"{summary.losses:>8}  ({100 - summary.win_rate:>5.1f}%)"),
+            row("Wins:", f"{summary.wins:>8}  ({summary.win_rate:>5.1f}%)"),
+            row("Losses:", f"{summary.losses:>8}  ({100 - summary.win_rate:>5.1f}%)"),
             blank(),
             section("Performance"),
-            row("Gross PnL:",    f"${summary.gross_pnl:>13,.2f}  ({gross_pct:+.2f}%)"),
-            row("Fees Paid:",    f"${summary.total_fees_paid:>13,.2f}"),
-            row("Net PnL:",      f"${summary.total_pnl:>13,.2f}  ({pnl_pct:+.2f}%)"),
-            row("Avg Win:",      f"${summary.average_win:>13,.2f}"),
-            row("Avg Loss:",     f"${summary.average_loss:>13,.2f}"),
+            row("Gross PnL:", f"${summary.gross_pnl:>13,.2f}  ({gross_pct:+.2f}%)"),
+            row("Fees Paid:", f"${summary.total_fees_paid:>13,.2f}"),
+            row("Net PnL:", f"${summary.total_pnl:>13,.2f}  ({pnl_pct:+.2f}%)"),
+            row("Avg Win:", f"${summary.average_win:>13,.2f}"),
+            row("Avg Loss:", f"${summary.average_loss:>13,.2f}"),
             row("Profit Factor:", f"{summary.profit_factor:>13.2f}"),
             blank(),
             section("Drawdown"),
-            row("Max DD:",     f"{summary.max_drawdown:>12.2f}%"),
+            row("Max DD:", f"{summary.max_drawdown:>12.2f}%"),
             row("Current DD:", f"{summary.current_drawdown:>12.2f}%"),
             f"╚{border}╝",
         ]

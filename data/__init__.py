@@ -1,4 +1,5 @@
 """Data package"""
+
 from .polymarket_client import PolymarketClient
 from .polymarket_models import (
     ArbitrageOpportunity,

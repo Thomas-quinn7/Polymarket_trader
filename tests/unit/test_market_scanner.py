@@ -50,7 +50,7 @@ class TestScanCategoriesBasic:
     def test_multiple_categories_merged(self):
         data = {
             "crypto": [_market("c1"), _market("c2")],
-            "fed":    [_market("f1")],
+            "fed": [_market("f1")],
         }
         client = _make_client(data)
         result = scan_categories(client, categories=["crypto", "fed"])
@@ -62,7 +62,7 @@ class TestDeduplication:
         """Same id appearing in two categories → only one entry returned."""
         dup = _market("dup-1")
         data = {
-            "crypto":     [dup, _market("unique-1")],
+            "crypto": [dup, _market("unique-1")],
             "regulatory": [dup, _market("unique-2")],
         }
         client = _make_client(data)
@@ -73,7 +73,7 @@ class TestDeduplication:
     def test_dedup_false_allows_duplicates(self):
         dup = _market("dup-1")
         data = {
-            "crypto":     [dup],
+            "crypto": [dup],
             "regulatory": [dup],
         }
         client = _make_client(data)
@@ -92,7 +92,7 @@ class TestDeduplication:
     def test_unique_markets_all_preserved(self):
         data = {
             "crypto": [_market(f"c{i}") for i in range(5)],
-            "fed":    [_market(f"f{i}") for i in range(5)],
+            "fed": [_market(f"f{i}") for i in range(5)],
         }
         client = _make_client(data)
         result = scan_categories(client, categories=["crypto", "fed"])
@@ -118,10 +118,12 @@ class TestErrorHandling:
     def test_failed_category_returns_empty_for_that_category(self):
         """If one category fetch throws, others still succeed."""
         client = MagicMock()
+
         def _get(category=None):
             if category == "crypto":
                 raise RuntimeError("API error")
             return [_market(f"{category}-1")]
+
         client.get_all_markets.side_effect = _get
 
         result = scan_categories(client, categories=["crypto", "fed"])
@@ -138,10 +140,12 @@ class TestErrorHandling:
 
     def test_partial_failure_preserves_order(self):
         """Successful categories maintain their relative order."""
+
         def _get(category=None):
             if category == "fed":
                 raise RuntimeError("oops")
             return [_market(f"{category}-1")]
+
         client = MagicMock()
         client.get_all_markets.side_effect = _get
 
@@ -156,7 +160,7 @@ class TestOrdering:
         """Category order is preserved in the merged result."""
         data = {
             "crypto": [_market("crypto-1")],
-            "fed":    [_market("fed-1")],
+            "fed": [_market("fed-1")],
         }
         client = _make_client(data)
         result = scan_categories(client, categories=["crypto", "fed"])

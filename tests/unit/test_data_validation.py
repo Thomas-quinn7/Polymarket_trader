@@ -17,17 +17,20 @@ from unittest.mock import patch
 
 from data.market_schema import PolymarketMarket, _classify_category
 from data.polymarket_models import (
-    TradeOpportunity, TradeStatus, TradePosition, PositionStatus,
+    TradeOpportunity,
+    TradeStatus,
+    TradePosition,
+    PositionStatus,
 )
 from portfolio.position_tracker import PositionTracker, Position
 from utils.pnl_tracker import PnLTracker
 from portfolio.fake_currency_tracker import FakeCurrencyTracker
 from execution.order_executor import OrderExecutor
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _raw_market(**overrides):
     """Return a minimal valid raw market dict, with optional overrides."""
@@ -94,6 +97,7 @@ def _buy(executor, opp, pid, split=0.20):
 # Market schema — end_time field name variants
 # ---------------------------------------------------------------------------
 
+
 class TestEndTimeFieldVariants:
     """All known close-time field names must be recognised."""
 
@@ -143,6 +147,7 @@ class TestEndTimeFieldVariants:
 # ---------------------------------------------------------------------------
 # Market schema — outcomePrices field parsing
 # ---------------------------------------------------------------------------
+
 
 class TestOutcomePricesParsing:
     """outcomePrices may arrive as a JSON string or a Python list."""
@@ -194,6 +199,7 @@ class TestOutcomePricesParsing:
 # Market schema — volume field fallback chain
 # ---------------------------------------------------------------------------
 
+
 class TestVolumeFieldFallback:
     def test_volume_primary_field(self):
         m = PolymarketMarket.from_api(_raw_market(volume=12_345.0))
@@ -226,6 +232,7 @@ class TestVolumeFieldFallback:
 # ---------------------------------------------------------------------------
 # Market schema — market_id fallback chain
 # ---------------------------------------------------------------------------
+
 
 class TestMarketIdFallback:
     def test_id_field_used_first(self):
@@ -262,9 +269,16 @@ class TestMarketIdFallback:
 # Market schema — question / title fallback
 # ---------------------------------------------------------------------------
 
+
 class TestQuestionFallback:
     def test_question_field_primary(self):
-        raw = {"id": "x", "question": "Primary?", "title": "Title?", "slug": "slg", "clobTokenIds": []}
+        raw = {
+            "id": "x",
+            "question": "Primary?",
+            "title": "Title?",
+            "slug": "slg",
+            "clobTokenIds": [],
+        }
         m = PolymarketMarket.from_api(raw)
         assert m.question == "Primary?"
 
@@ -282,6 +296,7 @@ class TestQuestionFallback:
 # ---------------------------------------------------------------------------
 # Market schema — token_ids validation
 # ---------------------------------------------------------------------------
+
 
 class TestTokenIdParsing:
     def test_valid_list_preserved(self):
@@ -309,6 +324,7 @@ class TestTokenIdParsing:
 # ---------------------------------------------------------------------------
 # Category classification edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestCategoryClassificationEdgeCases:
     def test_empty_list_returns_other(self):
@@ -346,14 +362,27 @@ class TestCategoryClassificationEdgeCases:
 # TradeOpportunity serialisation — to_dict types and shape
 # ---------------------------------------------------------------------------
 
+
 class TestTradeOpportunityToDict:
     def test_all_required_keys_present(self):
         opp = _make_opportunity()
         d = opp.to_dict()
-        for key in ("id", "market_id", "market_slug", "question", "category",
-                    "winning_token_id", "winning_price", "side",
-                    "opportunity_type", "edge_percent", "confidence",
-                    "detected_at", "executed_at", "status"):
+        for key in (
+            "id",
+            "market_id",
+            "market_slug",
+            "question",
+            "category",
+            "winning_token_id",
+            "winning_price",
+            "side",
+            "opportunity_type",
+            "edge_percent",
+            "confidence",
+            "detected_at",
+            "executed_at",
+            "status",
+        ):
             assert key in d, f"Missing key: {key}"
 
     def test_no_time_to_close_key(self):
@@ -403,6 +432,7 @@ class TestTradeOpportunityToDict:
 # TradePosition serialisation
 # ---------------------------------------------------------------------------
 
+
 class TestTradePositionToDict:
     def _make_pos(self, **kwargs):
         defaults = dict(
@@ -425,10 +455,23 @@ class TestTradePositionToDict:
     def test_required_keys(self):
         pos = self._make_pos()
         d = pos.to_dict()
-        for key in ("id", "market_id", "market_slug", "question", "token_id",
-                    "shares", "entry_price", "current_price", "expected_pnl",
-                    "edge_percent", "status", "opened_at", "settled_at",
-                    "settlement_price", "realized_pnl"):
+        for key in (
+            "id",
+            "market_id",
+            "market_slug",
+            "question",
+            "token_id",
+            "shares",
+            "entry_price",
+            "current_price",
+            "expected_pnl",
+            "edge_percent",
+            "status",
+            "opened_at",
+            "settled_at",
+            "settlement_price",
+            "realized_pnl",
+        ):
             assert key in d, f"Missing key: {key}"
 
     def test_status_string(self):
@@ -456,6 +499,7 @@ class TestTradePositionToDict:
 # ---------------------------------------------------------------------------
 # Position dataclass — field types and defaults
 # ---------------------------------------------------------------------------
+
 
 class TestPositionDataclass:
     def _make(self, **kwargs):
@@ -503,12 +547,16 @@ class TestPositionDataclass:
 # Order executor — rejects invalid prices
 # ---------------------------------------------------------------------------
 
+
 class TestExecutorInvalidPriceRejection:
     def _opp(self, price):
         return SimpleNamespace(
-            market_id="m1", market_slug="s1",
+            market_id="m1",
+            market_slug="s1",
             question="Q?",
-            token_id_yes="ty", token_id_no="tn", winning_token_id="ty",
+            token_id_yes="ty",
+            token_id_no="tn",
+            winning_token_id="ty",
             current_price=price,
             edge_percent=1.5,
             expires_at=None,
@@ -544,6 +592,7 @@ class TestExecutorInvalidPriceRejection:
 # ---------------------------------------------------------------------------
 # FakeCurrencyTracker — balance invariant at every step
 # ---------------------------------------------------------------------------
+
 
 class TestCurrencyTrackerInvariant:
     """balance + deployed must always equal starting_balance (ignoring realised PnL)."""
@@ -605,6 +654,7 @@ class TestCurrencyTrackerInvariant:
 # PnL tracker — derived statistics correctness
 # ---------------------------------------------------------------------------
 
+
 class TestPnLTrackerStatistics:
     def _tracker(self):
         return PnLTracker(initial_balance=10_000.0)
@@ -612,53 +662,68 @@ class TestPnLTrackerStatistics:
     def test_profit_factor_ratio(self):
         t = self._tracker()
         # Two wins of 100 each, one loss of 50
-        t.open_position("p1", "m1", 100.0, 0.0); t.close_position("p1", exit_price=1.0)  # +100
-        t.open_position("p2", "m2", 100.0, 0.0); t.close_position("p2", exit_price=1.0)  # +100
-        t.open_position("p3", "m3", 100.0, 0.5); t.close_position("p3", exit_price=0.0)  # -50
+        t.open_position("p1", "m1", 100.0, 0.0)
+        t.close_position("p1", exit_price=1.0)  # +100
+        t.open_position("p2", "m2", 100.0, 0.0)
+        t.close_position("p2", exit_price=1.0)  # +100
+        t.open_position("p3", "m3", 100.0, 0.5)
+        t.close_position("p3", exit_price=0.0)  # -50
         summary = t.get_summary()
         # profit_factor = total_wins / abs(total_losses) = 200 / 50 = 4.0
         assert summary.profit_factor == pytest.approx(4.0, rel=0.01)
 
     def test_average_win(self):
         t = self._tracker()
-        t.open_position("p1", "m1", 100.0, 0.0); t.close_position("p1", exit_price=1.0)  # 100
-        t.open_position("p2", "m2", 200.0, 0.0); t.close_position("p2", exit_price=1.0)  # 200
+        t.open_position("p1", "m1", 100.0, 0.0)
+        t.close_position("p1", exit_price=1.0)  # 100
+        t.open_position("p2", "m2", 200.0, 0.0)
+        t.close_position("p2", exit_price=1.0)  # 200
         summary = t.get_summary()
         assert summary.average_win == pytest.approx(150.0, abs=0.01)
 
     def test_average_loss(self):
         t = self._tracker()
-        t.open_position("p1", "m1", 100.0, 1.0); t.close_position("p1", exit_price=0.0)  # -100
-        t.open_position("p2", "m2", 200.0, 1.0); t.close_position("p2", exit_price=0.0)  # -200
+        t.open_position("p1", "m1", 100.0, 1.0)
+        t.close_position("p1", exit_price=0.0)  # -100
+        t.open_position("p2", "m2", 200.0, 1.0)
+        t.close_position("p2", exit_price=0.0)  # -200
         summary = t.get_summary()
         assert summary.average_loss == pytest.approx(-150.0, abs=0.01)
 
     def test_win_rate_with_mixed_trades(self):
         t = self._tracker()
-        t.open_position("p1", "m1", 100.0, 0.0); t.close_position("p1", exit_price=1.0)
-        t.open_position("p2", "m2", 100.0, 1.0); t.close_position("p2", exit_price=0.0)
-        t.open_position("p3", "m3", 100.0, 0.0); t.close_position("p3", exit_price=1.0)
+        t.open_position("p1", "m1", 100.0, 0.0)
+        t.close_position("p1", exit_price=1.0)
+        t.open_position("p2", "m2", 100.0, 1.0)
+        t.close_position("p2", exit_price=0.0)
+        t.open_position("p3", "m3", 100.0, 0.0)
+        t.close_position("p3", exit_price=1.0)
         summary = t.get_summary()
         assert summary.win_rate == pytest.approx(2 / 3 * 100, rel=0.01)
 
     def test_no_loss_profit_factor_is_zero(self):
         """When there are no losses abs_loss==0, so profit_factor is defined as 0.0."""
         t = self._tracker()
-        t.open_position("p1", "m1", 100.0, 0.0); t.close_position("p1", exit_price=1.0)
+        t.open_position("p1", "m1", 100.0, 0.0)
+        t.close_position("p1", exit_price=1.0)
         summary = t.get_summary()
         assert summary.profit_factor == pytest.approx(0.0, abs=1e-6)
 
     def test_max_drawdown_after_sequence(self):
         t = self._tracker()
         # Win, then bigger loss
-        t.open_position("p1", "m1", 100.0, 0.0); t.close_position("p1", exit_price=1.0)  # +100
-        t.open_position("p2", "m2", 500.0, 1.0); t.close_position("p2", exit_price=0.0)  # -500
+        t.open_position("p1", "m1", 100.0, 0.0)
+        t.close_position("p1", exit_price=1.0)  # +100
+        t.open_position("p2", "m2", 500.0, 1.0)
+        t.close_position("p2", exit_price=0.0)  # -500
         assert t.max_drawdown > 0.0
 
     def test_total_pnl_sums_correctly(self):
         t = self._tracker()
-        t.open_position("p1", "m1", 100.0, 0.985); t.close_position("p1", exit_price=1.0)
-        t.open_position("p2", "m2", 100.0, 0.985); t.close_position("p2", exit_price=0.0)
+        t.open_position("p1", "m1", 100.0, 0.985)
+        t.close_position("p1", exit_price=1.0)
+        t.open_position("p2", "m2", 100.0, 0.985)
+        t.close_position("p2", exit_price=0.0)
         summary = t.get_summary()
         expected = (1.0 - 0.985) * 100 + (0.0 - 0.985) * 100
         assert summary.total_pnl == pytest.approx(expected, abs=0.01)
@@ -667,6 +732,7 @@ class TestPnLTrackerStatistics:
 # ---------------------------------------------------------------------------
 # has_sufficient_liquidity edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestLiquidityCheck:
     def test_zero_volume_fails_any_min(self):

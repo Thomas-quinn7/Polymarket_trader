@@ -53,9 +53,7 @@ class EmailSender:
 
         return True
 
-    def send_email(
-        self, subject: str, body: str, html_body: Optional[str] = None
-    ) -> bool:
+    def send_email(self, subject: str, body: str, html_body: Optional[str] = None) -> bool:
         """
         Send an email.
 
