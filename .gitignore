@@ -196,6 +196,9 @@ PERSONAL.md
 # Claude Code session memory and project context
 .claude/
 
+# Private ownership record — must not be published
+OWNERSHIP.md
+
 # Backup files
 *.bak
 *.backup
