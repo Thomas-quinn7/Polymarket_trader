@@ -29,12 +29,15 @@ class Position:
     allocated_capital: float
     expected_profit: float
     edge_percent: float
+    entry_fee: float = 0.0           # fee paid at entry (simulated or actual)
     status: str = "OPEN"  # OPEN, SETTLED, FAILED
     opened_at: datetime = field(default_factory=datetime.now)
     expires_at: Optional[datetime] = None  # absolute time this position should settle
     settled_at: Optional[datetime] = None
     settlement_price: Optional[float] = None
-    realized_pnl: Optional[float] = None
+    exit_fee: float = 0.0            # fee paid at exit/settlement
+    realized_pnl: Optional[float] = None   # net PnL after fees
+    gross_pnl: Optional[float] = None      # PnL before fees
 
     def to_dict(self):
         return {
@@ -54,7 +57,10 @@ class Position:
             "opened_at": self.opened_at.isoformat() if self.opened_at else None,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "settled_at": self.settled_at.isoformat() if self.settled_at else None,
+            "entry_fee": self.entry_fee,
+            "exit_fee": self.exit_fee,
             "settlement_price": self.settlement_price,
+            "gross_pnl": self.gross_pnl,
             "realized_pnl": self.realized_pnl,
         }
 
@@ -85,6 +91,8 @@ class PositionTracker:
         allocated_capital: float,
         expected_profit: float,
         position_id: Optional[str] = None,
+        entry_fee: float = 0.0,
+        slippage_pct: float = 0.0,
     ) -> str:
         """
         Create a new position from an opportunity
@@ -118,6 +126,7 @@ class PositionTracker:
             expected_profit=expected_profit,
             edge_percent=opportunity.edge_percent,
             expires_at=expires_at,
+            entry_fee=entry_fee,
         )
 
         with self._lock:
@@ -129,6 +138,8 @@ class PositionTracker:
             market_id=opportunity.market_id,
             quantity=shares,
             entry_price=opportunity.current_price,
+            entry_fee=entry_fee,
+            slippage_pct=slippage_pct,
         )
 
         logger.info(
@@ -143,6 +154,7 @@ class PositionTracker:
         self,
         position_id: str,
         settlement_price: float,
+        exit_fee: float = 0.0,
     ) -> Optional[float]:
         """
         Settle a position
@@ -160,37 +172,27 @@ class PositionTracker:
                 return None
             position = self.positions[position_id]
 
-        # Calculate PnL
-        pnl = (settlement_price - position.entry_price) * position.shares
-        cost_basis = position.entry_price * position.shares
-        pnl_percent = (pnl / cost_basis * 100) if cost_basis != 0 else 0.0
+        # Update PnL tracker — it owns the gross/net computation
+        net_pnl = self.pnl_tracker.close_position(
+            position_id=position_id,
+            exit_price=settlement_price,
+            final_price=settlement_price,
+            exit_fee=exit_fee,
+        )
+
+        gross_return = position.shares * settlement_price
+        gross_pnl = gross_return - position.allocated_capital
+        total_fees = position.entry_fee + exit_fee
 
         with self._lock:
             position.settlement_price = settlement_price
             position.settled_at = datetime.now()
-            position.realized_pnl = pnl
+            position.exit_fee = exit_fee
+            position.gross_pnl = gross_pnl
+            position.realized_pnl = net_pnl
             position.status = "SETTLED"
 
-        # Update PnL tracker
-        self.pnl_tracker.close_position(
-            position_id=position_id,
-            exit_price=settlement_price,
-            final_price=settlement_price,
-        )
-
-        # Log result
-        if pnl >= 0:
-            logger.info(
-                f"✅ Position settled (WIN): {position_id} - "
-                f"PnL: ${pnl:.2f} ({pnl_percent:.2f}%) 🎉"
-            )
-        else:
-            logger.warning(
-                f"❌ Position settled (LOSS): {position_id} - "
-                f"PnL: ${pnl:.2f} ({pnl_percent:.2f}%)"
-            )
-
-        return pnl
+        return net_pnl
 
     def get_position(self, position_id: str) -> Optional[Position]:
         """Get a position by ID"""

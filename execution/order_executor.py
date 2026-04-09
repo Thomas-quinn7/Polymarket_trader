@@ -73,11 +73,13 @@ class OrderExecutor:
                 )
                 return False
 
-            # Calculate shares
+            # Calculate shares and expected profit
             shares = capital_to_allocate / opportunity.current_price
-
-            # Expected profit based on the strategy's reported edge
             expected_profit = capital_to_allocate * (opportunity.edge_percent / 100.0)
+
+            # Simulate entry fee (paper) / record actual fee (live)
+            entry_fee = capital_to_allocate * (config.TAKER_FEE_PERCENT / 100.0)
+            slippage_pct = 0.0
 
             # Place real order on exchange if live trading is enabled
             if not config.PAPER_TRADING_ONLY and self.polymarket_client is not None:
@@ -111,10 +113,35 @@ class OrderExecutor:
                         f"Order not filled for {position_id} (status={order_status!r}) — aborting"
                     )
                     return False
+
+                # Extract filled price and enforce slippage tolerance
+                filled_price_raw = order_response.get("price") or order_response.get("average_price")
+                if filled_price_raw:
+                    try:
+                        filled_price = float(filled_price_raw)
+                        if filled_price > 0:
+                            slippage_pct = (
+                                (filled_price - opportunity.current_price)
+                                / opportunity.current_price * 100
+                            )
+                            if slippage_pct > config.SLIPPAGE_TOLERANCE_PERCENT:
+                                logger.error(
+                                    f"Slippage {slippage_pct:.2f}% exceeds tolerance "
+                                    f"{config.SLIPPAGE_TOLERANCE_PERCENT:.1f}% for {position_id} "
+                                    f"(expected ${opportunity.current_price:.4f}, "
+                                    f"filled ${filled_price:.4f}) — aborting"
+                                )
+                                return False
+                            if abs(slippage_pct) > 0.01:
+                                logger.info(
+                                    f"Slippage for {position_id}: {slippage_pct:+.2f}% "
+                                    f"(expected ${opportunity.current_price:.4f}, "
+                                    f"filled ${filled_price:.4f})"
+                                )
+                    except (ValueError, TypeError):
+                        logger.warning(f"Could not parse filled price={filled_price_raw!r}")
+
                 # Use actual filled size if returned by the exchange.
-                # Explicit None check — filled_size of 0 means nothing was filled,
-                # which is handled by the status check above; only update shares
-                # when we got a real positive fill.
                 filled_size = order_response.get("size_matched")
                 if filled_size is not None:
                     try:
@@ -143,6 +170,8 @@ class OrderExecutor:
                     allocated_capital=capital_to_allocate,
                     expected_profit=expected_profit,
                     position_id=position_id,
+                    entry_fee=entry_fee,
+                    slippage_pct=slippage_pct,
                 )
             except Exception:
                 # Roll back the currency allocation so balance stays consistent
@@ -186,15 +215,19 @@ class OrderExecutor:
                 "quantity": shares,
                 "price": opportunity.current_price,
                 "total": capital_to_allocate,
+                "fee": entry_fee,
+                "slippage_pct": slippage_pct,
                 "executed_at": datetime.now(),
                 "status": "FILLED",
             }
             self.order_history.append(order_record)
 
+            fee_str = f" | fee ${entry_fee:.2f}" if entry_fee > 0 else ""
+            slip_str = f" | slippage {slippage_pct:+.2f}%" if abs(slippage_pct) > 0.01 else ""
             logger.info(
                 f"✅ Buy order executed: {position_id} - "
                 f"{shares:.4f} shares @ ${opportunity.current_price:.4f} "
-                f"(Total: ${capital_to_allocate:.2f})"
+                f"(Total: ${capital_to_allocate:.2f}{fee_str}{slip_str})"
             )
 
             return True
@@ -289,22 +322,26 @@ class OrderExecutor:
                 )
                 settlement_price = 1.0
 
-            # Calculate return amount
-            return_amount = position.shares * settlement_price
+            # Calculate gross return and fees
+            gross_return = position.shares * settlement_price
+            exit_fee = gross_return * (config.TAKER_FEE_PERCENT / 100.0)
+            # Deduct both exit fee and entry fee (originally paid at open) from the return
+            net_return = gross_return - exit_fee - position.entry_fee
 
-            # Return to balance
+            # Return net proceeds to balance
             returned = self.currency_tracker.return_to_balance(
                 position_id=position_id,
-                return_amount=return_amount,
+                return_amount=net_return,
             )
 
             if not returned:
                 logger.warning(f"Failed to return currency for {position_id}")
 
-            # Settle position
+            # Settle position (passes exit_fee so PnL tracker computes net correctly)
             pnl = self.position_tracker.settle_position(
                 position_id=position_id,
                 settlement_price=settlement_price,
+                exit_fee=exit_fee,
             )
 
             # Log trade
@@ -331,6 +368,7 @@ class OrderExecutor:
                     loss=pnl,
                 )
 
+            total_fees = position.entry_fee + exit_fee
             # Record order
             order_record = {
                 "order_id": f"{position_id}_SELL",
@@ -341,17 +379,23 @@ class OrderExecutor:
                 "token_id": position.winning_token_id,
                 "quantity": position.shares,
                 "price": settlement_price,
-                "total": return_amount,
+                "total": net_return,
+                "fee": exit_fee,
+                "total_fees": total_fees,
+                "gross_pnl": position.gross_pnl,
+                "slippage_pct": 0.0,
                 "executed_at": datetime.now(),
                 "status": "FILLED",
                 "pnl": pnl,
             }
             self.order_history.append(order_record)
 
+            fee_str = f" | fees ${total_fees:.2f}" if total_fees > 0 else ""
             logger.info(
                 f"✅ Position settled: {position_id} - "
                 f"Exit: ${settlement_price:.4f}, "
-                f"PnL: ${(pnl or 0.0):.2f}"
+                f"Gross: ${(position.gross_pnl or 0.0):.2f}, "
+                f"Net PnL: ${(pnl or 0.0):.2f}{fee_str}"
             )
 
             return pnl
@@ -372,12 +416,14 @@ class OrderExecutor:
         return self.get_order_history(limit)
 
     def get_execution_stats(self) -> Dict:
-        """Get execution statistics"""
+        """Get execution statistics including fee totals and slippage."""
         total_orders = len(self.order_history)
 
-        # Single pass over order history
         buy_count = sell_count = filled_count = 0
         total_volume = 0.0
+        total_fees = 0.0
+        slippage_values = []
+
         for o in self.order_history:
             if o["action"] == "BUY":
                 buy_count += 1
@@ -386,6 +432,13 @@ class OrderExecutor:
             if o["status"] == "FILLED":
                 filled_count += 1
                 total_volume += o["total"]
+            total_fees += o.get("fee", 0.0)
+            slip = o.get("slippage_pct", 0.0)
+            if o["action"] == "BUY":
+                slippage_values.append(slip)
+
+        avg_slippage = sum(slippage_values) / len(slippage_values) if slippage_values else 0.0
+        max_slippage = max(slippage_values) if slippage_values else 0.0
 
         return {
             "total_orders": total_orders,
@@ -395,6 +448,9 @@ class OrderExecutor:
             "failed_orders": total_orders - filled_count,
             "fill_rate": (filled_count / total_orders * 100) if total_orders > 0 else 0.0,
             "total_volume": total_volume,
+            "total_fees_paid": total_fees,
+            "avg_slippage_pct": avg_slippage,
+            "max_slippage_pct": max_slippage,
         }
 
     def reset(self):

@@ -24,8 +24,20 @@ class TradeRecord:
     exit_price: Optional[float] = None
     entry_time: datetime = field(default_factory=datetime.now)
     exit_time: Optional[datetime] = None
+    # Net PnL after fees (what hits the balance)
     pnl: Optional[float] = None
     pnl_percent: Optional[float] = None
+    # Gross PnL before fees: (exit_price - entry_price) * quantity
+    gross_pnl: Optional[float] = None
+    # Fees
+    entry_fee: float = 0.0
+    exit_fee: float = 0.0
+    # Slippage on entry: positive = filled worse than expected (cost more)
+    slippage_pct: float = 0.0
+
+    @property
+    def total_fees(self) -> float:
+        return self.entry_fee + self.exit_fee
 
     def to_dict(self):
         return {
@@ -40,6 +52,11 @@ class TradeRecord:
             "exit_time": self.exit_time.isoformat() if self.exit_time else None,
             "pnl": self.pnl,
             "pnl_percent": self.pnl_percent,
+            "gross_pnl": self.gross_pnl,
+            "entry_fee": self.entry_fee,
+            "exit_fee": self.exit_fee,
+            "total_fees": self.total_fees,
+            "slippage_pct": self.slippage_pct,
         }
 
 
@@ -50,7 +67,9 @@ class PnLSummary:
     total_trades: int = 0
     wins: int = 0
     losses: int = 0
-    total_pnl: float = 0.0
+    total_pnl: float = 0.0          # Net PnL after fees
+    gross_pnl: float = 0.0          # PnL before fees
+    total_fees_paid: float = 0.0    # All entry + exit fees
     win_rate: float = 0.0
     average_win: float = 0.0
     average_loss: float = 0.0
@@ -66,6 +85,8 @@ class PnLSummary:
             "wins": self.wins,
             "losses": self.losses,
             "total_pnl": self.total_pnl,
+            "gross_pnl": self.gross_pnl,
+            "total_fees_paid": self.total_fees_paid,
             "win_rate": self.win_rate,
             "average_win": self.average_win,
             "average_loss": self.average_loss,
@@ -107,6 +128,8 @@ class PnLTracker:
         market_id: str,
         quantity: float,
         entry_price: float,
+        entry_fee: float = 0.0,
+        slippage_pct: float = 0.0,
     ) -> str:
         """
         Open a new position
@@ -135,6 +158,8 @@ class PnLTracker:
             quantity=quantity,
             entry_price=entry_price,
             entry_time=datetime.now(),
+            entry_fee=entry_fee,
+            slippage_pct=slippage_pct,
         )
 
         with self._lock:
@@ -150,17 +175,19 @@ class PnLTracker:
         position_id: str,
         exit_price: float,
         final_price: float = 1.0,  # Settlement price (usually $1.00 or $0.00)
+        exit_fee: float = 0.0,
     ) -> Optional[float]:
         """
-        Close a position and calculate PnL
+        Close a position and calculate PnL (net of all fees).
 
         Args:
             position_id: Position ID
-            exit_price: Exit price (if sold early)
-            final_price: Final settlement price
+            exit_price: Exit/settlement price
+            final_price: Unused legacy param (kept for call-site compatibility)
+            exit_fee: Fee paid on exit/settlement
 
         Returns:
-            Realized PnL
+            Net realized PnL (after entry and exit fees)
         """
         with self._lock:
             if position_id not in self.open_positions:
@@ -170,19 +197,24 @@ class PnLTracker:
 
         settlement_price = exit_price
 
-        # Calculate PnL
-        pnl = (settlement_price - trade.entry_price) * trade.quantity
+        # Gross PnL: raw price change
+        gross_pnl = (settlement_price - trade.entry_price) * trade.quantity
+        # Net PnL: deduct both entry fee (paid at open) and exit fee (paid at close)
+        total_fees = trade.entry_fee + exit_fee
+        net_pnl = gross_pnl - total_fees
         cost_basis = trade.entry_price * trade.quantity
-        pnl_percent = (pnl / cost_basis * 100) if cost_basis != 0 else 0.0
+        pnl_percent = (net_pnl / cost_basis * 100) if cost_basis != 0 else 0.0
 
         trade.exit_price = settlement_price
         trade.exit_time = datetime.now()
-        trade.pnl = pnl
+        trade.gross_pnl = gross_pnl
+        trade.exit_fee = exit_fee
+        trade.pnl = net_pnl
         trade.pnl_percent = pnl_percent
 
         with self._lock:
-            # Update balance
-            self.current_balance += pnl
+            # Update balance with net PnL so it correctly reflects fees paid
+            self.current_balance += net_pnl
 
             # Update peak balance and drawdown
             if self.current_balance > self.peak_balance:
@@ -199,18 +231,19 @@ class PnLTracker:
             del self.open_positions[position_id]
 
         # Log result
-        if pnl >= 0:
+        fee_str = f" | fees ${total_fees:.2f}" if total_fees > 0 else ""
+        if net_pnl >= 0:
             logger.info(
                 f"✅ Position settled (WIN): {position_id} - "
-                f"PnL: ${pnl:.2f} ({pnl_percent:.2f}%) 🎉"
+                f"gross ${gross_pnl:.2f}, net ${net_pnl:.2f} ({pnl_percent:.2f}%){fee_str} 🎉"
             )
         else:
             logger.warning(
                 f"❌ Position settled (LOSS): {position_id} - "
-                f"PnL: ${pnl:.2f} ({pnl_percent:.2f}%)"
+                f"gross ${gross_pnl:.2f}, net ${net_pnl:.2f} ({pnl_percent:.2f}%){fee_str}"
             )
 
-        return pnl
+        return net_pnl
 
     def get_summary(self) -> PnLSummary:
         """
@@ -234,8 +267,11 @@ class PnLTracker:
         # Single pass over closed trades
         wins_count = losses_count = 0
         total_pnl = total_win_pnl = total_loss_pnl = 0.0
+        total_gross_pnl = total_fees = 0.0
         for t in closed_trades:
             total_pnl += t.pnl
+            total_gross_pnl += (t.gross_pnl or 0.0)
+            total_fees += t.total_fees
             if t.pnl > 0:
                 wins_count += 1
                 total_win_pnl += t.pnl
@@ -255,6 +291,8 @@ class PnLTracker:
             wins=wins_count,
             losses=losses_count,
             total_pnl=total_pnl,
+            gross_pnl=total_gross_pnl,
+            total_fees_paid=total_fees,
             win_rate=win_rate,
             average_win=average_win,
             average_loss=average_loss,
@@ -327,6 +365,7 @@ class PnLTracker:
         summary = self.get_summary()
 
         pnl_pct = summary.total_pnl / summary.initial_balance * 100 if summary.initial_balance else 0
+        gross_pct = summary.gross_pnl / summary.initial_balance * 100 if summary.initial_balance else 0
         W = 50  # inner width between the two ║ chars
 
         def row(label: str, value: str) -> str:
@@ -348,7 +387,7 @@ class PnLTracker:
             row("Initial:",  f"${summary.initial_balance:>13,.2f}"),
             row("Current:",  f"${self.current_balance:>13,.2f}"),
             row("Peak:",     f"${summary.peak_balance:>13,.2f}"),
-            row("Change:",   f"${summary.total_pnl:>13,.2f}  ({pnl_pct:+.2f}%)"),
+            row("Net Change:", f"${summary.total_pnl:>13,.2f}  ({pnl_pct:+.2f}%)"),
             blank(),
             section("Trade Statistics"),
             row("Total Trades:", f"{summary.total_trades:>8}"),
@@ -356,8 +395,11 @@ class PnLTracker:
             row("Losses:",       f"{summary.losses:>8}  ({100 - summary.win_rate:>5.1f}%)"),
             blank(),
             section("Performance"),
-            row("Avg Win:",       f"${summary.average_win:>13,.2f}"),
-            row("Avg Loss:",      f"${summary.average_loss:>13,.2f}"),
+            row("Gross PnL:",    f"${summary.gross_pnl:>13,.2f}  ({gross_pct:+.2f}%)"),
+            row("Fees Paid:",    f"${summary.total_fees_paid:>13,.2f}"),
+            row("Net PnL:",      f"${summary.total_pnl:>13,.2f}  ({pnl_pct:+.2f}%)"),
+            row("Avg Win:",      f"${summary.average_win:>13,.2f}"),
+            row("Avg Loss:",     f"${summary.average_loss:>13,.2f}"),
             row("Profit Factor:", f"{summary.profit_factor:>13.2f}"),
             blank(),
             section("Drawdown"),

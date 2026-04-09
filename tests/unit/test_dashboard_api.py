@@ -19,8 +19,9 @@ from dashboard.api import app, set_bot_instance
 
 def _make_pnl_summary(**kwargs):
     defaults = dict(
-        total_trades=0, wins=0, losses=0, total_pnl=0.0, win_rate=0.0,
-        average_win=0.0, average_loss=0.0, profit_factor=0.0,
+        total_trades=0, wins=0, losses=0, total_pnl=0.0,
+        gross_pnl=0.0, total_fees_paid=0.0,
+        win_rate=0.0, average_win=0.0, average_loss=0.0, profit_factor=0.0,
         max_drawdown=0.0, current_drawdown=0.0,
         peak_balance=10_000.0, initial_balance=10_000.0,
     )
@@ -190,6 +191,7 @@ class TestPositions:
             position_id="p1", market_id="mkt-1", market_slug="slug-1",
             question="Will X?", shares=100.0, entry_price=0.985,
             allocated_capital=2000.0, expected_profit=30.0, edge_percent=1.5,
+            entry_fee=0.0, exit_fee=0.0, gross_pnl=None,
             status="OPEN",
             opened_at=datetime(2026,1,1,12,0,0),
             settled_at=None, settlement_price=None, realized_pnl=None,
