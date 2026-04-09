@@ -170,6 +170,12 @@ class PolymarketConfig:
     MAX_RETRIES = 3
     RETRY_DELAY_MS = 100
 
+    # Power management (Windows only)
+    # PREVENT_SLEEP=true  — blocks Windows idle sleep while the bot runs.
+    # To also keep running when the lid is closed you must separately set
+    # Windows Settings → Power → "When I close the lid" → "Do nothing".
+    PREVENT_SLEEP = os.getenv("PREVENT_SLEEP", "False").lower() == "true"
+
     # SQLite — trades, positions, PnL history
     DB_ENABLED = os.getenv("DB_ENABLED", "True").lower() == "true"
     DB_PATH = os.getenv("DB_PATH", "./storage/trading.db")
