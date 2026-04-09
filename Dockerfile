@@ -27,6 +27,10 @@ COPY . .
 # Create runtime directories
 RUN mkdir -p /app/logs /app/storage
 
+# Install the project itself (registers console scripts like 'polymarket')
+# Must run as root before switching to non-root user
+RUN uv pip install --system -e .
+
 # Create non-root user for security
 RUN useradd -m -u 1000 polymarket && \
     chown -R polymarket:polymarket /app
@@ -40,9 +44,6 @@ EXPOSE 8080
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
-
-# Install the project itself (registers console scripts like 'polymarket')
-RUN uv pip install --system -e .
 
 # Run the bot
 CMD ["polymarket"]

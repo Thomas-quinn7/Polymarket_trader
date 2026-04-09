@@ -31,7 +31,7 @@ services:
       - ./storage:/app/storage
       # Mount .env so the Settings UI can write changes back
       - ./.env:/app/.env
-      - ./.env.template:/app/.env.template:ro
+      - ./.env.example:/app/.env.example:ro
     depends_on:
       scylla:
         condition: service_healthy
