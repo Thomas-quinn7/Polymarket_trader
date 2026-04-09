@@ -487,4 +487,12 @@ This framework is provided for educational purposes. Trading on prediction marke
 
 ## License
 
-MIT
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0-only)**.
+
+Copyright (C) 2026 Thomas Quinn (github.com/Thomas-quinn7)
+
+You may use, study, and modify this software for non-commercial and educational purposes. Any distribution or network deployment of this software, or derivative works, must be released under the same AGPL-3.0 license with full source code and attribution intact.
+
+Commercial use — including deploying this framework as a service or incorporating it into a commercial product — is not permitted without explicit written permission from the author.
+
+See the [LICENSE](LICENSE) file for the full license text.
