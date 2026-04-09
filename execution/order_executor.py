@@ -64,7 +64,9 @@ class OrderExecutor:
         """
         try:
             # Calculate position size (20% of starting balance)
-            capital_to_allocate = self.currency_tracker.starting_balance * config.CAPITAL_SPLIT_PERCENT
+            capital_to_allocate = (
+                self.currency_tracker.starting_balance * config.CAPITAL_SPLIT_PERCENT
+            )
 
             # Guard: invalid price means we cannot safely size the position
             if not opportunity.current_price or opportunity.current_price <= 0:
@@ -115,14 +117,17 @@ class OrderExecutor:
                     return False
 
                 # Extract filled price and enforce slippage tolerance
-                filled_price_raw = order_response.get("price") or order_response.get("average_price")
+                filled_price_raw = order_response.get("price") or order_response.get(
+                    "average_price"
+                )
                 if filled_price_raw:
                     try:
                         filled_price = float(filled_price_raw)
                         if filled_price > 0:
                             slippage_pct = (
                                 (filled_price - opportunity.current_price)
-                                / opportunity.current_price * 100
+                                / opportunity.current_price
+                                * 100
                             )
                             if slippage_pct > config.SLIPPAGE_TOLERANCE_PERCENT:
                                 logger.error(
@@ -149,7 +154,9 @@ class OrderExecutor:
                         if parsed > 0:
                             shares = parsed
                     except (ValueError, TypeError):
-                        logger.warning(f"Could not parse size_matched={filled_size!r}, using estimated shares")
+                        logger.warning(
+                            f"Could not parse size_matched={filled_size!r}, using estimated shares"
+                        )
 
             # Allocate currency
             allocated = self.currency_tracker.allocate_to_position(
@@ -309,6 +316,7 @@ class OrderExecutor:
             # Clamp settlement price to [0, 1] — Polymarket tokens can only
             # resolve to values in this range; anything outside is a bad input.
             import math
+
             if not math.isfinite(settlement_price) or settlement_price < 0:
                 logger.warning(
                     f"Invalid settlement price {settlement_price!r} for {position_id} "

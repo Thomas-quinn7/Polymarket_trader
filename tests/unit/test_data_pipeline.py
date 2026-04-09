@@ -19,13 +19,12 @@ from portfolio.fake_currency_tracker import FakeCurrencyTracker
 from portfolio.position_tracker import PositionTracker
 from execution.order_executor import OrderExecutor
 
-
 # ---------------------------------------------------------------------------
 # Fixtures and helpers
 # ---------------------------------------------------------------------------
 
 STARTING_BALANCE = 10_000.0
-CAPITAL_SPLIT = 0.20            # 20 % → $2 000 per position
+CAPITAL_SPLIT = 0.20  # 20 % → $2 000 per position
 ALLOCATED = STARTING_BALANCE * CAPITAL_SPLIT  # $2 000
 
 
@@ -78,8 +77,10 @@ def _opp(
 
 def _buy(executor, opp, pid, capital_split=CAPITAL_SPLIT, max_positions=5, fee_pct=0.0):
     """Execute a buy, patching both the executor and currency-tracker configs."""
-    with patch("execution.order_executor.config") as ocfg, \
-         patch("portfolio.fake_currency_tracker.config") as fcfg:
+    with (
+        patch("execution.order_executor.config") as ocfg,
+        patch("portfolio.fake_currency_tracker.config") as fcfg,
+    ):
         ocfg.PAPER_TRADING_ONLY = True
         ocfg.CAPITAL_SPLIT_PERCENT = capital_split
         ocfg.TAKER_FEE_PERCENT = fee_pct
@@ -98,6 +99,7 @@ def _settle(executor, pid, settlement_price, fee_pct=0.0):
 # ---------------------------------------------------------------------------
 # Single buy → win cycle
 # ---------------------------------------------------------------------------
+
 
 class TestBuyWinCycle:
     def test_buy_succeeds(self):
@@ -159,6 +161,7 @@ class TestBuyWinCycle:
 # Single buy → loss cycle
 # ---------------------------------------------------------------------------
 
+
 class TestBuyLossCycle:
     def test_settle_loss_pnl_negative(self):
         executor, currency, pnl, positions = _make_all()
@@ -186,6 +189,7 @@ class TestBuyLossCycle:
 # Balance invariant: balance + deployed == starting + cumulative_pnl
 # ---------------------------------------------------------------------------
 
+
 class TestBalanceInvariant:
     """After any buy/settle sequence, the books must always balance."""
 
@@ -203,17 +207,13 @@ class TestBalanceInvariant:
         _buy(executor, _opp(price=0.985), "p1")
         realized = executor.settle_position("p1", settlement_price=1.0)
         # balance + deployed == starting + realized PnL
-        assert currency.get_balance() == pytest.approx(
-            STARTING_BALANCE + realized, abs=0.01
-        )
+        assert currency.get_balance() == pytest.approx(STARTING_BALANCE + realized, abs=0.01)
 
     def test_invariant_holds_after_loss(self):
         executor, currency, pnl, positions = _make_all()
         _buy(executor, _opp(price=0.985), "p1")
         realized = executor.settle_position("p1", settlement_price=0.0)
-        assert currency.get_balance() == pytest.approx(
-            STARTING_BALANCE + realized, abs=0.01
-        )
+        assert currency.get_balance() == pytest.approx(STARTING_BALANCE + realized, abs=0.01)
 
     def test_invariant_holds_across_multiple_cycles(self):
         executor, currency, pnl, positions = _make_all()
@@ -230,6 +230,7 @@ class TestBalanceInvariant:
 # ---------------------------------------------------------------------------
 # Data fidelity: opportunity fields preserved in the position
 # ---------------------------------------------------------------------------
+
 
 class TestOpportunityToPositionFidelity:
     def test_market_id_preserved(self):
@@ -277,6 +278,7 @@ class TestOpportunityToPositionFidelity:
 # Capital sizing precision
 # ---------------------------------------------------------------------------
 
+
 class TestCapitalSizing:
     def test_allocated_capital_is_20_percent_of_starting(self):
         executor, currency, pnl, positions = _make_all()
@@ -307,23 +309,33 @@ class TestCapitalSizing:
 # Multiple simultaneous positions
 # ---------------------------------------------------------------------------
 
+
 class TestMultiplePositions:
     def test_three_open_positions(self):
         executor, currency, pnl, positions = _make_all(max_positions=5)
         for i in range(3):
-            _buy(executor, _opp(market_id=f"mkt-{i}", market_slug=f"s{i}"), f"p{i}", max_positions=5)
+            _buy(
+                executor, _opp(market_id=f"mkt-{i}", market_slug=f"s{i}"), f"p{i}", max_positions=5
+            )
         assert positions.get_position_count() == 3
 
     def test_deployed_sums_across_positions(self):
         executor, currency, pnl, positions = _make_all(max_positions=5)
         for i in range(3):
-            _buy(executor, _opp(market_id=f"mkt-{i}", market_slug=f"s{i}"), f"p{i}", max_positions=5)
+            _buy(
+                executor, _opp(market_id=f"mkt-{i}", market_slug=f"s{i}"), f"p{i}", max_positions=5
+            )
         assert currency.get_deployed() == pytest.approx(ALLOCATED * 3, abs=0.01)
 
     def test_pnl_accumulates_across_settlements(self):
         executor, currency, pnl, positions = _make_all(max_positions=5)
         for i in range(3):
-            _buy(executor, _opp(market_id=f"mkt-{i}", market_slug=f"s{i}", price=0.985), f"p{i}", max_positions=5)
+            _buy(
+                executor,
+                _opp(market_id=f"mkt-{i}", market_slug=f"s{i}", price=0.985),
+                f"p{i}",
+                max_positions=5,
+            )
         total = 0.0
         for i in range(3):
             p = executor.settle_position(f"p{i}", settlement_price=1.0)
@@ -348,6 +360,7 @@ class TestMultiplePositions:
 # Order history ordering and shape
 # ---------------------------------------------------------------------------
 
+
 class TestOrderHistoryShape:
     def test_newest_first_ordering(self):
         executor, currency, pnl, positions = _make_all()
@@ -362,9 +375,19 @@ class TestOrderHistoryShape:
         executor, currency, pnl, positions = _make_all()
         _buy(executor, _opp(), "p1")
         order = executor.order_history[0]
-        for key in ("order_id", "position_id", "action", "market_id",
-                    "market_slug", "token_id", "quantity", "price",
-                    "total", "executed_at", "status"):
+        for key in (
+            "order_id",
+            "position_id",
+            "action",
+            "market_id",
+            "market_slug",
+            "token_id",
+            "quantity",
+            "price",
+            "total",
+            "executed_at",
+            "status",
+        ):
             assert key in order, f"Missing key: {key}"
 
     def test_position_id_matches_in_order(self):
@@ -397,6 +420,7 @@ class TestOrderHistoryShape:
 # Settlement price clamping — executor must clamp before recording
 # ---------------------------------------------------------------------------
 
+
 class TestSettlementPriceClamping:
     def _open(self, executor, pid="p1"):
         _buy(executor, _opp(), pid)
@@ -417,6 +441,7 @@ class TestSettlementPriceClamping:
 
     def test_settlement_nan_clamped_to_zero(self):
         import math
+
         executor, currency, pnl, positions = _make_all()
         self._open(executor)
         executor.settle_position("p1", settlement_price=float("nan"))
@@ -436,9 +461,11 @@ class TestSettlementPriceClamping:
 # Rollback on create_position failure
 # ---------------------------------------------------------------------------
 
+
 class TestRollback:
     def test_balance_restored_after_failed_position_creation(self):
         from unittest.mock import MagicMock
+
         executor, currency, pnl, positions = _make_all()
         balance_before = currency.get_balance()
         positions.create_position = MagicMock(side_effect=RuntimeError("boom"))
@@ -452,6 +479,7 @@ class TestRollback:
 # ---------------------------------------------------------------------------
 # PnL tracker ↔ position tracker consistency
 # ---------------------------------------------------------------------------
+
 
 class TestTrackerConsistency:
     """Verify PnLTracker and PositionTracker agree on trade outcomes."""

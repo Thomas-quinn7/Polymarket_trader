@@ -12,18 +12,27 @@ from fastapi.testclient import TestClient
 
 from dashboard.api import app, set_bot_instance
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_pnl_summary(**kwargs):
     defaults = dict(
-        total_trades=0, wins=0, losses=0, total_pnl=0.0,
-        gross_pnl=0.0, total_fees_paid=0.0,
-        win_rate=0.0, average_win=0.0, average_loss=0.0, profit_factor=0.0,
-        max_drawdown=0.0, current_drawdown=0.0,
-        peak_balance=10_000.0, initial_balance=10_000.0,
+        total_trades=0,
+        wins=0,
+        losses=0,
+        total_pnl=0.0,
+        gross_pnl=0.0,
+        total_fees_paid=0.0,
+        win_rate=0.0,
+        average_win=0.0,
+        average_loss=0.0,
+        profit_factor=0.0,
+        max_drawdown=0.0,
+        current_drawdown=0.0,
+        peak_balance=10_000.0,
+        initial_balance=10_000.0,
     )
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
@@ -79,6 +88,7 @@ def client_with_bot():
 # /api/health
 # ---------------------------------------------------------------------------
 
+
 class TestHealth:
     def test_health_ok_no_bot(self, client_no_bot):
         resp = client_no_bot.get("/api/health")
@@ -98,6 +108,7 @@ class TestHealth:
 # /api/status
 # ---------------------------------------------------------------------------
 
+
 class TestStatus:
     def test_status_503_when_no_bot(self, client_no_bot):
         resp = client_no_bot.get("/api/status")
@@ -111,9 +122,18 @@ class TestStatus:
     def test_status_fields(self, client_with_bot):
         client, bot = client_with_bot
         data = client.get("/api/status").json()
-        for field in ("running", "mode", "open_positions", "max_positions",
-                      "balance", "deployed", "total_pnl", "win_rate",
-                      "uptime", "last_update"):
+        for field in (
+            "running",
+            "mode",
+            "open_positions",
+            "max_positions",
+            "balance",
+            "deployed",
+            "total_pnl",
+            "win_rate",
+            "uptime",
+            "last_update",
+        ):
             assert field in data, f"Missing field: {field}"
 
     def test_status_running_false(self, client_with_bot):
@@ -131,6 +151,7 @@ class TestStatus:
 # ---------------------------------------------------------------------------
 # /api/portfolio
 # ---------------------------------------------------------------------------
+
 
 class TestPortfolio:
     def test_portfolio_503_no_bot(self, client_no_bot):
@@ -153,6 +174,7 @@ class TestPortfolio:
 # /api/pnl
 # ---------------------------------------------------------------------------
 
+
 class TestPnL:
     def test_pnl_503_no_bot(self, client_no_bot):
         assert client_no_bot.get("/api/pnl").status_code == 503
@@ -164,16 +186,27 @@ class TestPnL:
     def test_pnl_fields(self, client_with_bot):
         client, _ = client_with_bot
         data = client.get("/api/pnl").json()
-        for field in ("total_trades", "wins", "losses", "total_pnl", "win_rate",
-                      "average_win", "average_loss", "profit_factor",
-                      "max_drawdown", "current_drawdown",
-                      "peak_balance", "initial_balance"):
+        for field in (
+            "total_trades",
+            "wins",
+            "losses",
+            "total_pnl",
+            "win_rate",
+            "average_win",
+            "average_loss",
+            "profit_factor",
+            "max_drawdown",
+            "current_drawdown",
+            "peak_balance",
+            "initial_balance",
+        ):
             assert field in data
 
 
 # ---------------------------------------------------------------------------
 # /api/positions
 # ---------------------------------------------------------------------------
+
 
 class TestPositions:
     def test_positions_503_no_bot(self, client_no_bot):
@@ -188,13 +221,23 @@ class TestPositions:
     def test_positions_with_open_position(self, client_with_bot):
         client, bot = client_with_bot
         pos = SimpleNamespace(
-            position_id="p1", market_id="mkt-1", market_slug="slug-1",
-            question="Will X?", shares=100.0, entry_price=0.985,
-            allocated_capital=2000.0, expected_profit=30.0, edge_percent=1.5,
-            entry_fee=0.0, exit_fee=0.0, gross_pnl=None,
+            position_id="p1",
+            market_id="mkt-1",
+            market_slug="slug-1",
+            question="Will X?",
+            shares=100.0,
+            entry_price=0.985,
+            allocated_capital=2000.0,
+            expected_profit=30.0,
+            edge_percent=1.5,
+            entry_fee=0.0,
+            exit_fee=0.0,
+            gross_pnl=None,
             status="OPEN",
-            opened_at=datetime(2026,1,1,12,0,0),
-            settled_at=None, settlement_price=None, realized_pnl=None,
+            opened_at=datetime(2026, 1, 1, 12, 0, 0),
+            settled_at=None,
+            settlement_price=None,
+            realized_pnl=None,
         )
         bot.position_tracker.get_all_positions.return_value = [pos]
         resp = client.get("/api/positions")
@@ -218,6 +261,7 @@ class TestPositions:
 # /api/trades
 # ---------------------------------------------------------------------------
 
+
 class TestTrades:
     def test_trades_503_no_bot(self, client_no_bot):
         assert client_no_bot.get("/api/trades").status_code == 503
@@ -231,11 +275,18 @@ class TestTrades:
     def test_trades_with_order(self, client_with_bot):
         client, bot = client_with_bot
         order = {
-            "order_id": "p1_BUY", "position_id": "p1", "action": "BUY",
-            "market_id": "mkt-1", "market_slug": "slug-1", "token_id": "tok",
-            "quantity": 100.0, "price": 0.985, "total": 2000.0,
-            "executed_at": datetime(2026,1,1,12,0,0),
-            "status": "FILLED", "pnl": None,
+            "order_id": "p1_BUY",
+            "position_id": "p1",
+            "action": "BUY",
+            "market_id": "mkt-1",
+            "market_slug": "slug-1",
+            "token_id": "tok",
+            "quantity": 100.0,
+            "price": 0.985,
+            "total": 2000.0,
+            "executed_at": datetime(2026, 1, 1, 12, 0, 0),
+            "status": "FILLED",
+            "pnl": None,
         }
         bot.executor.get_order_history.return_value = [order]
         resp = client.get("/api/trades")
@@ -249,6 +300,7 @@ class TestTrades:
 # /api/config
 # ---------------------------------------------------------------------------
 
+
 class TestConfig:
     def test_config_200(self, client_no_bot):
         resp = client_no_bot.get("/api/config")
@@ -256,8 +308,12 @@ class TestConfig:
 
     def test_config_fields(self, client_no_bot):
         data = client_no_bot.get("/api/config").json()
-        for field in ("max_positions", "capital_split_percent",
-                      "scan_interval_ms", "fake_currency_balance"):
+        for field in (
+            "max_positions",
+            "capital_split_percent",
+            "scan_interval_ms",
+            "fake_currency_balance",
+        ):
             assert field in data
 
     def test_config_no_arb_fields(self, client_no_bot):
@@ -271,15 +327,24 @@ class TestConfig:
 # /api/settings
 # ---------------------------------------------------------------------------
 
+
 class TestSettings:
     def test_settings_200(self, client_no_bot):
         assert client_no_bot.get("/api/settings").status_code == 200
 
     def test_settings_fields(self, client_no_bot):
         data = client_no_bot.get("/api/settings").json()
-        for field in ("trading_mode", "scan_interval_ms", "max_positions",
-                      "capital_split_percent", "min_confidence", "min_volume_usd",
-                      "enable_email_alerts", "enable_discord_alerts", "log_level"):
+        for field in (
+            "trading_mode",
+            "scan_interval_ms",
+            "max_positions",
+            "capital_split_percent",
+            "min_confidence",
+            "min_volume_usd",
+            "enable_email_alerts",
+            "enable_discord_alerts",
+            "log_level",
+        ):
             assert field in data, f"Missing field: {field}"
 
     def test_settings_no_arb_fields(self, client_no_bot):
@@ -305,6 +370,7 @@ class TestSettings:
 # ---------------------------------------------------------------------------
 # /api/bot/start and /api/bot/stop
 # ---------------------------------------------------------------------------
+
 
 class TestBotControl:
     def test_start_503_no_bot(self, client_no_bot):

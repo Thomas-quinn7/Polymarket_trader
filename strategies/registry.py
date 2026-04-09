@@ -73,15 +73,11 @@ def _build_registry() -> Dict[str, Type[BaseStrategy]]:
                 break
 
         if strategy_class is None:
-            logger.debug(
-                f"Registry: {module_name!r} has no BaseStrategy subclass — skipping"
-            )
+            logger.debug(f"Registry: {module_name!r} has no BaseStrategy subclass — skipping")
             continue
 
         registry[entry.name] = strategy_class
-        logger.debug(
-            f"Registry: registered '{entry.name}' → {strategy_class.__name__}"
-        )
+        logger.debug(f"Registry: registered '{entry.name}' → {strategy_class.__name__}")
 
     return registry
 
@@ -111,9 +107,7 @@ def load_strategy(name: str, client) -> BaseStrategy:
     strategy_class = registry.get(name)
     if strategy_class is None:
         available = ", ".join(sorted(registry))
-        raise ValueError(
-            f"Unknown strategy '{name}'. Available strategies: {available}"
-        )
+        raise ValueError(f"Unknown strategy '{name}'. Available strategies: {available}")
     return strategy_class(client)
 
 

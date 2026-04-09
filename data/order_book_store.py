@@ -95,9 +95,7 @@ class OrderBookStore:
             self._session.set_keyspace(self._keyspace)
             self._session.execute(_TABLE_DDL.format(keyspace=self._keyspace))
 
-            self._insert_stmt = self._session.prepare(
-                _INSERT_CQL.format(keyspace=self._keyspace)
-            )
+            self._insert_stmt = self._session.prepare(_INSERT_CQL.format(keyspace=self._keyspace))
             self._select_stmt = self._session.prepare(
                 _SELECT_LATEST_CQL.format(keyspace=self._keyspace)
             )

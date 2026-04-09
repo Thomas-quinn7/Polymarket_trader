@@ -34,7 +34,9 @@ def check_uv():
     if shutil.which("uv"):
         return True
     print("  uv not found. Install it first:")
-    print("    Windows:  powershell -ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/install.ps1 | iex\"")
+    print(
+        '    Windows:  powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"'
+    )
     print("    macOS/Linux: curl -LsSf https://astral.sh/uv/install.sh | sh")
     return False
 
@@ -69,8 +71,10 @@ def main():
     print_step(4, "Configure Environment Variables")
     if not Path(".env").exists():
         if Path(".env.template").exists():
-            run("cp .env.template .env" if os.name != "nt" else "copy .env.template .env",
-                "Create .env from template")
+            run(
+                "cp .env.template .env" if os.name != "nt" else "copy .env.template .env",
+                "Create .env from template",
+            )
         print("\n  Edit .env and set your credentials:")
         print("    POLYMARKET_PRIVATE_KEY=your_key_here")
         print("    POLYMARKET_FUNDER_ADDRESS=your_address_here")

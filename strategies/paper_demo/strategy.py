@@ -46,7 +46,7 @@ class PaperDemo(BaseStrategy):
 
     def __init__(self, client: PolymarketClient):
         self.client = client
-        self._entered = False      # True once we have an open position
+        self._entered = False  # True once we have an open position
 
         cfg = {**_DEFAULTS, **load_strategy_config("paper_demo")}
         self._hold_seconds: int = int(cfg["hold_seconds"])
@@ -104,7 +104,7 @@ class PaperDemo(BaseStrategy):
         # Use embedded price from Gamma API response when available —
         # avoids an extra CLOB call and is immune to dict/float type issues.
         token_yes = best_market.token_ids[0]
-        token_no  = best_market.token_ids[1]
+        token_no = best_market.token_ids[1]
 
         if best_market.outcome_prices:
             yes_price = best_market.outcome_prices[0]
@@ -115,7 +115,8 @@ class PaperDemo(BaseStrategy):
         if yes_price <= 0.0 or yes_price >= 1.0:
             logger.warning(
                 "[PaperDemo] Skipping %s — price %.4f is not tradable",
-                best_market.slug, yes_price,
+                best_market.slug,
+                yes_price,
             )
             return []
 
@@ -132,7 +133,7 @@ class PaperDemo(BaseStrategy):
             side="YES",
             opportunity_type="single",
             current_price=yes_price,
-            edge_percent=0.0,       # No edge filter — this is a demo
+            edge_percent=0.0,  # No edge filter — this is a demo
             confidence=1.0,
             detected_at=datetime.now(timezone.utc),
             status=TradeStatus.DETECTED,
@@ -175,7 +176,8 @@ class PaperDemo(BaseStrategy):
         if position.expires_at and datetime.now(timezone.utc) >= position.expires_at:
             logger.info(
                 "[PaperDemo] Hold period expired for %s — exiting at $%.4f",
-                position.position_id, current_price,
+                position.position_id,
+                current_price,
             )
             # Reset so we can open a new position next scan
             self._entered = False

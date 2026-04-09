@@ -29,15 +29,15 @@ class Position:
     allocated_capital: float
     expected_profit: float
     edge_percent: float
-    entry_fee: float = 0.0           # fee paid at entry (simulated or actual)
+    entry_fee: float = 0.0  # fee paid at entry (simulated or actual)
     status: str = "OPEN"  # OPEN, SETTLED, FAILED
     opened_at: datetime = field(default_factory=datetime.now)
     expires_at: Optional[datetime] = None  # absolute time this position should settle
     settled_at: Optional[datetime] = None
     settlement_price: Optional[float] = None
-    exit_fee: float = 0.0            # fee paid at exit/settlement
-    realized_pnl: Optional[float] = None   # net PnL after fees
-    gross_pnl: Optional[float] = None      # PnL before fees
+    exit_fee: float = 0.0  # fee paid at exit/settlement
+    realized_pnl: Optional[float] = None  # net PnL after fees
+    gross_pnl: Optional[float] = None  # PnL before fees
 
     def to_dict(self):
         return {

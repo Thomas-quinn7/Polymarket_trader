@@ -49,10 +49,7 @@ def scan_categories(
             with lock:
                 results[cat] = []
 
-    threads = [
-        threading.Thread(target=_fetch, args=(cat,), daemon=True)
-        for cat in categories
-    ]
+    threads = [threading.Thread(target=_fetch, args=(cat,), daemon=True) for cat in categories]
     for t in threads:
         t.start()
     for t in threads:
@@ -73,6 +70,8 @@ def scan_categories(
     raw_total = sum(len(v) for v in results.values())
     logger.info(
         "market_scanner: %d unique markets across %d categories (raw total: %d)",
-        len(merged), len(categories), raw_total,
+        len(merged),
+        len(categories),
+        raw_total,
     )
     return merged

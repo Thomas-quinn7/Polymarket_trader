@@ -13,13 +13,16 @@ import colorlog
 
 from config.polymarket_config import config
 
-
 # Configure UTF-8 encoding for stdout on Windows
-if sys.platform == 'win32':
-    if hasattr(sys.stdout, 'buffer'):
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', write_through=True)
-    if hasattr(sys.stderr, 'buffer'):
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', write_through=True)
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "buffer"):
+        sys.stdout = io.TextIOWrapper(
+            sys.stdout.buffer, encoding="utf-8", errors="replace", write_through=True
+        )
+    if hasattr(sys.stderr, "buffer"):
+        sys.stderr = io.TextIOWrapper(
+            sys.stderr.buffer, encoding="utf-8", errors="replace", write_through=True
+        )
 
 
 class UTF8ColorStreamHandler(colorlog.StreamHandler):
@@ -29,19 +32,22 @@ class UTF8ColorStreamHandler(colorlog.StreamHandler):
         try:
             msg = self.format(record)
             stream = self.stream
-            
+
             # Ensure UTF-8 encoding
-            if hasattr(stream, 'buffer') and hasattr(stream, 'encoding'):
-                if stream.encoding.lower() != 'utf-8':
-                    stream.reconfigure(encoding='utf-8', errors='replace')
-            
+            if hasattr(stream, "buffer") and hasattr(stream, "encoding"):
+                if stream.encoding.lower() != "utf-8":
+                    stream.reconfigure(encoding="utf-8", errors="replace")
+
             # Write with error handling
             try:
                 stream.write(msg + self.terminator)
             except (UnicodeEncodeError, UnicodeDecodeError):
                 # Fallback: encode and decode with replace
-                stream.write(msg.encode('utf-8', errors='replace').decode('utf-8', errors='replace') + self.terminator)
-            
+                stream.write(
+                    msg.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+                    + self.terminator
+                )
+
             self.flush()
         except Exception:
             self.handleError(record)
@@ -78,7 +84,7 @@ def setup_logger(name: str, log_file: str = None) -> logging.Logger:
             "WARNING": "yellow",
             "ERROR": "red",
             "CRITICAL": "red,bg_white",
-        }
+        },
     )
     console_handler.setFormatter(console_format)
     logger.addHandler(console_handler)
@@ -99,8 +105,7 @@ def setup_logger(name: str, log_file: str = None) -> logging.Logger:
         file_handler.setLevel(logging.DEBUG)
 
         file_format = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S"
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
         )
         file_handler.setFormatter(file_format)
         logger.addHandler(file_handler)
@@ -122,14 +127,7 @@ class TradeLogger:
             with open(self.trade_file, "w") as f:
                 f.write("timestamp,action,symbol,quantity,price,total,reason\n")
 
-    def log_trade(
-        self,
-        action: str,
-        symbol: str,
-        quantity: float,
-        price: float,
-        reason: str = ""
-    ):
+    def log_trade(self, action: str, symbol: str, quantity: float, price: float, reason: str = ""):
         """Log a trade to both logger and CSV"""
         total = quantity * price
 
@@ -156,8 +154,7 @@ class TradeLogger:
     ):
         """Log arbitrage opportunity detection"""
         self.logger.info(
-            f"Opportunity detected: {market_id} - "
-            f"Price: ${price:.4f}, Edge: {edge:.2f}%"
+            f"Opportunity detected: {market_id} - " f"Price: ${price:.4f}, Edge: {edge:.2f}%"
         )
 
     def log_position_opened(
@@ -166,7 +163,7 @@ class TradeLogger:
         market_id: str,
         shares: float,
         entry_price: float,
-        expected_profit: float
+        expected_profit: float,
     ):
         """Log position opening"""
         self.logger.info(
@@ -176,11 +173,7 @@ class TradeLogger:
         )
 
     def log_position_closed(
-        self,
-        position_id: str,
-        market_id: str,
-        exit_price: float,
-        realized_pnl: float
+        self, position_id: str, market_id: str, exit_price: float, realized_pnl: float
     ):
         """Log position closing"""
         if realized_pnl >= 0:

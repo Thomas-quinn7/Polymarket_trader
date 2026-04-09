@@ -230,7 +230,12 @@ Quantity: {quantity}
 Entry Price: ${price:.4f}
 """
 
-        data = {"position_id": position_id, "market_id": market_id, "quantity": quantity, "price": price}
+        data = {
+            "position_id": position_id,
+            "market_id": market_id,
+            "quantity": quantity,
+            "price": price,
+        }
 
         self.create_alert(
             AlertType.POSITION_OPENED, title, message.strip(), AlertSeverity.INFO, data
@@ -254,13 +259,16 @@ Exit Price: ${exit_price:.4f}
 P&L: ${pnl:.2f}
 """
 
-        data = {"position_id": position_id, "market_id": market_id, "exit_price": exit_price, "pnl": pnl}
+        data = {
+            "position_id": position_id,
+            "market_id": market_id,
+            "exit_price": exit_price,
+            "pnl": pnl,
+        }
 
         self.create_alert(AlertType.POSITION_CLOSED, title, message.strip(), severity, data)
 
-    def send_position_loss_alert(
-        self, position_id: str, market_id: str, loss: float
-    ):
+    def send_position_loss_alert(self, position_id: str, market_id: str, loss: float):
         """Send position loss alert"""
         title = f"Position Loss Detected: {position_id}"
         message = f"""
@@ -271,11 +279,11 @@ Loss: ${abs(loss):.2f}
 
         data = {"position_id": position_id, "market_id": market_id, "loss": loss}
 
-        self.create_alert(AlertType.POSITION_LOSS, title, message.strip(), AlertSeverity.WARNING, data)
+        self.create_alert(
+            AlertType.POSITION_LOSS, title, message.strip(), AlertSeverity.WARNING, data
+        )
 
-    def send_opportunity_detected_alert(
-        self, market_id: str, price: float, edge: float
-    ):
+    def send_opportunity_detected_alert(self, market_id: str, price: float, edge: float):
         """Send opportunity detected alert"""
         title = f"Arbitrage Opportunity: {market_id}"
         message = f"""

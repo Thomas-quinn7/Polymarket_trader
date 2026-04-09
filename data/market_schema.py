@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import List, Optional
 
-
 # Maps raw tag labels (lowercased) to canonical category names.
 # Uses exact/prefix matching to avoid false positives from substring matching.
 _TAG_CATEGORY_MAP: dict = {
@@ -67,10 +66,7 @@ class PolymarketMarket:
         """
         # --- market_id ---
         market_id = (
-            raw.get("id")
-            or raw.get("conditionId")
-            or raw.get("marketSlug")
-            or raw.get("slug")
+            raw.get("id") or raw.get("conditionId") or raw.get("marketSlug") or raw.get("slug")
         )
         if not market_id:
             return None
@@ -90,12 +86,7 @@ class PolymarketMarket:
         end_time = _parse_end_time(raw)
 
         # --- volume ---
-        volume = float(
-            raw.get("volume")
-            or raw.get("volumeNum")
-            or raw.get("volumeClob")
-            or 0.0
-        )
+        volume = float(raw.get("volume") or raw.get("volumeNum") or raw.get("volumeClob") or 0.0)
 
         # --- category from tags ---
         category = _classify_category(raw.get("tags", []))

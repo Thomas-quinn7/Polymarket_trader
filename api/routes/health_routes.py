@@ -51,7 +51,8 @@ async def health_check_details() -> Dict:
                 "type": "PolymarketClient",
                 "builder_tier": config.BUILDER_TIER,
                 "rate_limit": (
-                    "unlimited" if config.daily_request_limit is None
+                    "unlimited"
+                    if config.daily_request_limit is None
                     else f"{config.daily_request_limit:,} relay tx/day"
                 ),
                 "builder_auth": config.BUILDER_ENABLED,

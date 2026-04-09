@@ -1,4 +1,5 @@
 """Utils package"""
+
 from .logger import logger, trade_logger
 from .alerts import alert_manager, AlertType, AlertSeverity
 from .email_sender import EmailSender

@@ -141,9 +141,7 @@ class SettlementArbitrage(BaseStrategy):
         """
         price_range = self._max_price_threshold - self._min_price_threshold
         price_factor = (
-            (yes_price - self._min_price_threshold) / price_range
-            if price_range > 0
-            else 0.0
+            (yes_price - self._min_price_threshold) / price_range if price_range > 0 else 0.0
         )
 
         execute_floor = self._execute_before_close_seconds
@@ -297,9 +295,7 @@ class SettlementArbitrage(BaseStrategy):
         )
         return sorted_ops[:limit]
 
-    def execute_opportunity(
-        self, opportunity: TradeOpportunity, capital: float
-    ) -> Optional[float]:
+    def execute_opportunity(self, opportunity: TradeOpportunity, capital: float) -> Optional[float]:
         """
         Calculate position size and expected profit.
 

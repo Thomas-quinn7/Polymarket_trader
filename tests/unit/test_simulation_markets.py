@@ -38,12 +38,22 @@ class TestGenerateSimulationMarkets:
         assert markets == []
 
     def test_market_has_required_keys(self):
-        required = {"id", "slug", "question", "active", "closed",
-                    "endDate", "clobTokenIds", "outcomePrices", "tags", "volume"}
+        required = {
+            "id",
+            "slug",
+            "question",
+            "active",
+            "closed",
+            "endDate",
+            "clobTokenIds",
+            "outcomePrices",
+            "tags",
+            "volume",
+        }
         for market in generate_simulation_markets():
-            assert required.issubset(market.keys()), (
-                f"Missing keys in {market['slug']}: {required - market.keys()}"
-            )
+            assert required.issubset(
+                market.keys()
+            ), f"Missing keys in {market['slug']}: {required - market.keys()}"
 
     def test_yes_price_in_valid_range(self):
         for market in generate_simulation_markets():
@@ -53,10 +63,8 @@ class TestGenerateSimulationMarkets:
     def test_yes_and_no_sum_to_one(self):
         for market in generate_simulation_markets():
             yes = float(market["outcomePrices"][0])
-            no  = float(market["outcomePrices"][1])
-            assert abs(yes + no - 1.0) < 0.001, (
-                f"YES+NO={yes+no:.4f} for {market['slug']}"
-            )
+            no = float(market["outcomePrices"][1])
+            assert abs(yes + no - 1.0) < 0.001, f"YES+NO={yes+no:.4f} for {market['slug']}"
 
     def test_two_token_ids(self):
         for market in generate_simulation_markets():

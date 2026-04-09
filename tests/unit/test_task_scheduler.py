@@ -136,9 +136,7 @@ class TestPopReady:
     def test_callback_is_correct_object(self):
         scheduler = TaskScheduler()
         cb = MagicMock()
-        scheduler._tasks["t1"] = ScheduledTask(
-            task_id="t1", execute_at=_past(1), callback=cb
-        )
+        scheduler._tasks["t1"] = ScheduledTask(task_id="t1", execute_at=_past(1), callback=cb)
         ready = scheduler.pop_ready()
         assert ready[0].callback is cb
 

@@ -38,7 +38,9 @@ class PolymarketConfig:
     #   partner    — unlimited                    (enterprise / strategic partner)
     # BUILDER_ENABLED must also be True for the SDK to attach builder auth headers to orders.
     BUILDER_ENABLED = os.getenv("BUILDER_ENABLED", "False").lower() == "true"
-    BUILDER_TIER = os.getenv("BUILDER_TIER", "unverified").lower()  # unverified | verified | partner
+    BUILDER_TIER = os.getenv(
+        "BUILDER_TIER", "unverified"
+    ).lower()  # unverified | verified | partner
     BUILDER_API_KEY = os.getenv("BUILDER_API_KEY")
     BUILDER_SECRET = os.getenv("BUILDER_SECRET")
     BUILDER_PASSPHRASE = os.getenv("BUILDER_PASSPHRASE")
@@ -46,8 +48,8 @@ class PolymarketConfig:
     # Per-tier daily relay transaction limits (used for logging and safe-interval calculation)
     _TIER_DAILY_LIMITS = {
         "unverified": 100,
-        "verified":   3_000,
-        "partner":    None,   # None = unlimited
+        "verified": 3_000,
+        "partner": None,  # None = unlimited
     }
 
     @property
@@ -178,28 +180,28 @@ class PolymarketConfig:
     SCYLLA_PORT = int(os.getenv("SCYLLA_PORT", "9042"))
     SCYLLA_KEYSPACE = os.getenv("SCYLLA_KEYSPACE", "polymarket")
 
-
     def reload(self):
         """Re-read .env and update all live-configurable fields in-place."""
         from dotenv import dotenv_values
+
         env = dotenv_values()
 
         # Trading mode
-        self.TRADING_MODE          = env.get("TRADING_MODE", "paper").lower()
-        self.PAPER_TRADING_ONLY    = env.get("PAPER_TRADING_ONLY", "True").lower() == "true"
-        self.STRATEGY              = env.get("STRATEGY", "settlement_arbitrage")
+        self.TRADING_MODE = env.get("TRADING_MODE", "paper").lower()
+        self.PAPER_TRADING_ONLY = env.get("PAPER_TRADING_ONLY", "True").lower() == "true"
+        self.STRATEGY = env.get("STRATEGY", "settlement_arbitrage")
         self.FAKE_CURRENCY_BALANCE = float(env.get("FAKE_CURRENCY_BALANCE", "10000.00"))
 
         # Strategy execution
-        self.MAX_POSITIONS         = int(env.get("MAX_POSITIONS", "5"))
+        self.MAX_POSITIONS = int(env.get("MAX_POSITIONS", "5"))
         self.CAPITAL_SPLIT_PERCENT = float(env.get("CAPITAL_SPLIT_PERCENT", "0.20"))
-        self.STOP_LOSS_PERCENT     = float(env.get("STOP_LOSS_PERCENT", "0.0"))
-        self.MIN_CONFIDENCE        = float(env.get("MIN_CONFIDENCE", "0.5"))
-        self.MIN_VOLUME_USD        = float(env.get("MIN_VOLUME_USD", "1000.0"))
+        self.STOP_LOSS_PERCENT = float(env.get("STOP_LOSS_PERCENT", "0.0"))
+        self.MIN_CONFIDENCE = float(env.get("MIN_CONFIDENCE", "0.5"))
+        self.MIN_VOLUME_USD = float(env.get("MIN_VOLUME_USD", "1000.0"))
 
         # Scanning
         self.SCAN_INTERVAL_MS = int(env.get("SCAN_INTERVAL_MS", "30000"))
-        self.SCAN_CATEGORIES  = [
+        self.SCAN_CATEGORIES = [
             c.strip()
             for c in env.get("SCAN_CATEGORIES", "crypto,fed,regulatory,other").split(",")
             if c.strip()
@@ -207,50 +209,50 @@ class PolymarketConfig:
 
         # Execution
         self.SLIPPAGE_TOLERANCE_PERCENT = float(env.get("SLIPPAGE_TOLERANCE_PERCENT", "5.0"))
-        self.TAKER_FEE_PERCENT          = float(env.get("TAKER_FEE_PERCENT", "2.0"))
-        self.MAX_RETRIES               = int(env.get("MAX_RETRIES", "3"))
-        self.RETRY_DELAY_MS            = int(env.get("RETRY_DELAY_MS", "100"))
+        self.TAKER_FEE_PERCENT = float(env.get("TAKER_FEE_PERCENT", "2.0"))
+        self.MAX_RETRIES = int(env.get("MAX_RETRIES", "3"))
+        self.RETRY_DELAY_MS = int(env.get("RETRY_DELAY_MS", "100"))
 
         # Relayer
-        self.RELAYER_ENABLED          = env.get("RELAYER_ENABLED", "False").lower() == "true"
-        self.RELAYER_API_KEY          = env.get("RELAYER_API_KEY")
-        self.RELAYER_API_KEY_ADDRESS  = env.get("RELAYER_API_KEY_ADDRESS")
+        self.RELAYER_ENABLED = env.get("RELAYER_ENABLED", "False").lower() == "true"
+        self.RELAYER_API_KEY = env.get("RELAYER_API_KEY")
+        self.RELAYER_API_KEY_ADDRESS = env.get("RELAYER_API_KEY_ADDRESS")
 
         # Builder
-        self.BUILDER_ENABLED    = env.get("BUILDER_ENABLED", "False").lower() == "true"
-        self.BUILDER_TIER       = env.get("BUILDER_TIER", "unverified").lower()
-        self.BUILDER_API_KEY    = env.get("BUILDER_API_KEY")
-        self.BUILDER_SECRET     = env.get("BUILDER_SECRET")
+        self.BUILDER_ENABLED = env.get("BUILDER_ENABLED", "False").lower() == "true"
+        self.BUILDER_TIER = env.get("BUILDER_TIER", "unverified").lower()
+        self.BUILDER_API_KEY = env.get("BUILDER_API_KEY")
+        self.BUILDER_SECRET = env.get("BUILDER_SECRET")
         self.BUILDER_PASSPHRASE = env.get("BUILDER_PASSPHRASE")
 
         # Alerts
-        self.ENABLE_EMAIL_ALERTS   = env.get("ENABLE_EMAIL_ALERTS", "True").lower() == "true"
+        self.ENABLE_EMAIL_ALERTS = env.get("ENABLE_EMAIL_ALERTS", "True").lower() == "true"
         self.ENABLE_DISCORD_ALERTS = env.get("ENABLE_DISCORD_ALERTS", "True").lower() == "true"
-        self.DISCORD_WEBHOOK_URL   = env.get("DISCORD_WEBHOOK_URL", "")
-        self.DISCORD_MENTION_USER  = env.get("DISCORD_MENTION_USER", "")
-        self.ALERT_EMAIL_FROM      = env.get("ALERT_EMAIL_FROM", "noreply@example.com")
-        self.ALERT_EMAIL_TO        = env.get("ALERT_EMAIL_TO", "")
-        self.SMTP_SERVER           = env.get("SMTP_SERVER", "smtp.gmail.com")
-        self.SMTP_PORT             = int(env.get("SMTP_PORT", "587"))
-        self.SMTP_USERNAME         = env.get("SMTP_USERNAME", "")
-        self.SMTP_PASSWORD         = env.get("SMTP_PASSWORD", "")
+        self.DISCORD_WEBHOOK_URL = env.get("DISCORD_WEBHOOK_URL", "")
+        self.DISCORD_MENTION_USER = env.get("DISCORD_MENTION_USER", "")
+        self.ALERT_EMAIL_FROM = env.get("ALERT_EMAIL_FROM", "noreply@example.com")
+        self.ALERT_EMAIL_TO = env.get("ALERT_EMAIL_TO", "")
+        self.SMTP_SERVER = env.get("SMTP_SERVER", "smtp.gmail.com")
+        self.SMTP_PORT = int(env.get("SMTP_PORT", "587"))
+        self.SMTP_USERNAME = env.get("SMTP_USERNAME", "")
+        self.SMTP_PASSWORD = env.get("SMTP_PASSWORD", "")
 
         # Dashboard
         self.DASHBOARD_ENABLED = env.get("DASHBOARD_ENABLED", "True").lower() == "true"
-        self.DASHBOARD_PORT    = int(env.get("DASHBOARD_PORT", "8080"))
-        self.DASHBOARD_HOST    = env.get("DASHBOARD_HOST", "0.0.0.0")
+        self.DASHBOARD_PORT = int(env.get("DASHBOARD_PORT", "8080"))
+        self.DASHBOARD_HOST = env.get("DASHBOARD_HOST", "0.0.0.0")
 
         # Logging
-        self.LOG_LEVEL   = env.get("LOG_LEVEL", "INFO")
+        self.LOG_LEVEL = env.get("LOG_LEVEL", "INFO")
         self.LOG_TO_FILE = env.get("LOG_TO_FILE", "True").lower() == "true"
 
         # Database
-        self.DB_ENABLED  = env.get("DB_ENABLED", "True").lower() == "true"
-        self.DB_PATH     = env.get("DB_PATH", "./storage/trading.db")
-        self.SCYLLA_ENABLED   = env.get("SCYLLA_ENABLED", "False").lower() == "true"
-        self.SCYLLA_HOST      = env.get("SCYLLA_HOST", "127.0.0.1")
-        self.SCYLLA_PORT      = int(env.get("SCYLLA_PORT", "9042"))
-        self.SCYLLA_KEYSPACE  = env.get("SCYLLA_KEYSPACE", "polymarket")
+        self.DB_ENABLED = env.get("DB_ENABLED", "True").lower() == "true"
+        self.DB_PATH = env.get("DB_PATH", "./storage/trading.db")
+        self.SCYLLA_ENABLED = env.get("SCYLLA_ENABLED", "False").lower() == "true"
+        self.SCYLLA_HOST = env.get("SCYLLA_HOST", "127.0.0.1")
+        self.SCYLLA_PORT = int(env.get("SCYLLA_PORT", "9042"))
+        self.SCYLLA_KEYSPACE = env.get("SCYLLA_KEYSPACE", "polymarket")
 
 
 # Global config instance

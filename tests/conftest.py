@@ -9,6 +9,7 @@ from datetime import datetime
 @pytest.fixture
 def mock_settings():
     """Create mock settings for testing."""
+
     class MockSettings:
         min_price_threshold = 0.985
         max_price_threshold = 1.0

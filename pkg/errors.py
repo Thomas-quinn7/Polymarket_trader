@@ -217,7 +217,7 @@ def get_error_message(exception: Exception) -> str:
     Extract error message from exception.
     Supports custom exception types with message attributes.
     """
-    if hasattr(exception, 'message'):
+    if hasattr(exception, "message"):
         return exception.message
     return str(exception)
 
@@ -228,17 +228,17 @@ def get_error_details(exception: Exception) -> dict:
     Useful for logging and API responses.
     """
     details = {
-        'type': type(exception).__name__,
-        'message': get_error_message(exception),
+        "type": type(exception).__name__,
+        "message": get_error_message(exception),
     }
 
     # Add common exception attributes
-    for attr in ['status_code', 'retry_after', 'order_id', 'position_id', 'market_id']:
+    for attr in ["status_code", "retry_after", "order_id", "position_id", "market_id"]:
         if hasattr(exception, attr):
             details[attr] = getattr(exception, attr)
 
     # Add custom attributes
-    for attr in ['config_key', 'channel', 'strategy', 'component']:
+    for attr in ["config_key", "channel", "strategy", "component"]:
         if hasattr(exception, attr):
             details[attr] = getattr(exception, attr)
 

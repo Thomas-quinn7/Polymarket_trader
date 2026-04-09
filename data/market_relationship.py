@@ -66,13 +66,13 @@ class MarketRelationship:
 
     def to_dict(self) -> dict:
         return {
-            "market_id_a":          self.market_id_a,
-            "market_id_b":          self.market_id_b,
-            "relationship_type":    self.relationship_type.value,
+            "market_id_a": self.market_id_a,
+            "market_id_b": self.market_id_b,
+            "relationship_type": self.relationship_type.value,
             "expected_correlation": self.expected_correlation,
-            "weight_a":             self.weight_a,
-            "weight_b":             self.weight_b,
-            "notes":                self.notes,
+            "weight_a": self.weight_a,
+            "weight_b": self.weight_b,
+            "notes": self.notes,
         }
 
 
@@ -103,31 +103,30 @@ class MarketBasket:
         Any additional context.
     """
 
-    basket_id:     str
-    name:          str
-    market_ids:    List[str]
+    basket_id: str
+    name: str
+    market_ids: List[str]
     relationships: List[MarketRelationship] = field(default_factory=list)
-    category:      str = "other"
-    event_date:    str = ""
-    notes:         str = ""
+    category: str = "other"
+    event_date: str = ""
+    notes: str = ""
 
     def to_dict(self) -> dict:
         return {
-            "basket_id":     self.basket_id,
-            "name":          self.name,
-            "market_ids":    self.market_ids,
+            "basket_id": self.basket_id,
+            "name": self.name,
+            "market_ids": self.market_ids,
             "relationships": [r.to_dict() for r in self.relationships],
-            "category":      self.category,
-            "event_date":    self.event_date,
-            "notes":         self.notes,
+            "category": self.category,
+            "event_date": self.event_date,
+            "notes": self.notes,
         }
 
-    def get_relationship(
-        self, market_id_a: str, market_id_b: str
-    ) -> "MarketRelationship | None":
+    def get_relationship(self, market_id_a: str, market_id_b: str) -> "MarketRelationship | None":
         """Return the relationship between two specific markets, if defined."""
         for rel in self.relationships:
-            if (rel.market_id_a == market_id_a and rel.market_id_b == market_id_b) or \
-               (rel.market_id_a == market_id_b and rel.market_id_b == market_id_a):
+            if (rel.market_id_a == market_id_a and rel.market_id_b == market_id_b) or (
+                rel.market_id_a == market_id_b and rel.market_id_b == market_id_a
+            ):
                 return rel
         return None

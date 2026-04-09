@@ -30,7 +30,10 @@ def test_discord_webhook():
         print("   Set: ENABLE_DISCORD_ALERTS=True")
         return False
 
-    if not webhook_url or webhook_url == "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN":
+    if (
+        not webhook_url
+        or webhook_url == "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+    ):
         print("\n❌ Error: DISCORD_WEBHOOK_URL not configured")
         print("\n💡 How to get your webhook URL:")
         print("   1. Go to your Discord server settings")
@@ -42,7 +45,11 @@ def test_discord_webhook():
 
     print(f"   Webhook URL: {webhook_url[:50]}...")
     # Build the mention string — use as-is if already in <@ID> format
-    mention = discord_username if discord_username.startswith("<@") else f"@{discord_username}" if discord_username else "everyone"
+    mention = (
+        discord_username
+        if discord_username.startswith("<@")
+        else f"@{discord_username}" if discord_username else "everyone"
+    )
     print(f"   Mention User: {mention}")
 
     # Test webhook
@@ -57,25 +64,13 @@ def test_discord_webhook():
                     "description": "This is a test message from your Polymarket Arbitrage Bot.",
                     "color": 5763719,  # Green
                     "fields": [
-                        {
-                            "name": "Status",
-                            "value": "✅ Working!",
-                            "inline": True
-                        },
-                        {
-                            "name": "Mentions",
-                            "value": mention,
-                            "inline": True
-                        }
+                        {"name": "Status", "value": "✅ Working!", "inline": True},
+                        {"name": "Mentions", "value": mention, "inline": True},
                     ],
-                    "footer": {
-                        "text": "Polymarket Arbitrage Bot - Test"
-                    }
+                    "footer": {"text": "Polymarket Arbitrage Bot - Test"},
                 }
             ],
-            "allowed_mentions": {
-                "parse": ["users"]
-            }
+            "allowed_mentions": {"parse": ["users"]},
         }
 
         # Send test message
@@ -128,4 +123,5 @@ def main():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

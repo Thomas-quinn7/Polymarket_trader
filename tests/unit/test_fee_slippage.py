@@ -16,7 +16,6 @@ from portfolio.fake_currency_tracker import FakeCurrencyTracker
 from portfolio.position_tracker import PositionTracker
 from execution.order_executor import OrderExecutor
 
-
 STARTING_BALANCE = 10_000.0
 CAPITAL_SPLIT = 0.20
 ALLOCATED = STARTING_BALANCE * CAPITAL_SPLIT  # $2 000
@@ -28,6 +27,7 @@ PRICE_WITH_EDGE = 0.95
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_all(starting_balance=STARTING_BALANCE, max_positions=5):
     with patch("portfolio.fake_currency_tracker.config") as cfg:
@@ -52,6 +52,7 @@ def _make_all(starting_balance=STARTING_BALANCE, max_positions=5):
 
 def _make_opp(price=PRICE_WITH_EDGE):
     from types import SimpleNamespace
+
     opp = SimpleNamespace(
         market_id="mkt-1",
         market_slug="test-slug",
@@ -67,8 +68,10 @@ def _make_opp(price=PRICE_WITH_EDGE):
 
 
 def _buy(executor, opp, pid, fee_pct=0.0):
-    with patch("execution.order_executor.config") as ocfg, \
-         patch("portfolio.fake_currency_tracker.config") as fcfg:
+    with (
+        patch("execution.order_executor.config") as ocfg,
+        patch("portfolio.fake_currency_tracker.config") as fcfg,
+    ):
         ocfg.PAPER_TRADING_ONLY = True
         ocfg.CAPITAL_SPLIT_PERCENT = CAPITAL_SPLIT
         ocfg.TAKER_FEE_PERCENT = fee_pct
@@ -86,6 +89,7 @@ def _settle(executor, pid, settlement_price, fee_pct=0.0):
 # ---------------------------------------------------------------------------
 # Fee tracking
 # ---------------------------------------------------------------------------
+
 
 class TestFeeTracking:
 
@@ -179,6 +183,7 @@ class TestFeeTracking:
 # ---------------------------------------------------------------------------
 # Slippage enforcement
 # ---------------------------------------------------------------------------
+
 
 class TestSlippageEnforcement:
 

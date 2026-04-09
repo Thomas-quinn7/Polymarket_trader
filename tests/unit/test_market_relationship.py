@@ -11,10 +11,10 @@ from data.market_relationship import (
     MarketBasket,
 )
 
-
 # ---------------------------------------------------------------------------
 # RelationshipType
 # ---------------------------------------------------------------------------
+
 
 class TestRelationshipType:
     def test_all_values_are_strings(self):
@@ -37,6 +37,7 @@ class TestRelationshipType:
 # MarketRelationship
 # ---------------------------------------------------------------------------
 
+
 class TestMarketRelationship:
     def _make(self, **kwargs):
         defaults = dict(
@@ -53,8 +54,7 @@ class TestMarketRelationship:
 
     def test_construction_defaults(self):
         rel = MarketRelationship(
-            market_id_a="a", market_id_b="b",
-            relationship_type=RelationshipType.TEMPORAL
+            market_id_a="a", market_id_b="b", relationship_type=RelationshipType.TEMPORAL
         )
         assert rel.expected_correlation == 1.0
         assert rel.weight_a == 0.5
@@ -64,8 +64,15 @@ class TestMarketRelationship:
     def test_to_dict_keys(self):
         rel = self._make()
         d = rel.to_dict()
-        for key in ("market_id_a", "market_id_b", "relationship_type",
-                    "expected_correlation", "weight_a", "weight_b", "notes"):
+        for key in (
+            "market_id_a",
+            "market_id_b",
+            "relationship_type",
+            "expected_correlation",
+            "weight_a",
+            "weight_b",
+            "notes",
+        ):
             assert key in d
 
     def test_to_dict_relationship_type_is_string(self):
@@ -74,9 +81,11 @@ class TestMarketRelationship:
 
     def test_to_dict_values(self):
         rel = self._make(
-            market_id_a="X", market_id_b="Y",
+            market_id_a="X",
+            market_id_b="Y",
             expected_correlation=0.75,
-            weight_a=0.6, weight_b=0.4,
+            weight_a=0.6,
+            weight_b=0.4,
         )
         d = rel.to_dict()
         assert d["market_id_a"] == "X"
@@ -98,11 +107,11 @@ class TestMarketRelationship:
 # MarketBasket
 # ---------------------------------------------------------------------------
 
+
 class TestMarketBasket:
     def _make_rel(self, a="a", b="b"):
         return MarketRelationship(
-            market_id_a=a, market_id_b=b,
-            relationship_type=RelationshipType.CORRELATED
+            market_id_a=a, market_id_b=b, relationship_type=RelationshipType.CORRELATED
         )
 
     def _make_basket(self, **kwargs):
@@ -124,8 +133,15 @@ class TestMarketBasket:
     def test_to_dict_keys(self):
         basket = self._make_basket()
         d = basket.to_dict()
-        for key in ("basket_id", "name", "market_ids", "relationships",
-                    "category", "event_date", "notes"):
+        for key in (
+            "basket_id",
+            "name",
+            "market_ids",
+            "relationships",
+            "category",
+            "event_date",
+            "notes",
+        ):
             assert key in d
 
     def test_to_dict_market_ids(self):
@@ -147,18 +163,14 @@ class TestMarketBasket:
 
     def test_get_relationship_found_forward(self):
         rel = self._make_rel("mkt-a", "mkt-b")
-        basket = self._make_basket(
-            market_ids=["mkt-a", "mkt-b"], relationships=[rel]
-        )
+        basket = self._make_basket(market_ids=["mkt-a", "mkt-b"], relationships=[rel])
         result = basket.get_relationship("mkt-a", "mkt-b")
         assert result is rel
 
     def test_get_relationship_found_reverse(self):
         """Order of arguments should not matter."""
         rel = self._make_rel("mkt-a", "mkt-b")
-        basket = self._make_basket(
-            market_ids=["mkt-a", "mkt-b"], relationships=[rel]
-        )
+        basket = self._make_basket(market_ids=["mkt-a", "mkt-b"], relationships=[rel])
         result = basket.get_relationship("mkt-b", "mkt-a")
         assert result is rel
 
@@ -169,10 +181,7 @@ class TestMarketBasket:
     def test_get_relationship_multiple_rels(self):
         rel_ab = self._make_rel("a", "b")
         rel_ac = self._make_rel("a", "c")
-        basket = self._make_basket(
-            market_ids=["a", "b", "c"],
-            relationships=[rel_ab, rel_ac]
-        )
+        basket = self._make_basket(market_ids=["a", "b", "c"], relationships=[rel_ab, rel_ac])
         assert basket.get_relationship("a", "c") is rel_ac
         assert basket.get_relationship("a", "b") is rel_ab
 

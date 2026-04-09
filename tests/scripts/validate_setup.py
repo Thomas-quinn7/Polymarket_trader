@@ -13,12 +13,12 @@ import requests
 load_dotenv()
 
 # ANSI color codes
-GREEN = '\033[92m'
-RED = '\033[91m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
-RESET = '\033[0m'
-BOLD = '\033[1m'
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+BLUE = "\033[94m"
+RESET = "\033[0m"
+BOLD = "\033[1m"
 
 
 def print_header(text):
@@ -128,7 +128,10 @@ def check_smtp_connection(smtp_server, smtp_port, username, password):
 def check_discord_webhook(webhook_url, discord_username):
     """Check Discord webhook connection"""
     try:
-        if not webhook_url or webhook_url == "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN":
+        if (
+            not webhook_url
+            or webhook_url == "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+        ):
             print_warning("Discord Webhook: Not configured")
             return True
 
@@ -174,8 +177,8 @@ def validate_builder_credentials():
 
     _tier_limits = {
         "unverified": "100 relay tx/day  (~57 min safe scan interval)",
-        "verified":   "3,000 relay tx/day (~2 min safe scan interval)",
-        "partner":    "unlimited          (30s safe scan interval)",
+        "verified": "3,000 relay tx/day (~2 min safe scan interval)",
+        "partner": "unlimited          (30s safe scan interval)",
     }
 
     if builder_tier not in _tier_limits:
