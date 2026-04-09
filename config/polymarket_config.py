@@ -163,7 +163,8 @@ class PolymarketConfig:
 
     # Execution Settings
     ORDER_TYPE = "FOK"  # Fill or Kill
-    SLIPPAGE_TOLERANCE_PERCENT = 5.0  # 5% max slippage
+    SLIPPAGE_TOLERANCE_PERCENT = 5.0  # 5% max slippage; live orders rejected if exceeded
+    TAKER_FEE_PERCENT = float(os.getenv("TAKER_FEE_PERCENT", "2.0"))  # Polymarket taker fee
     MAX_RETRIES = 3
     RETRY_DELAY_MS = 100
 
@@ -206,6 +207,7 @@ class PolymarketConfig:
 
         # Execution
         self.SLIPPAGE_TOLERANCE_PERCENT = float(env.get("SLIPPAGE_TOLERANCE_PERCENT", "5.0"))
+        self.TAKER_FEE_PERCENT          = float(env.get("TAKER_FEE_PERCENT", "2.0"))
         self.MAX_RETRIES               = int(env.get("MAX_RETRIES", "3"))
         self.RETRY_DELAY_MS            = int(env.get("RETRY_DELAY_MS", "100"))
 

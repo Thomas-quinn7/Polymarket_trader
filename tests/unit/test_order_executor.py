@@ -68,6 +68,7 @@ class TestExecuteBuy:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            cfg.TAKER_FEE_PERCENT = 0.0
             result = executor.execute_buy(make_opportunity(), "p1")
         assert result is True
 
@@ -76,6 +77,7 @@ class TestExecuteBuy:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            cfg.TAKER_FEE_PERCENT = 0.0
             executor.execute_buy(make_opportunity(), "p1")
         assert currency.get_balance() < 10_000.0
 
@@ -85,6 +87,7 @@ class TestExecuteBuy:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            cfg.TAKER_FEE_PERCENT = 0.0
             executor.execute_buy(make_opportunity(), "caller-id-123")
         pos = positions.get_position("caller-id-123")
         assert pos is not None
@@ -95,6 +98,7 @@ class TestExecuteBuy:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            cfg.TAKER_FEE_PERCENT = 0.0
             executor.execute_buy(make_opportunity(), "p1")
         assert len(executor.order_history) == 1
         assert executor.order_history[0]["action"] == "BUY"
@@ -107,6 +111,7 @@ class TestExecuteBuy:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            cfg.TAKER_FEE_PERCENT = 0.0
             result = executor.execute_buy(make_opportunity(), "p1")
         assert result is False
 
@@ -121,6 +126,7 @@ class TestExecuteBuy:
              patch("execution.order_executor.alert_manager"):
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            cfg.TAKER_FEE_PERCENT = 0.0
             result = executor.execute_buy(make_opportunity(), "p1")
 
         assert result is False
@@ -133,6 +139,7 @@ class TestSettlePosition:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            cfg.TAKER_FEE_PERCENT = 0.0
             executor.execute_buy(make_opportunity(), pid)
 
     def test_settle_returns_pnl(self):
@@ -168,6 +175,7 @@ class TestStats:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            cfg.TAKER_FEE_PERCENT = 0.0
             executor.execute_buy(make_opportunity(), "p1")
         stats = executor.get_execution_stats()
         assert stats["total_orders"] == 1
@@ -179,6 +187,7 @@ class TestStats:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            cfg.TAKER_FEE_PERCENT = 0.0
             executor.execute_buy(make_opportunity(market_id="m1"), "p1")
         orders = executor.get_order_history(limit=1)
         assert len(orders) == 1
@@ -189,6 +198,7 @@ class TestExecuteSell:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            cfg.TAKER_FEE_PERCENT = 0.0
             executor.execute_buy(make_opportunity(), pid)
 
     def test_execute_sell_returns_pnl(self):
@@ -220,6 +230,8 @@ class TestExecuteSell:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = False
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            cfg.TAKER_FEE_PERCENT = 0.0
+            cfg.SLIPPAGE_TOLERANCE_PERCENT = 5.0
             cfg.MAX_RETRIES = 3
             cfg.RETRY_DELAY_MS = 0
             executor = OrderExecutor(
@@ -242,6 +254,8 @@ class TestExecuteSell:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = False
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            cfg.TAKER_FEE_PERCENT = 0.0
+            cfg.SLIPPAGE_TOLERANCE_PERCENT = 5.0
             cfg.MAX_RETRIES = 3
             cfg.RETRY_DELAY_MS = 0
             executor = OrderExecutor(

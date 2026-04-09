@@ -86,6 +86,7 @@ def _buy(executor, opp, pid, split=0.20):
     with patch("execution.order_executor.config") as cfg:
         cfg.PAPER_TRADING_ONLY = True
         cfg.CAPITAL_SPLIT_PERCENT = split
+        cfg.TAKER_FEE_PERCENT = 0.0
         return executor.execute_buy(opp, pid)
 
 

@@ -19,7 +19,8 @@ from utils.logger import logger
 _EXECUTE_BEFORE_CLOSE_SECONDS: int = int(os.getenv("EXECUTE_BEFORE_CLOSE_SECONDS", "30"))
 _MIN_PRICE_THRESHOLD: float = float(os.getenv("MIN_PRICE_THRESHOLD", "0.985"))
 _MAX_PRICE_THRESHOLD: float = float(os.getenv("MAX_PRICE_THRESHOLD", "1.00"))
-_TAKER_FEE_PERCENT: float = float(os.getenv("TAKER_FEE_PERCENT", "2.0"))
+# Fee is read from config so it stays in sync with execution accounting.
+_TAKER_FEE_PERCENT: float = config.TAKER_FEE_PERCENT
 
 
 class SettlementArbitrage(BaseStrategy):

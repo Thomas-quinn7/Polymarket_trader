@@ -112,10 +112,13 @@ class PositionResponse(BaseModel):
     allocated_capital: float
     expected_profit: float
     edge_percent: float
+    entry_fee: float
     status: str
     opened_at: Optional[str]
     settled_at: Optional[str]
     settlement_price: Optional[float]
+    exit_fee: float
+    gross_pnl: Optional[float]
     realized_pnl: Optional[float]
 
 
@@ -131,8 +134,11 @@ class TradeResponse(BaseModel):
     quantity: float
     price: float
     total: float
+    fee: float
+    slippage_pct: float
     executed_at: str
     status: str
+    gross_pnl: Optional[float]
     pnl: Optional[float]
 
 
@@ -142,6 +148,8 @@ class PnLResponse(BaseModel):
     total_trades: int
     wins: int
     losses: int
+    gross_pnl: float
+    total_fees_paid: float
     total_pnl: float
     win_rate: float
     average_win: float
@@ -279,6 +287,8 @@ async def get_pnl():
             total_trades=summary.total_trades,
             wins=summary.wins,
             losses=summary.losses,
+            gross_pnl=summary.gross_pnl,
+            total_fees_paid=summary.total_fees_paid,
             total_pnl=summary.total_pnl,
             win_rate=summary.win_rate,
             average_win=summary.average_win,
@@ -321,10 +331,13 @@ async def get_positions(status: Optional[str] = None):
                 allocated_capital=p.allocated_capital,
                 expected_profit=p.expected_profit,
                 edge_percent=p.edge_percent,
+                entry_fee=p.entry_fee,
                 status=p.status,
                 opened_at=p.opened_at.isoformat() if p.opened_at else None,
                 settled_at=p.settled_at.isoformat() if p.settled_at else None,
                 settlement_price=p.settlement_price,
+                exit_fee=p.exit_fee,
+                gross_pnl=p.gross_pnl,
                 realized_pnl=p.realized_pnl,
             )
             for p in positions
@@ -355,8 +368,11 @@ async def get_trades(limit: int = 50):
                 quantity=o["quantity"],
                 price=o["price"],
                 total=o["total"],
+                fee=o.get("fee", 0.0),
+                slippage_pct=o.get("slippage_pct", 0.0),
                 executed_at=o["executed_at"].isoformat() if isinstance(o["executed_at"], datetime) else o["executed_at"],
                 status=o["status"],
+                gross_pnl=o.get("gross_pnl"),
                 pnl=o.get("pnl"),
             )
             for o in orders
@@ -365,6 +381,32 @@ async def get_trades(limit: int = 50):
         raise
     except Exception as e:
         logger.error(f"Error getting trades: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Execution Stats Endpoint
+@app.get("/api/execution/stats")
+async def get_execution_stats():
+    """Execution quality metrics: fill rate, fees paid, slippage."""
+    try:
+        bot = get_bot()
+        stats = bot.executor.get_execution_stats()
+        pnl_summary = bot.pnl_tracker.get_summary()
+        return {
+            **stats,
+            "taker_fee_percent": config.TAKER_FEE_PERCENT,
+            "slippage_tolerance_percent": config.SLIPPAGE_TOLERANCE_PERCENT,
+            "gross_pnl": pnl_summary.gross_pnl,
+            "net_pnl": pnl_summary.total_pnl,
+            "fee_drag_pct": (
+                (pnl_summary.total_fees_paid / abs(pnl_summary.gross_pnl) * 100)
+                if pnl_summary.gross_pnl != 0 else 0.0
+            ),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting execution stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

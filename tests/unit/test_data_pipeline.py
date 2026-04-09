@@ -76,15 +76,23 @@ def _opp(
     return opp
 
 
-def _buy(executor, opp, pid, capital_split=CAPITAL_SPLIT, max_positions=5):
+def _buy(executor, opp, pid, capital_split=CAPITAL_SPLIT, max_positions=5, fee_pct=0.0):
     """Execute a buy, patching both the executor and currency-tracker configs."""
     with patch("execution.order_executor.config") as ocfg, \
          patch("portfolio.fake_currency_tracker.config") as fcfg:
         ocfg.PAPER_TRADING_ONLY = True
         ocfg.CAPITAL_SPLIT_PERCENT = capital_split
+        ocfg.TAKER_FEE_PERCENT = fee_pct
         fcfg.MAX_POSITIONS = max_positions
         fcfg.FAKE_CURRENCY_BALANCE = STARTING_BALANCE
         return executor.execute_buy(opp, pid)
+
+
+def _settle(executor, pid, settlement_price, fee_pct=0.0):
+    """Settle a position, patching executor config for fee rate."""
+    with patch("execution.order_executor.config") as ocfg:
+        ocfg.TAKER_FEE_PERCENT = fee_pct
+        return executor.settle_position(pid, settlement_price=settlement_price)
 
 
 # ---------------------------------------------------------------------------
@@ -116,14 +124,14 @@ class TestBuyWinCycle:
     def test_settle_win_pnl_positive(self):
         executor, currency, pnl, positions = _make_all()
         _buy(executor, _opp(price=0.985), "p1")
-        result = executor.settle_position("p1", settlement_price=1.0)
+        result = _settle(executor, "p1", settlement_price=1.0)
         assert result is not None
         assert result > 0
 
     def test_settle_win_balance_above_starting(self):
         executor, currency, pnl, positions = _make_all()
         _buy(executor, _opp(price=0.985), "p1")
-        executor.settle_position("p1", settlement_price=1.0)
+        _settle(executor, "p1", settlement_price=1.0)
         assert currency.get_balance() > STARTING_BALANCE
 
     def test_position_settled_after_settlement(self):
@@ -451,7 +459,7 @@ class TestTrackerConsistency:
     def test_pnl_win_count_matches_position_win(self):
         executor, currency, pnl, positions = _make_all()
         _buy(executor, _opp(price=0.985), "p1")
-        executor.settle_position("p1", settlement_price=1.0)
+        _settle(executor, "p1", settlement_price=1.0)
         summary = pnl.get_summary()
         pos_summary = positions.get_summary()
         assert summary.wins == 1
