@@ -1,3 +1,6 @@
+# Copyright (C) 2026  Thomas Quinn (github.com/Thomas-quinn7)
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """
 Strategy YAML config loader.
 

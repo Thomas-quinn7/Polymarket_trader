@@ -8,15 +8,15 @@ version = "1.0.0"
 description = "Automated trading bot for Polymarket with settlement arbitrage strategy"
 readme = "README.md"
 requires-python = ">=3.9.10"
-license = {text = "MIT"}
+license = {text = "AGPL-3.0-only"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Thomas Quinn", email = "thomas-quinn7@users.noreply.github.com"}
 ]
 keywords = ["polymarket", "trading", "arbitrage", "bot", "cryptocurrency"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -64,10 +64,10 @@ bot = "cmd.bot:main"
 api = "api.router:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/polymarket-trading-bot"
-Documentation = "https://github.com/yourusername/polymarket-trading-bot#readme"
-Repository = "https://github.com/yourusername/polymarket-trading-bot"
-Issues = "https://github.com/yourusername/polymarket-trading-bot/issues"
+Homepage = "https://github.com/Thomas-quinn7/Polymarket_trader"
+Documentation = "https://github.com/Thomas-quinn7/Polymarket_trader#readme"
+Repository = "https://github.com/Thomas-quinn7/Polymarket_trader"
+Issues = "https://github.com/Thomas-quinn7/Polymarket_trader/issues"
 
 [tool.setuptools]
 py-modules = ["main"]
