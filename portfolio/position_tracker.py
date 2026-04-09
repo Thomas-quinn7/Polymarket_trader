@@ -215,12 +215,15 @@ class PositionTracker:
             return list(self.positions.values())
 
     def get_position_count(self) -> int:
-        """Get number of open positions"""
-        return len(self.get_open_positions())
+        """Get number of open positions."""
+        with self._lock:
+            return sum(1 for p in self.positions.values() if p.status == "OPEN")
 
     def can_open_position(self) -> bool:
-        """Check if we can open a new position"""
-        return self.get_position_count() < self.max_positions
+        """Check if we can open a new position (single lock, single pass)."""
+        with self._lock:
+            open_count = sum(1 for p in self.positions.values() if p.status == "OPEN")
+        return open_count < self.max_positions
 
     def get_summary(self) -> Dict:
         """Get position summary"""

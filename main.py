@@ -230,20 +230,21 @@ class TradingBot:
 
         while self.running:
             iteration += 1
-            logger.info(f"\n{'=' * 70}")
-            logger.info(
+            logger.debug(
                 f"Loop #{iteration} — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
                 f"| strategy={config.STRATEGY} mode={config.TRADING_MODE}"
             )
-            logger.info(f"{'=' * 70}")
 
             try:
-                self._check_strategy_exits()
-                self._check_stop_losses()
-                self._scan_and_execute()
+                # Fetch open positions once per iteration — shared by exits, stops, and scan.
+                open_positions = self.position_tracker.get_open_positions()
+                price_cache: dict = {}
+
+                self._check_strategy_exits(open_positions, price_cache)
+                self._check_stop_losses(open_positions, price_cache)
+                self._scan_and_execute(open_positions)
                 self._print_status()
 
-                logger.info(f"Sleeping {scan_interval:.1f}s...")
                 time.sleep(scan_interval)
 
             except Exception as e:
@@ -255,20 +256,26 @@ class TradingBot:
 
     # ── Strategy-driven exit ───────────────────────────────────────────
 
-    def _check_strategy_exits(self):
+    def _check_strategy_exits(self, open_positions: list, price_cache: dict):
         """
         Ask the strategy whether any open position should be closed.
         The strategy owns all exit logic — the infrastructure just calls it.
+
+        open_positions: pre-fetched snapshot from run() — avoids a redundant lock acquisition.
+        price_cache: dict shared with _check_stop_losses so each token is fetched at most once.
         """
-        for pos in self.position_tracker.get_open_positions():
+        for pos in open_positions:
             try:
-                current_price = self.client.get_price(pos.winning_token_id)
+                if pos.winning_token_id not in price_cache:
+                    price_cache[pos.winning_token_id] = self.client.get_price(pos.winning_token_id)
+                current_price = price_cache[pos.winning_token_id]
+
                 if not self.strategy.should_exit(pos, current_price):
                     continue
 
                 exit_price = self.strategy.get_exit_price(pos, current_price)
                 logger.info(f"Strategy exit signal: {pos.position_id} @ ${exit_price:.4f}")
-                pnl = self.executor.settle_position(pos.position_id, settlement_price=exit_price)
+                self.executor.settle_position(pos.position_id, settlement_price=exit_price)
 
                 if self.db:
                     settled = self.position_tracker.get_position(pos.position_id)
@@ -284,16 +291,21 @@ class TradingBot:
 
     # ── Stop-loss ──────────────────────────────────────────────────────
 
-    def _check_stop_losses(self):
+    def _check_stop_losses(self, open_positions: list, price_cache: dict):
         """
         Generic stop-loss: close a position if its price has dropped
         STOP_LOSS_PERCENT below entry.  Skipped when the setting is 0.
+
+        open_positions: pre-fetched snapshot from run().
+        price_cache: prices already fetched by _check_strategy_exits are reused here.
         """
         if config.STOP_LOSS_PERCENT <= 0:
             return
-        for pos in self.position_tracker.get_open_positions():
+        for pos in open_positions:
             try:
-                current_price = self.client.get_price(pos.winning_token_id)
+                if pos.winning_token_id not in price_cache:
+                    price_cache[pos.winning_token_id] = self.client.get_price(pos.winning_token_id)
+                current_price = price_cache[pos.winning_token_id]
                 if current_price <= 0:
                     continue
                 drop_pct = (pos.entry_price - current_price) / pos.entry_price * 100
@@ -313,11 +325,13 @@ class TradingBot:
 
     # ── Market scan + immediate execution ─────────────────────────────
 
-    def _scan_and_execute(self):
+    def _scan_and_execute(self, open_positions: list):
         """
         Refresh market cache via the multi-category scanner, run the strategy's
         opportunity scan, then immediately execute the best ones that are not
         already in the portfolio.
+
+        open_positions: pre-fetched snapshot from run() — avoids a third lock acquisition.
         """
         try:
             cache_ttl = 5 if config.TRADING_MODE == "simulation" else 60
@@ -342,7 +356,8 @@ class TradingBot:
             if self.order_book_store is not None:
                 self._capture_order_book_snapshots(best)
 
-            open_market_ids = {p.market_id for p in self.position_tracker.get_open_positions()}
+            # Build set from the already-fetched snapshot — no extra lock acquisition.
+            open_market_ids = {p.market_id for p in open_positions}
 
             for opp in best:
                 if opp.market_id in open_market_ids:

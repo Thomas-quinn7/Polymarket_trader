@@ -3,6 +3,7 @@ Order Executor Module
 Handles order execution with paper trading
 """
 
+from collections import deque
 from typing import Optional, Dict, List
 from datetime import datetime
 import time
@@ -39,7 +40,8 @@ class OrderExecutor:
         self.position_tracker = position_tracker
         self.currency_tracker = currency_tracker
         self.polymarket_client = polymarket_client
-        self.order_history: List[Dict] = []
+        # Bounded deque: keeps the last 500 orders, O(1) append and bounded memory.
+        self.order_history: deque = deque(maxlen=500)
 
         # Safety check for paper trading only mode
         if config.PAPER_TRADING_ONLY:
@@ -414,10 +416,13 @@ class OrderExecutor:
             return None
 
     def get_order_history(self, limit: Optional[int] = None) -> List[Dict]:
-        """Get order history (newest first; orders are appended chronologically)"""
+        """Get order history (newest first; orders are appended chronologically)."""
         if limit is not None and limit > 0:
-            return self.order_history[-limit:][::-1]
-        return self.order_history[::-1]
+            items = list(self.order_history)[-limit:]
+        else:
+            items = list(self.order_history)
+        items.reverse()
+        return items
 
     def get_recent_orders(self, limit: int = 10) -> List[Dict]:
         """Get recent orders"""
@@ -463,5 +468,5 @@ class OrderExecutor:
 
     def reset(self):
         """Reset executor"""
-        self.order_history = []
+        self.order_history = deque(maxlen=500)
         logger.info("Order executor reset")
