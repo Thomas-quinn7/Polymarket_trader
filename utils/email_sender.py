@@ -7,7 +7,6 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Dict, Optional
-import os
 from datetime import datetime
 
 from utils.logger import logger
@@ -161,8 +160,10 @@ Title: {title}
         .severity-WARNING {{ color: #FF9800; }}
         .severity-ERROR {{ color: #f44336; }}
         .severity-CRITICAL {{ color: #B71C1C; }}
-        .message {{ background-color: #f9f9f9; padding: 15px; margin: 10px 0; border-left: 3px solid #ccc; }}
-        .footer {{ background-color: #f4f4f4; padding: 10px; text-align: center; font-size: 12px; color: #666; }}
+        .message {{ background-color: #f9f9f9; padding: 15px; margin: 10px 0;
+            border-left: 3px solid #ccc; }}
+        .footer {{ background-color: #f4f4f4; padding: 10px; text-align: center;
+            font-size: 12px; color: #666; }}
     </style>
 </head>
 <body>
@@ -171,8 +172,10 @@ Title: {title}
     </div>
     <div class="content">
         <p><span class="alert-type">Alert Type:</span> {alert_type}</p>
-        <p><span class="alert-type">Severity:</span> <span class="severity-{severity}">{severity}</span></p>
-        <p><span class="alert-type">Timestamp:</span> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        <p><span class="alert-type">Severity:</span>
+            <span class="severity-{severity}">{severity}</span></p>
+        <p><span class="alert-type">Timestamp:</span>
+            {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
 
         <h3>{title}</h3>
         <div class="message">{message.replace(chr(10), "<br>")}</div>

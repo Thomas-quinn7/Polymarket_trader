@@ -7,7 +7,7 @@ name = "polymarket-trading-bot"
 version = "1.0.0"
 description = "Automated trading bot for Polymarket with settlement arbitrage strategy"
 readme = "README.md"
-requires-python = ">=3.9.10"
+requires-python = ">=3.10"
 license = {text = "AGPL-3.0-only"}
 authors = [
     {name = "Thomas Quinn", email = "thomas-quinn7@users.noreply.github.com"},

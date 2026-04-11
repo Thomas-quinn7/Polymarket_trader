@@ -7,7 +7,7 @@ import atexit
 import threading
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from datetime import datetime
 from enum import Enum
 import json
@@ -102,7 +102,8 @@ class AlertManager:
                     )
                     self.webhook_enabled = True
                     logger.info(
-                        f"Webhook alerts initialized (mentions: @{config.DISCORD_MENTION_USER or 'none'})"
+                        "Webhook alerts initialized "
+                        f"(mentions: @{config.DISCORD_MENTION_USER or 'none'})"
                     )
                 else:
                     logger.warning("Discord webhook URL not configured")

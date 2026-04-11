@@ -78,7 +78,7 @@ def test_discord_webhook():
 
         if response.status_code in [200, 201, 204]:
             print("✅ Discord webhook successful!")
-            print(f"\n📱 Check your Discord server for the test message!")
+            print("\n📱 Check your Discord server for the test message!")
             print(f"   You should see a test message with @{discord_username or 'no user'} mention")
             return True
         else:

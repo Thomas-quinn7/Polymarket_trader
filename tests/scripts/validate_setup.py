@@ -81,7 +81,7 @@ def check_import(module_name, package_name):
         return True
     except ImportError:
         print_error(f"{package_name}: Not installed")
-        print(f"   Run: uv pip install -e .")
+        print("   Run: uv pip install -e .")
         return False
 
 
@@ -232,8 +232,6 @@ def validate_email_configuration():
     smtp_port = os.getenv("SMTP_PORT", "587")
     username = os.getenv("SMTP_USERNAME", "")
     password = os.getenv("SMTP_PASSWORD", "")
-    email_to = os.getenv("ALERT_EMAIL_TO", "")
-
     if not smtp_server or smtp_server == "smtp.gmail.com":
         print_warning("Using default SMTP server (configure your own)")
 
