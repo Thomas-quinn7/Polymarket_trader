@@ -429,23 +429,59 @@ class PolymarketClient:
             return {"bids": [], "asks": [], "mid_price": 0.0}
 
     def create_market_order(
-        self, token_id: str, amount: float, price: Optional[float] = None, side: str = BUY
+        self,
+        token_id: str,
+        amount: float,
+        price: Optional[float] = None,
+        side: str = BUY,
+        neg_risk: bool = False,
     ) -> dict:
         """
         Create and submit a market order (FOK).
 
         Args:
-            token_id: Token ID to trade
-            amount: Dollar amount (BUY) or shares (SELL)
-            price: Optional price cap; if None the SDK calculates best market price
-            side: BUY or SELL (default BUY)
+            token_id:  Token ID to trade.
+            amount:    Dollar amount (BUY) or share count (SELL).
+            price:     Optional price cap. None → SDK uses best available.
+            side:      BUY or SELL (default BUY).
+            neg_risk:  Whether the market uses neg-risk (inverse) settlement.
+                       Must match the market's actual type — an incorrect value
+                       corrupts the order hash and the exchange will reject the
+                       order.  Callers should pass this from market data; the
+                       default False is correct for standard (non-neg-risk) markets.
 
         Returns:
-            Order response dict from Polymarket, or {} on failure
+            Order response dict from Polymarket, or {} on failure.
+
+        Safety:
+            This method is split into two isolated phases so that retries always
+            reuse the same signed order (same salt) rather than generating new ones:
+
+            Phase 1 — Signing (local, no exchange side-effects).  Safe to fail;
+                      returns {} without submitting anything.
+            Phase 2 — Submission (exchange side-effect).  _with_retry reuses the
+                      same signed_order so the exchange deduplicates by salt.
+                      If all retries fail we return {}.  The executor must NOT
+                      retry at the caller level after this returns {} — doing so
+                      would create a new signed order with a new salt and risk
+                      a double-spend.
         """
+        # Defense-in-depth: refuse to submit if paper mode is active.
+        # The executor already gates on PAPER_TRADING_ONLY; this guard catches
+        # any future code path that calls create_market_order directly without
+        # checking the flag.
+        if config.PAPER_TRADING_ONLY:
+            logger.error(
+                "SAFETY: create_market_order called while PAPER_TRADING_ONLY=True "
+                "— refusing to submit. This is a bug in the calling code."
+            )
+            return {}
+
         if self.client is None:
             logger.warning("ClobClient not initialized — order not submitted")
             return {}
+
+        # ── Phase 1: Sign the order locally (no exchange side-effects) ────────
         try:
             order_args = MarketOrderArgs(
                 token_id=token_id,
@@ -454,9 +490,13 @@ class PolymarketClient:
                 side=side,
                 order_type=OrderType.FOK,
             )
-
             signed_order = self.client.create_market_order(order_args)
+        except Exception as e:
+            logger.error(f"Order signing failed for {token_id}: {e}")
+            return {}
 
+        # ── Phase 2: Submit to exchange (retries reuse the SAME signed order) ──
+        try:
             if self._relayer_headers:
                 # Relayer mode: submit to the relayer endpoint with L2 CLOB headers
                 # merged with RELAYER_API_KEY / RELAYER_API_KEY_ADDRESS headers so
@@ -470,7 +510,8 @@ class PolymarketClient:
                 _RELAYER_URL = "https://relayer-v2.polymarket.com"
                 _ORDER_PATH = "/order"
 
-                body = order_to_json(signed_order, self.client.creds.api_key, OrderType.FOK, False)
+                # neg_risk must match the actual market type — see docstring.
+                body = order_to_json(signed_order, self.client.creds.api_key, OrderType.FOK, neg_risk)
                 serialized = _json.dumps(body, separators=(",", ":"), ensure_ascii=False)
                 req_args = RequestArgs(
                     method="POST",
@@ -479,7 +520,12 @@ class PolymarketClient:
                     serialized_body=serialized,
                 )
                 l2_headers = create_level_2_headers(self.client.signer, self.client.creds, req_args)
-                merged_headers = {**l2_headers, **self._relayer_headers}
+                # Content-Type is required; the relayer will reject/misparse the body without it.
+                merged_headers = {
+                    "Content-Type": "application/json",
+                    **l2_headers,
+                    **self._relayer_headers,
+                }
 
                 def _submit_via_relayer():
                     resp = _http_session.post(
@@ -499,16 +545,17 @@ class PolymarketClient:
                 response = _with_retry(
                     lambda: self.client.post_order(signed_order, OrderType.FOK)
                 )
-
-            logger.info(
-                f"Order submitted: {side} {token_id[:16]}… amount={amount:.4f} "
-                f"price={price} status={response.get('status') if isinstance(response, dict) else response}"
-            )
-            return response if isinstance(response, dict) else {}
-
         except Exception as e:
-            logger.error(f"Error submitting order for {token_id}: {e}")
+            # All retries exhausted — the order was NOT successfully submitted.
+            logger.error(f"Order submission failed for {token_id} after all retries: {e}")
             return {}
+
+        result = response if isinstance(response, dict) else {}
+        logger.info(
+            f"Order submitted: {side} {token_id[:16]}… amount={amount:.4f} "
+            f"price={price} status={result.get('status')}"
+        )
+        return result
 
     def get_order(self, order_id: str) -> dict:
         """
