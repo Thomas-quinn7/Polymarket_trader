@@ -204,7 +204,10 @@ class SettlementArbitrage(BaseStrategy):
 
                 # Check if price is in [min_price_threshold, max_price_threshold]
                 if self._min_price_threshold <= yes_price <= self._max_price_threshold:
-                    gross_edge = (1.00 - yes_price) * 100
+                    # Return on investment: you spend yes_price per share and receive $1.00
+                    # at settlement, so the gross return relative to cost is (1/P - 1).
+                    # Using (1 - P) * 100 understates the return at prices below 1.0.
+                    gross_edge = (1.0 / yes_price - 1.0) * 100
                     net_edge = gross_edge - taker_fee
 
                     if not self._passes_edge_filter(net_edge, market.slug, gross_edge):

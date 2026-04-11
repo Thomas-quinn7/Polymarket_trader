@@ -63,8 +63,13 @@ class FakeCurrencyTracker:
                 logger.warning(f"Max {config.MAX_POSITIONS} positions reached")
                 return False
 
-            # 20% of starting balance per position
-            position_amount = min(amount, self.starting_balance * 0.2)
+            # Honour the caller-supplied amount exactly.  The executor already
+            # sizes positions as  balance × CAPITAL_SPLIT_PERCENT  so no
+            # additional cap is needed here.  Capping at starting_balance × 0.2
+            # would create a silent mismatch: the executor's shares / fee
+            # calculations use the full amount but the balance only reflects the
+            # capped deduction.
+            position_amount = amount
 
             self.positions[position_id] = CurrencyPosition(
                 position_id=position_id,
