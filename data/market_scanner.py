@@ -8,6 +8,7 @@ coverage without incurring sequential latency.
 """
 
 import threading
+import time
 from typing import List, Optional
 
 from utils.logger import logger
@@ -49,13 +50,26 @@ def scan_categories(
             with lock:
                 results[cat] = []
 
-    threads = [threading.Thread(target=_fetch, args=(cat,), daemon=True) for cat in categories]
+    threads = [
+        threading.Thread(target=_fetch, args=(cat,), daemon=True, name=f"scanner-{cat}")
+        for cat in categories
+    ]
     for t in threads:
         t.start()
+    # Use a single shared deadline so sequential joins on parallel threads do
+    # not compound: if there are 4 threads and each gets a fresh 30s window,
+    # a slow network could block up to 4 × 30 = 120s.  With a shared deadline
+    # the total wall-clock wait is capped at 30s regardless of thread count.
+    deadline = time.monotonic() + 30
     for t in threads:
-        t.join(timeout=30)
+        remaining = max(0.0, deadline - time.monotonic())
+        t.join(timeout=remaining)
         if t.is_alive():
-            logger.warning("market_scanner: thread for category '%s' did not finish within 30s", t.name)
+            logger.warning(
+                "market_scanner: thread '%s' did not finish within 30s — "
+                "results for this category will be empty",
+                t.name,
+            )
 
     merged: list = []
     seen_ids: set = set()
