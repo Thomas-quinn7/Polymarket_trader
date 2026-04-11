@@ -5,11 +5,8 @@ Initialize SQLite database with all required tables
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import declarative_base
-
 from data.polymarket_models import Base
 from utils.logger import logger
-from config.polymarket_config import config
 
 
 def init_db():

@@ -18,8 +18,6 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI application instance
     """
-    settings = get_settings()
-
     # Create FastAPI app
     app = FastAPI(
         title="Polymarket Trading Bot API",
@@ -73,9 +71,10 @@ app = create_app()
 if __name__ == "__main__":
     import uvicorn
 
+    _settings = get_settings()
     uvicorn.run(
         "api.router:app",
-        host=settings.dashboard_host,
-        port=settings.dashboard_port,
+        host=_settings.dashboard_host,
+        port=_settings.dashboard_port,
         reload=True,
     )

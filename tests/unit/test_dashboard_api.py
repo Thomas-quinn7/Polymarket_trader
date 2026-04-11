@@ -4,7 +4,7 @@ Tests run against the FastAPI app via httpx's AsyncClient (no real server needed
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from types import SimpleNamespace
 from datetime import datetime
 

@@ -31,7 +31,6 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from data.polymarket_client import PolymarketClient
-from data.polymarket_models import TradeOpportunity
 from data.database import TradeDatabase
 from data.market_provider import MarketProvider
 from data.order_book_store import OrderBookStore, OrderBookSnapshot, OrderBookLevel

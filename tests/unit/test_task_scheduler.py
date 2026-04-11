@@ -2,7 +2,6 @@
 Unit tests for utils/execution_timer.py — TaskScheduler and ScheduledTask.
 """
 
-import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock
 
@@ -168,7 +167,9 @@ class TestPendingCount:
 
 class TestScheduledTask:
     def test_task_dataclass_fields(self):
-        cb = lambda: None
+        def cb():
+            return None
+
         task = ScheduledTask(
             task_id="t1",
             execute_at=_future(30),

@@ -6,7 +6,7 @@ without making any real API calls.
 
 import random
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict
+from typing import Dict
 
 # Fixed synthetic markets — prices and close times shift each call to simulate live data
 _MARKET_TEMPLATES = [

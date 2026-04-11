@@ -6,12 +6,11 @@ Advanced market filtering and scanning capabilities
 import json
 import os
 from typing import List, Optional, Set, Dict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from dataclasses import dataclass, field
 
 from config.polymarket_config import config
 from data.polymarket_client import PolymarketClient
-from data.polymarket_models import ArbitrageOpportunity
 from data.market_schema import PolymarketMarket
 from strategies.config_loader import load_strategy_config
 from utils.logger import logger
@@ -419,7 +418,8 @@ class EnhancedMarketScanner:
 
         if skipped_parse:
             logger.warning(
-                f"Skipped {skipped_parse} markets with missing required fields for category {category}"
+                f"Skipped {skipped_parse} markets with missing required fields "
+                f"for category {category}"
             )
 
         logger.info(

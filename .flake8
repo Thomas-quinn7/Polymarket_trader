@@ -1,0 +1,16 @@
+[flake8]
+max-line-length = 100
+exclude =
+    .venv,
+    __pycache__,
+    .git,
+    *.egg-info,
+    # Dead-code package — kept for reference, not part of the trading system
+    pkg/,
+    # Utility / manual test scripts that are not run in CI
+    tests/scripts/
+
+per-file-ignores =
+    # dashboard/api.py intentionally imports config after setting up module-level
+    # path constants that are referenced at import time; E402 is expected here.
+    dashboard/api.py: E402

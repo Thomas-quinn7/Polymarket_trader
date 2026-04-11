@@ -436,7 +436,7 @@ class TestSettlementPriceClamping:
     def test_settlement_above_one_clamped_to_one(self):
         executor, currency, pnl, positions = _make_all()
         self._open(executor)
-        pnl_val = executor.settle_position("p1", settlement_price=1.5)
+        executor.settle_position("p1", settlement_price=1.5)
         pos = positions.get_position("p1")
         assert pos.settlement_price == pytest.approx(1.0, abs=1e-6)
 
@@ -448,8 +448,6 @@ class TestSettlementPriceClamping:
         assert pos.settlement_price == pytest.approx(0.0, abs=1e-6)
 
     def test_settlement_nan_clamped_to_zero(self):
-        import math
-
         executor, currency, pnl, positions = _make_all()
         self._open(executor)
         executor.settle_position("p1", settlement_price=float("nan"))

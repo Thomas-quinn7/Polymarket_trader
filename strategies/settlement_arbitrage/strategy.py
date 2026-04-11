@@ -249,7 +249,8 @@ class SettlementArbitrage(BaseStrategy):
                     logger.info(
                         f"Opportunity: {market.slug} - "
                         f"Price: ${yes_price:.4f}, "
-                        f"Net edge: {net_edge:.2f}% (gross {gross_edge:.2f}% - {taker_fee:.1f}% fee) "
+                        f"Net edge: {net_edge:.2f}% "
+                        f"(gross {gross_edge:.2f}% - {taker_fee:.1f}% fee) "
                         f"[filter: {filter_label}], "
                         f"Confidence: {confidence:.2f}, "
                         f"Time to close: {time_to_close:.0f}s"

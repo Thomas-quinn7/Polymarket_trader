@@ -48,7 +48,8 @@ class OrderExecutor:
             logger.info("Order executor initialized — PAPER mode (no real money trades)")
         else:
             logger.warning(
-                "Order executor initialized — LIVE mode: real orders WILL be submitted to Polymarket"
+                "Order executor initialized — LIVE mode: "
+                "real orders WILL be submitted to Polymarket"
             )
 
     def execute_buy(

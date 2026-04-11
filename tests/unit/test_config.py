@@ -2,8 +2,6 @@
 Unit tests for configuration module.
 """
 
-import pytest
-
 from pkg.config import get_settings
 
 

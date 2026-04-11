@@ -9,7 +9,6 @@ These tests are diagnostic / debugging aids; they are not run as part
 of the live trading process.
 """
 
-import math
 import pytest
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace

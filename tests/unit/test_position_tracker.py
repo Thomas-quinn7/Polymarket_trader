@@ -76,7 +76,7 @@ class TestCreatePosition:
 
     def test_position_is_open(self, tracker):
         opp = make_opportunity()
-        pid = tracker.create_position(opp, 10.0, 985.0, 15.0, position_id="p1")
+        tracker.create_position(opp, 10.0, 985.0, 15.0, position_id="p1")
         pos = tracker.get_position("p1")
         assert pos.status == "OPEN"
 
@@ -288,13 +288,13 @@ class TestSettlePositionConcurrency:
         settles them.  Verifies no deadlock, no AttributeError, and that
         every created position eventually reaches SETTLED.
         """
-        import threading, time as _time
+        import threading
+        import time as _time
 
         pnl = PnLTracker()
         t = make_tracker(pnl, max_positions=50)
         created_ids = []
         errors = []
-        stop_event = threading.Event()
 
         def creator():
             for n in range(20):

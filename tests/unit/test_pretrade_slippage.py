@@ -228,7 +228,8 @@ class TestOrderBookFailure:
 
 class TestInsufficientLiquidityWarning:
     def test_thin_book_within_tolerance_logs_warning(self, caplog):
-        """Thin book that still passes slippage gate should log an insufficient-liquidity warning."""
+        """Thin book that still passes slippage gate should log an
+        insufficient-liquidity warning."""
         import logging
 
         client = MagicMock()

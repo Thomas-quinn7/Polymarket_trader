@@ -4,8 +4,7 @@ Strategy-agnostic database models for the trading bot.
 """
 
 from datetime import datetime, timezone
-from typing import Optional
-from sqlalchemy import Column, Integer, String, Float, DateTime, Enum, Index
+from sqlalchemy import Column, Integer, String, Float, DateTime, Enum
 from sqlalchemy.orm import declarative_base
 import enum
 

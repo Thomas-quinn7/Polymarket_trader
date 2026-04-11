@@ -10,12 +10,10 @@ Covers:
 """
 
 import threading
-import time
 import logging
-import pytest
 from unittest.mock import MagicMock, patch
 
-from data.market_scanner import scan_categories, ALL_CATEGORIES
+from data.market_scanner import scan_categories
 
 
 def _client_returning(category_map: dict):

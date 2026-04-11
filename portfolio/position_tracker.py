@@ -10,7 +10,7 @@ from datetime import datetime
 
 from config.polymarket_config import config
 from utils.logger import logger
-from utils.pnl_tracker import PnLTracker, TradeRecord
+from utils.pnl_tracker import PnLTracker
 
 
 @dataclass(slots=True)
@@ -189,7 +189,6 @@ class PositionTracker:
             # Snapshot the fields we need for calculation while under the lock.
             shares = position.shares
             allocated_capital = position.allocated_capital
-            entry_fee = position.entry_fee
 
         # PnL computation happens outside the lock — close_position acquires its own
         # internal lock and is safe to call concurrently.  Only the one thread that
