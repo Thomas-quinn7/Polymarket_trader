@@ -10,8 +10,6 @@ Covers:
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from strategies.enhanced_market_scanner.scanner import EnhancedMarketScanner
 from data.market_schema import PolymarketMarket
 

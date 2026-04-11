@@ -4,7 +4,6 @@ Handles webhook notifications for alerts (Slack, Discord, etc.)
 """
 
 import json
-import os
 import requests
 from typing import Dict, Optional
 from datetime import datetime

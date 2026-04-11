@@ -13,7 +13,6 @@ sys.path.insert(0, parent_dir)
 try:
     from data.polymarket_client import PolymarketClient
     from strategies.enhanced_market_scanner import EnhancedMarketScanner
-    from utils.logger import logger
 
     print("=" * 70)
     print("Simple Enhanced Market Scanner Test")

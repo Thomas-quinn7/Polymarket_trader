@@ -3,7 +3,6 @@ Dashboard Runner
 Starts the web dashboard server for monitoring the trading bot
 """
 
-import sys
 from dashboard.api import start_dashboard
 
 if __name__ == "__main__":

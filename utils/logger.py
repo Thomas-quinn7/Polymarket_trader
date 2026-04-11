@@ -8,7 +8,6 @@ import io
 import logging
 import sys
 import threading
-import codecs
 from pathlib import Path
 from datetime import datetime
 import colorlog

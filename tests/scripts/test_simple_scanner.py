@@ -13,7 +13,6 @@ sys.path.insert(0, parent_dir)
 try:
     from data.polymarket_client import PolymarketClient
     from strategies.enhanced_market_scanner import EnhancedMarketScanner
-    from utils.logger import logger
 
     print("=" * 70)
     print("Simple Enhanced Market Scanner Test")
@@ -32,7 +31,7 @@ try:
 
     print("3. Testing scanner configuration loading...")
     config = scanner.config
-    print(f"   Config loaded: OK")
+    print("   Config loaded: OK")
     print(f"   Crypto enabled: {config.crypto_enabled}")
     print(f"   Fed enabled: {config.fed_enabled}")
     print(f"   Regulatory enabled: {config.regulatory_enabled}")

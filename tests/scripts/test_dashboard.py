@@ -4,7 +4,6 @@ Simple test to run the dashboard server independently
 """
 
 import uvicorn
-import sys
 
 if __name__ == "__main__":
     print("Starting dashboard server on http://127.0.0.1:8080")

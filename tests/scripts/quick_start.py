@@ -35,7 +35,8 @@ def check_uv():
         return True
     print("  uv not found. Install it first:")
     print(
-        '    Windows:  powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"'
+        "    Windows:  powershell -ExecutionPolicy ByPass -c "
+        '"irm https://astral.sh/uv/install.ps1 | iex"'
     )
     print("    macOS/Linux: curl -LsSf https://astral.sh/uv/install.sh | sh")
     return False

@@ -4,7 +4,6 @@ Covers TradeStatus, TradeOpportunity, TradePosition, FakeCurrency, TradeAuditRec
 MarketCache, and backward-compatibility aliases.
 """
 
-import pytest
 from datetime import datetime
 
 from data.polymarket_models import (

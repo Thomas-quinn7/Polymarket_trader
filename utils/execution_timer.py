@@ -5,8 +5,8 @@ Strategies can use this to time entries or exits without coupling
 the infrastructure to any particular strategy's logic.
 """
 
-from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Callable, Dict, List
 from datetime import datetime, timezone
 
 from utils.logger import logger

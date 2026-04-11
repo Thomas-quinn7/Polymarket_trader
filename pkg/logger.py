@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-from structlog.types import EventDict, Processor
+from structlog.types import Processor
 
 
 def configure_logger(
