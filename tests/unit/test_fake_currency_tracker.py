@@ -118,9 +118,6 @@ class TestGetters:
         tracker.allocate_to_position("p1", "m1", 2_000.0)
         assert tracker.get_deployed() == 2_000.0
 
-    def test_get_available_equals_balance(self, tracker):
-        assert tracker.get_available() == tracker.get_balance()
-
 
 class TestReset:
     def test_reset_restores_state(self, tracker):

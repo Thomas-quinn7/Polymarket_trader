@@ -127,11 +127,6 @@ class FakeCurrencyTracker:
         with self._lock:
             return self.deployed
 
-    def get_available(self) -> float:
-        """Get available balance for new positions"""
-        with self._lock:
-            return self.balance
-
     def reset(self):
         """Reset tracker for testing"""
         with self._lock:

@@ -310,7 +310,7 @@ async def get_portfolio():
         return {
             "balance": balance,
             "deployed": deployed,
-            "available": bot.currency_tracker.get_available(),
+            "available": bot.currency_tracker.get_balance(),
             "starting_balance": bot.currency_tracker.starting_balance,
             # total_value = cash-in-hand + deployed capital (at cost basis).
             # Used to compute unrealised gain so an open position doesn't

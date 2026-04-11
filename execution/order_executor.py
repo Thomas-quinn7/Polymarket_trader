@@ -71,9 +71,7 @@ class OrderExecutor:
             # Size each position as a fixed fraction of currently available cash so
             # that position sizes scale down naturally after drawdowns instead of
             # attempting to allocate a fixed dollar amount that may exceed the balance.
-            capital_to_allocate = (
-                self.currency_tracker.get_available() * config.CAPITAL_SPLIT_PERCENT
-            )
+            capital_to_allocate = self.currency_tracker.get_balance() * config.CAPITAL_SPLIT_PERCENT
 
             # Guard: invalid price means we cannot safely size the position
             if not opportunity.current_price or opportunity.current_price <= 0:
