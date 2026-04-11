@@ -194,16 +194,18 @@ class PolymarketConfig:
     SCYLLA_KEYSPACE = os.getenv("SCYLLA_KEYSPACE", "polymarket")
 
     # Names of fields that contain secrets and must never appear in repr/logs.
-    _SENSITIVE_FIELDS = frozenset({
-        "POLYMARKET_PRIVATE_KEY",
-        "RELAYER_API_KEY",
-        "RELAYER_API_KEY_ADDRESS",
-        "BUILDER_API_KEY",
-        "BUILDER_SECRET",
-        "BUILDER_PASSPHRASE",
-        "SMTP_PASSWORD",
-        "DISCORD_WEBHOOK_URL",
-    })
+    _SENSITIVE_FIELDS = frozenset(
+        {
+            "POLYMARKET_PRIVATE_KEY",
+            "RELAYER_API_KEY",
+            "RELAYER_API_KEY_ADDRESS",
+            "BUILDER_API_KEY",
+            "BUILDER_SECRET",
+            "BUILDER_PASSPHRASE",
+            "SMTP_PASSWORD",
+            "DISCORD_WEBHOOK_URL",
+        }
+    )
 
     def __repr__(self) -> str:
         """
@@ -266,7 +268,9 @@ class PolymarketConfig:
         # Market category filters
         self.ENABLE_CRYPTO_MARKETS = env.get("ENABLE_CRYPTO_MARKETS", "True").lower() == "true"
         self.ENABLE_FED_MARKETS = env.get("ENABLE_FED_MARKETS", "True").lower() == "true"
-        self.ENABLE_REGULATORY_MARKETS = env.get("ENABLE_REGULATORY_MARKETS", "True").lower() == "true"
+        self.ENABLE_REGULATORY_MARKETS = (
+            env.get("ENABLE_REGULATORY_MARKETS", "True").lower() == "true"
+        )
         self.ENABLE_OTHER_MARKETS = env.get("ENABLE_OTHER_MARKETS", "True").lower() == "true"
         self.PRIORITY_CRYPTO = int(env.get("PRIORITY_CRYPTO", "1"))
         self.PRIORITY_FED = int(env.get("PRIORITY_FED", "2"))

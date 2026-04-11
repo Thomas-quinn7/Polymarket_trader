@@ -143,12 +143,16 @@ class TestCanOpenPosition:
         assert tracker.can_open_position() is True
 
     def test_false_when_at_limit(self):
+        # can_open_position() reads config.MAX_POSITIONS live so the patch must
+        # remain active for the entire test, not just during construction.
         pnl = PnLTracker()
-        t = make_tracker(pnl, max_positions=2)
         opp = make_opportunity()
-        t.create_position(opp, 10.0, 985.0, 15.0, position_id="p1")
-        t.create_position(opp, 10.0, 985.0, 15.0, position_id="p2")
-        assert t.can_open_position() is False
+        with patch("portfolio.position_tracker.config") as cfg:
+            cfg.MAX_POSITIONS = 2
+            t = PositionTracker(pnl)
+            t.create_position(opp, 10.0, 985.0, 15.0, position_id="p1")
+            t.create_position(opp, 10.0, 985.0, 15.0, position_id="p2")
+            assert t.can_open_position() is False
 
     def test_settled_does_not_count_toward_limit(self):
         pnl = PnLTracker()
@@ -162,6 +166,7 @@ class TestCanOpenPosition:
 class TestPositionSlots:
     def test_position_has_slots(self):
         from portfolio.position_tracker import Position
+
         assert hasattr(Position, "__slots__")
 
     def test_position_no_instance_dict(self, tracker):

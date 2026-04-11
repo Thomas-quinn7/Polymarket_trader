@@ -182,9 +182,7 @@ class PositionTracker:
             # immediately so any concurrent call that also holds the lock after us
             # will see a non-OPEN status and bail out before touching the PnL tracker.
             if position.status != "OPEN":
-                logger.debug(
-                    f"Position {position_id} already {position.status} — skipping settle"
-                )
+                logger.debug(f"Position {position_id} already {position.status} — skipping settle")
                 return None
             position.status = "SETTLING"
 

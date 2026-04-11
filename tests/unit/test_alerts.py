@@ -33,6 +33,7 @@ def manager():
 
 # ── alert_history structure ────────────────────────────────────────────────
 
+
 class TestAlertHistoryIsDeque:
     def test_history_type(self, manager):
         assert isinstance(manager.alert_history, deque)
@@ -52,6 +53,7 @@ class TestAlertHistoryIsDeque:
 
 
 # ── rate limiting ──────────────────────────────────────────────────────────
+
 
 class TestShouldSendAlert:
     def test_first_alert_always_allowed(self, manager):
@@ -82,6 +84,7 @@ class TestShouldSendAlert:
 
 # ── thread-pool dispatch ───────────────────────────────────────────────────
 
+
 class TestDispatch:
     def _manager_with_senders(self):
         """Return a manager with mock email + webhook senders and a real executor."""
@@ -108,9 +111,7 @@ class TestDispatch:
             cfg.ENABLE_DISCORD_ALERTS = True
             m.email_enabled = True
             m.webhook_enabled = True
-            m.create_alert(
-                AlertType.SYSTEM_ERROR, "title", "msg", AlertSeverity.ERROR
-            )
+            m.create_alert(AlertType.SYSTEM_ERROR, "title", "msg", AlertSeverity.ERROR)
 
         # Both email and webhook submitted to thread pool — not called directly.
         assert mock_executor.submit.call_count == 2
@@ -123,9 +124,7 @@ class TestDispatch:
         m.webhook_enabled = True
 
         with patch("utils.alerts.config"):
-            m.create_alert(
-                AlertType.CIRCUIT_BREAKER, "title", "msg", AlertSeverity.CRITICAL
-            )
+            m.create_alert(AlertType.CIRCUIT_BREAKER, "title", "msg", AlertSeverity.CRITICAL)
 
         assert mock_executor.submit.call_count == 2
 
@@ -137,9 +136,7 @@ class TestDispatch:
         m.webhook_enabled = True
 
         with patch("utils.alerts.config"):
-            m.create_alert(
-                AlertType.GENERAL_INFO, "title", "msg", AlertSeverity.INFO
-            )
+            m.create_alert(AlertType.GENERAL_INFO, "title", "msg", AlertSeverity.INFO)
 
         mock_executor.submit.assert_not_called()
 
@@ -151,14 +148,13 @@ class TestDispatch:
         m.webhook_enabled = True
 
         with patch("utils.alerts.config"):
-            m.create_alert(
-                AlertType.POSITION_LOSS, "title", "msg", AlertSeverity.WARNING
-            )
+            m.create_alert(AlertType.POSITION_LOSS, "title", "msg", AlertSeverity.WARNING)
 
         mock_executor.submit.assert_not_called()
 
 
 # ── _send_*_safe exception handling ───────────────────────────────────────
+
 
 class TestSendSafe:
     def test_send_email_safe_swallows_exception(self, manager):
@@ -175,6 +171,7 @@ class TestSendSafe:
 
     def test_send_email_safe_logs_on_failure(self, manager, caplog):
         import logging
+
         manager.email_sender = MagicMock()
         manager.email_sender.send_alert.side_effect = RuntimeError("boom")
         with caplog.at_level(logging.ERROR):
@@ -183,6 +180,7 @@ class TestSendSafe:
 
     def test_send_webhook_safe_logs_on_failure(self, manager, caplog):
         import logging
+
         manager.webhook_sender = MagicMock()
         manager.webhook_sender.send_alert.side_effect = RuntimeError("boom")
         with caplog.at_level(logging.ERROR):
@@ -191,6 +189,7 @@ class TestSendSafe:
 
 
 # ── thread safety ──────────────────────────────────────────────────────────
+
 
 class TestThreadSafety:
     def test_concurrent_track_alert_no_crash(self, manager):

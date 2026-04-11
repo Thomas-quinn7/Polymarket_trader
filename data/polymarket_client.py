@@ -513,7 +513,9 @@ class PolymarketClient:
                 _ORDER_PATH = "/order"
 
                 # neg_risk must match the actual market type — see docstring.
-                body = order_to_json(signed_order, self.client.creds.api_key, OrderType.FOK, neg_risk)
+                body = order_to_json(
+                    signed_order, self.client.creds.api_key, OrderType.FOK, neg_risk
+                )
                 serialized = _json.dumps(body, separators=(",", ":"), ensure_ascii=False)
                 req_args = RequestArgs(
                     method="POST",
@@ -544,9 +546,7 @@ class PolymarketClient:
 
                 response = _with_retry(_submit_via_relayer)
             else:
-                response = _with_retry(
-                    lambda: self.client.post_order(signed_order, OrderType.FOK)
-                )
+                response = _with_retry(lambda: self.client.post_order(signed_order, OrderType.FOK))
         except Exception as e:
             # All retries exhausted — the order was NOT successfully submitted.
             logger.error(f"Order submission failed for {token_id} after all retries: {e}")

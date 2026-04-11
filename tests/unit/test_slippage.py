@@ -12,8 +12,8 @@ Covers:
 import pytest
 from utils.slippage import estimate_slippage, liquidity_available_usd
 
-
 # ── helpers ────────────────────────────────────────────────────────────────
+
 
 def _book(asks=None, bids=None, mid=0.985):
     return {
@@ -34,6 +34,7 @@ def _bids(*levels):
 
 # ── single-level fill ──────────────────────────────────────────────────────
 
+
 class TestSingleLevel:
     def test_full_fill_within_one_level(self):
         """Order absorbs a fraction of the top-of-book level — zero slippage."""
@@ -46,13 +47,14 @@ class TestSingleLevel:
         assert est["levels_consumed"] == 1
 
     def test_exact_fill_of_entire_level(self):
-        book = _book(asks=_asks((0.990, 100.0)))   # $99 liquidity
+        book = _book(asks=_asks((0.990, 100.0)))  # $99 liquidity
         est = estimate_slippage(book, capital_usd=99.0)
         assert est["fill_ratio"] == pytest.approx(1.0, abs=1e-4)
         assert est["slippage_pct"] == pytest.approx(0.0, abs=1e-4)
 
 
 # ── multi-level fill ───────────────────────────────────────────────────────
+
 
 class TestMultiLevel:
     def test_two_levels_consumed(self):
@@ -82,16 +84,17 @@ class TestMultiLevel:
 
 # ── insufficient liquidity ─────────────────────────────────────────────────
 
+
 class TestInsufficientLiquidity:
     def test_partial_fill_sets_flag(self):
-        book = _book(asks=_asks((0.985, 50.76)))   # only $50 available
+        book = _book(asks=_asks((0.985, 50.76)))  # only $50 available
         est = estimate_slippage(book, capital_usd=200.0)
         assert est["insufficient_liquidity"] is True
         assert est["fill_ratio"] < 1.0
         assert est["unfilled_usd"] > 0
 
     def test_unfilled_amount_correct(self):
-        book = _book(asks=_asks((0.985, 50.76)))   # $50 available
+        book = _book(asks=_asks((0.985, 50.76)))  # $50 available
         est = estimate_slippage(book, capital_usd=100.0)
         assert est["unfilled_usd"] == pytest.approx(100.0 - 50.0, abs=0.01)
 
@@ -104,6 +107,7 @@ class TestInsufficientLiquidity:
 
 
 # ── edge cases ─────────────────────────────────────────────────────────────
+
 
 class TestEdgeCases:
     def test_zero_capital_returns_unfilled(self):
@@ -132,12 +136,20 @@ class TestEdgeCases:
     def test_result_keys_present(self):
         book = _book(asks=_asks((0.985, 200.0)))
         est = estimate_slippage(book, capital_usd=50.0)
-        for key in ("vwap", "best_price", "slippage_pct", "fill_ratio",
-                    "unfilled_usd", "insufficient_liquidity", "levels_consumed"):
+        for key in (
+            "vwap",
+            "best_price",
+            "slippage_pct",
+            "fill_ratio",
+            "unfilled_usd",
+            "insufficient_liquidity",
+            "levels_consumed",
+        ):
             assert key in est
 
 
 # ── SELL side ──────────────────────────────────────────────────────────────
+
 
 class TestSellSide:
     def test_sell_uses_bid_side(self):
@@ -162,6 +174,7 @@ class TestSellSide:
 
 
 # ── liquidity_available_usd ────────────────────────────────────────────────
+
 
 class TestLiquidityAvailable:
     def test_sums_all_ask_levels(self):

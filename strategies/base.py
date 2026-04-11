@@ -43,9 +43,7 @@ class BaseStrategy(ABC):
     # ── Required ───────────────────────────────────────────────────────────
 
     @abstractmethod
-    def scan_for_opportunities(
-        self, markets: List[PolymarketMarket]
-    ) -> List[TradeOpportunity]:
+    def scan_for_opportunities(self, markets: List[PolymarketMarket]) -> List[TradeOpportunity]:
         """
         Examine a list of pre-filtered, pre-priced markets and return qualifying
         opportunities.

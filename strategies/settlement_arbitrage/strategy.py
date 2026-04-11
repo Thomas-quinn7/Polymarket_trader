@@ -285,4 +285,3 @@ class SettlementArbitrage(BaseStrategy):
             reverse=True,
         )
         return sorted_ops[:limit]
-

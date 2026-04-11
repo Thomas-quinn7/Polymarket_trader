@@ -332,7 +332,7 @@ class TestMultiplePositions:
                 executor, _opp(market_id=f"mkt-{i}", market_slug=f"s{i}"), f"p{i}", max_positions=5
             )
         b = STARTING_BALANCE
-        expected_deployed = sum(b * (0.8 ** i) * CAPITAL_SPLIT for i in range(3))
+        expected_deployed = sum(b * (0.8**i) * CAPITAL_SPLIT for i in range(3))
         assert currency.get_deployed() == pytest.approx(expected_deployed, abs=0.01)
 
     def test_pnl_accumulates_across_settlements(self):

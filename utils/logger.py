@@ -145,7 +145,15 @@ class TradeLogger:
         # Append to CSV — use csv.writer so commas in field values don't corrupt columns.
         with self._csv_lock, open(self.trade_file, "a", newline="") as f:
             csv.writer(f).writerow(
-                [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), action, symbol, quantity, price, total, reason]
+                [
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    action,
+                    symbol,
+                    quantity,
+                    price,
+                    total,
+                    reason,
+                ]
             )
 
     def log_order_rejected(self, symbol: str, reason: str):

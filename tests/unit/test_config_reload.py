@@ -34,6 +34,7 @@ def _reload(cfg, env: dict):
 
 # ── numeric fields ─────────────────────────────────────────────────────────
 
+
 class TestReloadNumericFields:
     def test_scan_interval_updated(self):
         cfg = _config()
@@ -68,6 +69,7 @@ class TestReloadNumericFields:
 
 # ── boolean fields ─────────────────────────────────────────────────────────
 
+
 class TestReloadBooleanFields:
     def test_paper_trading_only_toggled_false(self):
         cfg = _config()
@@ -92,6 +94,7 @@ class TestReloadBooleanFields:
 
 
 # ── string / list fields ───────────────────────────────────────────────────
+
 
 class TestReloadStringFields:
     def test_trading_mode_updated(self):
@@ -122,10 +125,11 @@ class TestReloadStringFields:
 
 # ── defaults when key absent ───────────────────────────────────────────────
 
+
 class TestReloadDefaults:
     def test_missing_key_uses_default_scan_interval(self):
         cfg = _config()
-        _reload(cfg, {})   # empty env → all defaults
+        _reload(cfg, {})  # empty env → all defaults
         assert cfg.SCAN_INTERVAL_MS == 30000
 
     def test_missing_key_uses_default_max_positions(self):
@@ -140,6 +144,7 @@ class TestReloadDefaults:
 
 
 # ── idempotency ────────────────────────────────────────────────────────────
+
 
 class TestReloadIdempotent:
     def test_double_reload_same_values(self):

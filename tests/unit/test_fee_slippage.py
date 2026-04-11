@@ -111,14 +111,15 @@ class TestFeeTracking:
         buy_order = next(o for o in executor.order_history if o["action"] == "BUY")
         assert buy_order["fee"] == pytest.approx(ALLOCATED * FEE_PCT / 100, rel=1e-6)
 
-    def test_exit_fee_stored_after_settlement(self):
+    def test_exit_fee_zero_for_auto_settlement(self):
+        # settle_position() simulates automatic token redemption at expiry.
+        # Polymarket settlement is free (no SELL order placed, no taker fee).
+        # exit_fee defaults to 0.0; only the entry fee applies.
         executor, currency, pnl, positions = _make_all()
         _buy(executor, _make_opp(), "p1", fee_pct=FEE_PCT)
         _settle(executor, "p1", settlement_price=1.0, fee_pct=FEE_PCT)
         pos = positions.get_position("p1")
-        shares = ALLOCATED / PRICE_WITH_EDGE
-        expected_exit_fee = shares * 1.0 * FEE_PCT / 100
-        assert pos.exit_fee == pytest.approx(expected_exit_fee, rel=1e-4)
+        assert pos.exit_fee == 0.0
 
     def test_net_pnl_less_than_gross_pnl_when_fees_nonzero(self):
         executor, currency, pnl, positions = _make_all()

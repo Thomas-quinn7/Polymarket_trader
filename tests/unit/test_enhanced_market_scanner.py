@@ -16,8 +16,8 @@ import pytest
 from strategies.enhanced_market_scanner.scanner import EnhancedMarketScanner
 from data.market_schema import PolymarketMarket
 
-
 # ── helpers ────────────────────────────────────────────────────────────────
+
 
 def _make_scanner(
     crypto_keywords=None,
@@ -35,6 +35,7 @@ def _make_scanner(
     scanner.last_scan_time = None
 
     from strategies.enhanced_market_scanner.scanner import MarketScannerConfig
+
     scanner.config = MarketScannerConfig(
         crypto_keywords=crypto_keywords or [],
         fed_keywords=[],
@@ -54,7 +55,9 @@ def _make_scanner(
     return scanner
 
 
-def _market(slug="test-market", question="Will X happen?", volume=1000.0, token_ids=None, category="other"):
+def _market(
+    slug="test-market", question="Will X happen?", volume=1000.0, token_ids=None, category="other"
+):
     return PolymarketMarket(
         market_id=slug,
         slug=slug,
@@ -66,6 +69,7 @@ def _market(slug="test-market", question="Will X happen?", volume=1000.0, token_
 
 
 # ── pre-computation at init ────────────────────────────────────────────────
+
 
 class TestInitPrecomputation:
     def test_exclude_slugs_set_is_frozenset(self):
@@ -101,6 +105,7 @@ class TestInitPrecomputation:
 
 # ── matches_filters: liquidity gate ───────────────────────────────────────
 
+
 class TestMatchesFiltersLiquidity:
     def test_insufficient_liquidity_fails(self):
         s = _make_scanner(min_volume=500.0)
@@ -120,6 +125,7 @@ class TestMatchesFiltersLiquidity:
 
 
 # ── matches_filters: keyword inclusion ────────────────────────────────────
+
 
 class TestMatchesFiltersKeywords:
     def test_market_matching_keyword_passes(self):
@@ -168,6 +174,7 @@ class TestMatchesFiltersKeywords:
 
 # ── matches_filters: exclusions ───────────────────────────────────────────
 
+
 class TestMatchesFiltersExclusions:
     def test_excluded_slug_blocked(self):
         s = _make_scanner(exclude_slugs=["bad-market"])
@@ -213,6 +220,7 @@ class TestMatchesFiltersExclusions:
 
 # ── matches_filters: seen markets ─────────────────────────────────────────
 
+
 class TestMatchesFiltersSeen:
     def test_seen_market_blocked_when_ignore_enabled(self):
         s = _make_scanner(ignore_seen=True)
@@ -234,6 +242,7 @@ class TestMatchesFiltersSeen:
 
 
 # ── _get_category_keywords_lower ──────────────────────────────────────────
+
 
 class TestGetCategoryKeywordsLower:
     def test_crypto_returns_precomputed(self):
