@@ -13,7 +13,7 @@ from utils.logger import logger
 from utils.pnl_tracker import PnLTracker, TradeRecord
 
 
-@dataclass
+@dataclass(slots=True)
 class Position:
     """Tracks a single arbitrage position"""
 
@@ -172,7 +172,24 @@ class PositionTracker:
                 return None
             position = self.positions[position_id]
 
-        # Update PnL tracker — it owns the gross/net computation
+            # Guard against double-settle races: mark the position as in-flight
+            # immediately so any concurrent call that also holds the lock after us
+            # will see a non-OPEN status and bail out before touching the PnL tracker.
+            if position.status != "OPEN":
+                logger.debug(
+                    f"Position {position_id} already {position.status} — skipping settle"
+                )
+                return None
+            position.status = "SETTLING"
+
+            # Snapshot the fields we need for calculation while under the lock.
+            shares = position.shares
+            allocated_capital = position.allocated_capital
+            entry_fee = position.entry_fee
+
+        # PnL computation happens outside the lock — close_position acquires its own
+        # internal lock and is safe to call concurrently.  Only the one thread that
+        # transitioned status to "SETTLING" above reaches this point.
         net_pnl = self.pnl_tracker.close_position(
             position_id=position_id,
             exit_price=settlement_price,
@@ -180,10 +197,10 @@ class PositionTracker:
             exit_fee=exit_fee,
         )
 
-        gross_return = position.shares * settlement_price
-        gross_pnl = gross_return - position.allocated_capital
-        total_fees = position.entry_fee + exit_fee
+        gross_return = shares * settlement_price
+        gross_pnl = gross_return - allocated_capital
 
+        # Write the final settled state atomically.
         with self._lock:
             position.settlement_price = settlement_price
             position.settled_at = datetime.now()
@@ -238,7 +255,7 @@ class PositionTracker:
                     total_allocated += p.allocated_capital
                 elif p.status == "SETTLED":
                     settled_count += 1
-                    if p.realized_pnl:
+                    if p.realized_pnl is not None:
                         total_realized_pnl += p.realized_pnl
                         if p.realized_pnl > 0:
                             wins += 1

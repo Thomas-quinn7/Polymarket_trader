@@ -3,13 +3,14 @@
 Core arbitrage logic for Polymarket
 """
 
-from typing import List, Optional
+from typing import List
 from datetime import datetime, timezone
 
 from config.polymarket_config import config
 from data.polymarket_client import PolymarketClient
 from data.polymarket_models import TradeOpportunity, TradeStatus
 from data.market_schema import PolymarketMarket
+from data.market_provider import MarketCriteria, MarketDataSource
 from strategies.base import BaseStrategy
 from strategies.config_loader import load_strategy_config
 from utils.logger import logger
@@ -74,8 +75,16 @@ class SettlementArbitrage(BaseStrategy):
     # BaseStrategy hooks
     # ------------------------------------------------------------------
 
-    def get_scan_categories(self):
-        return ["crypto", "fed", "regulatory", "other"]
+    def get_market_criteria(self) -> MarketCriteria:
+        return MarketCriteria(
+            categories=["crypto", "fed", "regulatory", "other"],
+            min_volume_usd=config.MIN_VOLUME_USD,
+            require_binary=True,
+            price_source_preference=[
+                MarketDataSource.GAMMA_EMBEDDED,
+                MarketDataSource.CLOB_REST,
+            ],
+        )
 
     def should_exit(self, position, current_price: float) -> bool:
         """Exit when the market's close time has passed (position.expires_at)."""
@@ -169,12 +178,12 @@ class SettlementArbitrage(BaseStrategy):
     # Core strategy methods
     # ------------------------------------------------------------------
 
-    def scan_for_opportunities(self, markets: list) -> List[TradeOpportunity]:
+    def scan_for_opportunities(self, markets: List[PolymarketMarket]) -> List[TradeOpportunity]:
         """
         Scan markets for 98.5 cent arbitrage opportunities.
 
         Args:
-            markets: List of markets to scan
+            markets: Pre-filtered PolymarketMarket objects with resolved_price set.
 
         Returns:
             List of arbitrage opportunities
@@ -182,35 +191,14 @@ class SettlementArbitrage(BaseStrategy):
         taker_fee = config.TAKER_FEE_PERCENT
         opportunities = []
 
-        for raw_market in markets:
+        for market in markets:
             try:
-                market = PolymarketMarket.from_api(raw_market)
-                if market is None:
-                    logger.debug("Skipping market with missing id/token_ids")
-                    continue
-
-                # Liquidity filter
-                if not market.has_sufficient_liquidity(config.MIN_VOLUME_USD):
-                    logger.debug(
-                        f"Skipping illiquid market {market.slug} "
-                        f"(volume=${market.volume:.0f} < min=${config.MIN_VOLUME_USD:.0f})"
-                    )
-                    continue
-
-                if len(market.token_ids) != 2:
-                    continue
-
                 token_id_yes = market.token_ids[0]
                 token_id_no = market.token_ids[1]
 
-                # Use the price already embedded in the Gamma API response when
-                # available — avoids an extra per-market CLOB API call and is
-                # immune to the CLOB client returning a non-float type.
-                if market.outcome_prices:
-                    yes_price = market.outcome_prices[0]
-                else:
-                    yes_price = self.client.get_price(token_id_yes)
-
+                # resolved_price is set by MarketProvider using the strategy's
+                # price_source_preference — no extra API call needed here.
+                yes_price = market.resolved_price or 0.0
                 if yes_price == 0:
                     continue
 
@@ -270,7 +258,7 @@ class SettlementArbitrage(BaseStrategy):
                     )
 
             except Exception as e:
-                logger.error(f"Error scanning market {raw_market.get('slug', 'unknown')}: {e}")
+                logger.error(f"Error scanning market {market.slug}: {e}")
                 continue
 
         return opportunities
@@ -295,34 +283,3 @@ class SettlementArbitrage(BaseStrategy):
         )
         return sorted_ops[:limit]
 
-    def execute_opportunity(self, opportunity: TradeOpportunity, capital: float) -> Optional[float]:
-        """
-        Calculate position size and expected profit.
-
-        Args:
-            opportunity: Arbitrage opportunity
-            capital: Available capital
-
-        Returns:
-            Expected profit or None
-        """
-        position_size = capital * config.CAPITAL_SPLIT_PERCENT
-
-        if position_size < opportunity.current_price:
-            logger.warning(
-                f"Insufficient capital for {opportunity.market_slug} - "
-                f"Need ${opportunity.current_price:.4f}, have ${position_size:.2f}"
-            )
-            return None
-
-        shares = position_size / opportunity.current_price
-        expected_profit = shares * (1.00 - opportunity.current_price)
-
-        logger.info(
-            f"Position size: {shares:.4f} shares, "
-            f"Entry: ${opportunity.current_price:.4f}, "
-            f"Expected profit: ${expected_profit:.2f} "
-            f"({expected_profit / (shares * opportunity.current_price) * 100:.2f}% edge)"
-        )
-
-        return expected_profit

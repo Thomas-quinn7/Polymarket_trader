@@ -7,13 +7,16 @@ A Python framework for building and running automated trading bots on [Polymarke
 - **Market Scanner**: Continuously scans Polymarket markets across configurable categories with keyword and liquidity filters
 - **Paper Trading Mode**: Full simulation with fake currency before going live — enabled by default
 - **Simulation Mode**: Fully offline with synthetic market data — no API calls required
+- **Live Trading Mode**: Real order submission with interactive confirmation prompt and pre-trade safety checks
+- **Pre-Trade Slippage Gate**: Estimates market impact from the live order book before each order; aborts if slippage exceeds tolerance
 - **Web Dashboard**: Real-time monitoring of positions, P&L, and trade history
 - **Alert System**: Email and Discord notifications for trades and system events
 - **Portfolio Tracking**: Position management, P&L calculation, and trade history with SQLite persistence
+- **Hot-Reload Config**: Update `.env` and call `/api/reload` — most settings apply without a restart
 - **Relayer API Support**: Unlimited order relay transactions via Polymarket Relayer keys (no tier approval required)
 - **Builder API Support**: Tiered order attribution with rate limits (unverified → verified → partner)
 - **Modular Strategy Architecture**: Plug in your own strategy — the framework handles the rest
-- **455 unit tests** covering execution, portfolio, data models, validation, and pipeline
+- **617 unit tests** covering execution, portfolio, data models, slippage estimation, config reload, and pipeline
 
 ## Installation
 
@@ -57,7 +60,7 @@ uv pip install -e .
 
 4. **Configure environment variables**:
 ```bash
-cp .env.template .env
+cp .env.example .env
 # Edit .env with your credentials
 ```
 
@@ -117,14 +120,15 @@ No additional configuration required. Uses L2 CLOB authentication with your wall
 | Builder Partner | Unlimited | 30 s (30,000 ms) |
 | Relayer | Unlimited | 30 s (30,000 ms) |
 
-The framework calculates the safe scan interval automatically. Override via `SCAN_INTERVAL_MS` in `.env`.
+Each full scan consumes approximately 4 API calls (one per market category). Override via `SCAN_INTERVAL_MS` in `.env`.
 
 ### Trading Mode
 
 ```env
-# TRADING_MODE: paper | simulation
-# paper      — real Polymarket API prices, simulated order execution
+# TRADING_MODE: paper | simulation | live
+# paper      — real Polymarket API prices, simulated order execution (no real money)
 # simulation — fully offline, synthetic market data, no API calls
+# live        — real prices, REAL orders submitted to Polymarket
 TRADING_MODE=paper
 
 # Block all real-money trades regardless of other settings (recommended during testing)
@@ -132,11 +136,13 @@ PAPER_TRADING_ONLY=True
 FAKE_CURRENCY_BALANCE=10000.00
 ```
 
+To start in live mode from the command line, use `--live` (see [CLI Reference](#cli-reference) below). An interactive confirmation prompt is always shown before live trading begins.
+
 ### Strategy
 
 ```env
 # Strategy to load from strategies/registry.py
-# Built-in options: settlement_arbitrage | paper_demo | demo_buy
+# Built-in options: settlement_arbitrage | paper_demo | demo_buy | enhanced_market_scanner
 STRATEGY=settlement_arbitrage
 ```
 
@@ -144,11 +150,13 @@ STRATEGY=settlement_arbitrage
 
 ```env
 MAX_POSITIONS=5                # Maximum concurrent open positions
-CAPITAL_SPLIT_PERCENT=0.20     # Fraction of balance allocated per position (0.0–1.0)
+CAPITAL_SPLIT_PERCENT=0.20     # Fraction of available balance allocated per position (0.0–1.0)
 STOP_LOSS_PERCENT=0.0          # Exit position if price drops this % below entry (0 = disabled)
 MIN_CONFIDENCE=0.5             # Minimum strategy confidence score to enter (0.0–1.0)
 MIN_VOLUME_USD=1000.0          # Skip markets below this USD volume
 ```
+
+Capital is sized dynamically: each allocation uses `CAPITAL_SPLIT_PERCENT` of the *current available balance*, not the starting balance. Three consecutive allocations each reduce the available pot, so later positions are smaller — this limits over-exposure.
 
 ### Market Scanner
 
@@ -158,20 +166,16 @@ SCAN_CATEGORIES=crypto,fed,regulatory,other
 
 # Scan interval in milliseconds (see rate limits table above)
 SCAN_INTERVAL_MS=30000
-
-# Paper demo strategy tuning (used by paper_demo strategy)
-PAPER_DEMO_HOLD_SECONDS=60
-PAPER_DEMO_MIN_VOLUME=1000.0
-PAPER_DEMO_CATEGORY=crypto
 ```
 
 ### Execution
 
 ```env
 ORDER_TYPE=FOK                 # Fill or Kill (only supported type)
-SLIPPAGE_TOLERANCE_PERCENT=5.0
+SLIPPAGE_TOLERANCE_PERCENT=5.0 # Abort order if estimated slippage exceeds this %
+TAKER_FEE_PERCENT=2.0          # Polymarket taker fee, deducted from edge calculations
 MAX_RETRIES=3
-RETRY_DELAY_MS=100
+RETRY_DELAY_MS=100             # Base delay; actual delay is jittered (base × 0.5–1.5)
 ```
 
 ### Alerts
@@ -199,7 +203,9 @@ DISCORD_MENTION_USER=your_discord_username
 ```env
 DASHBOARD_ENABLED=True
 DASHBOARD_PORT=8080
-DASHBOARD_HOST=0.0.0.0
+# Localhost only by default. Set to 0.0.0.0 only if you need remote access
+# and have a reverse proxy with authentication in front of the dashboard.
+DASHBOARD_HOST=127.0.0.1
 ```
 
 ### Database
@@ -219,7 +225,7 @@ SCYLLA_KEYSPACE=polymarket
 ### Logging
 
 ```env
-LOG_LEVEL=INFO    # DEBUG | INFO | WARNING | ERROR
+LOG_LEVEL=INFO    # DEBUG | INFO | WARNING | ERROR | CRITICAL
 LOG_TO_FILE=True
 ```
 
@@ -249,11 +255,53 @@ python main.py
 The framework will:
 1. Connect to Polymarket via the CLOB and Gamma APIs (or run offline in simulation mode)
 2. Load the configured strategy from `strategies/registry.py`
-3. Start scanning configured market categories on each tick
-4. Pass discovered markets to your strategy for signal generation
-5. Execute orders (paper or live) and track positions
-6. Send alerts on trades and system events
-7. Serve the web dashboard on the configured port
+3. Start the web dashboard on the configured port
+4. Wait for a start command from the WebUI (or start immediately if `--auto-start` is passed)
+5. On each scan tick: check strategy exits, check stop-losses, scan for new opportunities
+6. Execute orders (paper or live) with a pre-trade slippage check before each buy
+7. Track positions and send alerts on trades and system events
+
+### CLI Reference
+
+All CLI arguments take priority over `.env` values. Most are optional — the bot runs fine with just `.env`.
+
+```
+polymarket [OPTIONS]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `--config PATH` | Load an alternative `.env` file (e.g. for a second account). CLI args still override it. |
+| `--paper` | Force paper trading mode (real prices, simulated execution) |
+| `--simulation` | Force simulation mode (fully offline, synthetic data) |
+| `--live` | Start in live trading mode. Requires `POLYMARKET_PRIVATE_KEY`. Shows a confirmation prompt before orders are submitted. |
+| `--auto-start` | Start the trading loop immediately without waiting for the WebUI |
+| `--strategy NAME` | Strategy to load (e.g. `settlement_arbitrage`) |
+| `--scan-interval MS` | Scan interval in milliseconds |
+| `--categories LIST` | Comma-separated market categories (e.g. `crypto,fed`) |
+| `--max-positions N` | Maximum concurrent open positions |
+| `--min-confidence 0.0-1.0` | Minimum confidence score to enter a trade |
+| `--stop-loss PCT` | Stop-loss as a % drop from entry; 0 to disable |
+| `--balance USD` | Starting paper-trading balance |
+| `--no-dashboard` | Disable the web dashboard |
+| `--port PORT` | Dashboard port |
+| `--log-level LEVEL` | Log verbosity: `DEBUG` \| `INFO` \| `WARNING` \| `ERROR` \| `CRITICAL` |
+
+**Examples:**
+
+```bash
+# Paper trade with the enhanced scanner, scanning only crypto markets
+polymarket --paper --strategy enhanced_market_scanner --categories crypto
+
+# Live trading with a 5% stop-loss (confirmation required)
+polymarket --live --stop-loss 5.0
+
+# Load a separate .env for a second account
+polymarket --config accounts/account2.env --paper
+
+# Headless server run, auto-start, log to DEBUG
+polymarket --auto-start --no-dashboard --log-level DEBUG
+```
 
 ### Web Dashboard
 
@@ -282,57 +330,58 @@ python tests/scripts/test_discord.py  # Send a test Discord message
 python -m pytest tests/unit/
 ```
 
-455 tests covering order execution, position tracking, P&L calculation, data models, validation, and pipeline logic.
+617 tests covering order execution, position tracking, P&L calculation, data models, slippage estimation, config reload, market scanner, and pipeline logic.
 
 ## Project Structure
 
 ```
 Polymarket_Trading/
 ├── config/
-│   └── polymarket_config.py       # All settings, env var loading, rate-limit helpers
+│   └── polymarket_config.py       # All settings, env var loading, rate-limit helpers, hot-reload
 ├── data/
 │   ├── polymarket_client.py       # Gamma + CLOB API client (Relayer/Builder/Standard auth)
-│   ├── polymarket_models.py       # SQLAlchemy database models
+│   ├── polymarket_models.py       # SQLAlchemy database models (TradeOpportunity, TradePosition)
 │   ├── market_schema.py           # Normalised market data model (PolymarketMarket)
+│   ├── market_provider.py         # MarketProvider: fetch → filter → price resolve pipeline
+│   ├── market_scanner.py          # Multi-category parallel scanner (Gamma API)
+│   ├── database.py                # SQLite session and upsert helpers
+│   ├── order_book_store.py        # ScyllaDB order book snapshot writer
 │   └── simulation_markets.py      # Synthetic market generator for offline testing
 ├── strategies/
-│   ├── base.py                    # Abstract base strategy class
+│   ├── base.py                    # Abstract BaseStrategy class
 │   ├── registry.py                # Strategy loader (STRATEGY env var selects strategy)
-│   └── examples/
-│       ├── settlement_arbitrage.py  # Near-settled market arbitrage strategy
-│       ├── paper_demo.py            # Paper trading demo with configurable hold time
-│       ├── demo_buy.py              # Single-buy demo strategy
-│       └── enhanced_market_scanner.py # Enhanced multi-signal scanner
+│   ├── config_loader.py           # YAML config loader for per-strategy tuning
+│   ├── settlement_arbitrage/      # Near-settled market arbitrage strategy
+│   ├── paper_demo/                # Paper trading demo with configurable hold time
+│   ├── demo_buy/                  # Single-buy demo strategy
+│   ├── enhanced_market_scanner/   # Enhanced multi-signal scanner
+│   └── example_strategy/          # Minimal strategy template for new strategies
 ├── execution/
-│   └── order_executor.py          # Order creation, submission, rollback, and history
+│   └── order_executor.py          # Order creation, slippage gate, submission, rollback, history
 ├── portfolio/
 │   ├── position_tracker.py        # Open position lifecycle management
 │   └── fake_currency_tracker.py   # Paper trading balance (allocation / return)
 ├── utils/
 │   ├── alerts.py                  # Unified email + Discord alerting with rate limiting
-│   ├── logger.py                  # Structured logging
+│   ├── logger.py                  # Structured logging with thread-safe CSV trade log
 │   ├── pnl_tracker.py             # P&L statistics (win rate, profit factor, drawdown)
+│   ├── slippage.py                # Order-book VWAP slippage estimator
 │   ├── execution_timer.py         # Execution timing utilities
 │   └── webhook_sender.py          # Discord webhook implementation
-├── api/
-│   └── router.py                  # FastAPI REST endpoints for dashboard data
-├── dashboard/                     # Web dashboard (HTML/CSS/JS)
-├── pkg/
-│   ├── config.py                  # Pydantic settings model (used by tests)
-│   ├── errors.py                  # Typed exception hierarchy
-│   └── logger.py                  # Structured logger setup
-├── database/                      # SQLAlchemy session and migration helpers
+├── dashboard/
+│   └── api.py                     # FastAPI REST endpoints + dashboard HTML/CSS/JS
 ├── tests/
-│   ├── unit/                      # 455 pytest unit tests
+│   ├── unit/                      # 617 pytest unit tests
 │   │   ├── test_order_executor.py
+│   │   ├── test_pretrade_slippage.py
+│   │   ├── test_slippage.py
+│   │   ├── test_config_reload.py
+│   │   ├── test_market_scanner_timeout.py
 │   │   ├── test_position_tracker.py
-│   │   ├── test_fake_currency_tracker.py
 │   │   ├── test_pnl_tracker.py
-│   │   ├── test_polymarket_models.py
-│   │   ├── test_market_schema.py
-│   │   ├── test_data_pipeline.py  # Buy/sell/settle cycle tests
-│   │   ├── test_data_validation.py # Data integrity and edge-case tests
-│   │   ├── test_config.py
+│   │   ├── test_alerts.py
+│   │   ├── test_data_pipeline.py
+│   │   ├── test_data_validation.py
 │   │   └── ...
 │   ├── integration/               # Integration tests
 │   └── scripts/                   # Manual validation and alert test scripts
@@ -340,10 +389,9 @@ Polymarket_Trading/
 │       ├── test_email.py
 │       ├── test_discord.py
 │       └── quick_start.py
-├── cmd/                           # CLI entry points
 ├── storage/                       # SQLite database (auto-created)
 ├── logs/                          # Log files (auto-created)
-├── main.py                        # Bot entry point
+├── main.py                        # Bot entry point and orchestrator
 ├── pyproject.toml
 ├── requirements.txt
 ├── docker-compose.yml             # ScyllaDB container
@@ -360,7 +408,19 @@ Wraps the Polymarket Gamma and CLOB APIs. Auth priority: **Relayer > Builder > S
 - **Builder mode**: attaches builder attribution headers via `py_builder_signing_sdk`. Tiered daily limits.
 - **Standard mode**: L2 CLOB authentication with wallet private key only.
 
-All API calls retry 3× with exponential backoff (0.1s / 0.5s / 2.0s).
+All API calls retry up to `MAX_RETRIES` times with jittered exponential backoff (base delay × random factor 0.5–1.5).
+
+### Market Provider (`data/market_provider.py`)
+
+`MarketProvider` is the data pipeline between the Gamma API and strategy code. On each scan cycle it:
+
+1. Fetches raw market dicts from the Gamma API (results are TTL-cached to avoid redundant calls within a scan)
+2. Converts each dict to a `PolymarketMarket` object once — not once per strategy
+3. Applies `MarketCriteria` pre-filters: minimum volume, binary-only gate, time-to-close bounds
+4. Resolves prices using the strategy's declared `price_source_preference` (embedded → CLOB REST → order book mid)
+5. Returns a clean `List[PolymarketMarket]` with `resolved_price` set on every entry
+
+Strategies implement only domain logic — all data plumbing is handled here.
 
 ### Market Schema (`data/market_schema.py`)
 
@@ -374,32 +434,46 @@ Strategies inherit from `BaseStrategy` in `strategies/base.py`. The active strat
 
 | Strategy | Description |
 |----------|-------------|
-| `settlement_arbitrage` | Scans for near-settled markets (price ≥ 0.985) with positive net edge after fees |
+| `settlement_arbitrage` | Scans for near-settled markets (price ≥ 0.985) with positive net edge after fees. Ranks by edge × confidence. |
 | `paper_demo` | Buys a configurable market category, holds for `PAPER_DEMO_HOLD_SECONDS`, then exits |
 | `demo_buy` | Single demonstration buy — useful for validating execution end-to-end |
+| `enhanced_market_scanner` | Multi-signal scanner with additional market filters |
 
 To add your own strategy, implement `BaseStrategy`, register it in `strategies/registry.py`, and set `STRATEGY=your_strategy` in `.env`.
 
 ### Order Executor (`execution/order_executor.py`)
 
 Manages the full order lifecycle:
-- Calculates position size from `CAPITAL_SPLIT_PERCENT` and available balance
-- In paper mode: records the trade internally with no API calls
-- In live mode: signs and submits a FOK market order, rolls back balance on failure
-- Records all order history with timestamps and position IDs
-- `execute_sell()` supports early exits; `settle_position()` handles settlement at a final price
+
+1. **Pre-trade slippage gate**: fetches the live order book (10 levels), estimates VWAP impact for the intended capital amount, and aborts if estimated slippage exceeds `SLIPPAGE_TOLERANCE_PERCENT`
+2. Calculates position size from `CAPITAL_SPLIT_PERCENT` and current available balance (dynamic, not fixed)
+3. In paper mode: records the trade internally with no API calls
+4. In live mode: signs and submits a FOK market order, rolls back balance on failure
+5. Records all order history with timestamps, position IDs, and actual slippage
+
+`execute_sell()` supports early exits; `settle_position()` handles settlement at a final price.
 
 ### Portfolio Management (`portfolio/`)
 
 - `PositionTracker`: tracks open positions, enforces `MAX_POSITIONS` limit, handles settlement
-- `FakeCurrencyTracker`: paper trading balance with allocation slots per position
+- `FakeCurrencyTracker`: paper trading balance with per-position allocation slots
 - `PnLTracker`: running statistics — total P&L, win rate, profit factor, max drawdown
+
+### Slippage Estimator (`utils/slippage.py`)
+
+`estimate_slippage(order_book, capital_usd, side)` walks the order book level-by-level, computes the volume-weighted average fill price (VWAP), and returns:
+- `vwap` — expected average fill price
+- `slippage_pct` — adverse deviation from best-available price (always ≥ 0)
+- `fill_ratio` — fraction of the order the book can absorb
+- `insufficient_liquidity` — True if the book cannot fully fill the order
+
+This is used both as the pre-trade gate and as the simulated fill price recorded on paper trades.
 
 ### Alert System (`utils/alerts.py`)
 
-Unified alerting with email (SMTP) and Discord (webhook) support. Alerts are fired on opportunity detection, trade execution, position settlement, and system errors.
+Unified alerting with email (SMTP) and Discord (webhook) support. Alerts fire on opportunity detection, trade execution, position settlement, and system errors. The alert thread pool shuts down cleanly on process exit.
 
-### Web Dashboard (`dashboard/`)
+### Web Dashboard (`dashboard/api.py`)
 
 FastAPI-backed dashboard serving real-time portfolio data via a browser UI at `http://localhost:8080`. Displays positions, P&L, trade history, and system status.
 
@@ -409,6 +483,7 @@ Enabled by default. Set `PAPER_TRADING_ONLY=True` in `.env` to ensure no real or
 
 In paper trading mode:
 - All trades use fake currency (configured via `FAKE_CURRENCY_BALANCE`)
+- Slippage is estimated from the live order book and recorded on the position
 - P&L is tracked and reported identically to live mode
 - Position sizing, stop-losses, and settlement all behave as in live mode
 - No interaction with your real Polymarket balance
@@ -416,30 +491,37 @@ In paper trading mode:
 ## Writing a Strategy
 
 ```python
+from datetime import datetime, timezone
+from typing import List
 from strategies.base import BaseStrategy
 from data.market_schema import PolymarketMarket
+from data.polymarket_models import TradeOpportunity, TradeStatus
 
 class MyStrategy(BaseStrategy):
-    def analyze(self, market: PolymarketMarket):
-        """Return a TradeOpportunity if the market meets your criteria, else None."""
-        if market.yes_price >= 0.90 and market.volume_usd >= 5000:
-            from data.polymarket_models import TradeOpportunity, TradeStatus
-            return TradeOpportunity(
-                market_id=market.market_id,
-                market_slug=market.market_slug,
-                question=market.question,
-                category=market.category,
-                token_id_yes=market.token_id_yes,
-                token_id_no=market.token_id_no,
-                winning_token_id=market.token_id_yes,
-                side="YES",
-                opportunity_type="single",
-                current_price=market.yes_price,
-                edge_percent=(1.0 - market.yes_price) * 100,
-                confidence=0.8,
-                status=TradeStatus.DETECTED,
-            )
-        return None
+    def scan_for_opportunities(self, markets: List[PolymarketMarket]) -> List[TradeOpportunity]:
+        """Return TradeOpportunity objects for markets that meet your criteria."""
+        results = []
+        for market in markets:
+            price = market.resolved_price or 0.0
+            if price >= 0.90 and (market.volume_usd or 0) >= 5000:
+                results.append(TradeOpportunity(
+                    market_id=market.market_id,
+                    market_slug=market.slug,
+                    question=market.question,
+                    category=market.category,
+                    token_id_yes=market.token_ids[0],
+                    token_id_no=market.token_ids[1],
+                    winning_token_id=market.token_ids[0],
+                    current_price=price,
+                    edge_percent=(1.0 - price) * 100,
+                    confidence=0.8,
+                    detected_at=datetime.now(timezone.utc),
+                    status=TradeStatus.DETECTED,
+                ))
+        return results
+
+    def get_best_opportunities(self, opportunities, limit=5):
+        return sorted(opportunities, key=lambda o: o.edge_percent, reverse=True)[:limit]
 ```
 
 Register in `strategies/registry.py` and set `STRATEGY=my_strategy` in `.env`.
@@ -460,6 +542,11 @@ Register in `strategies/registry.py` and set `STRATEGY=my_strategy` in `.env`.
 - Your wallet private key is invalid or missing — `ClobClient` fell back to `client = None`
 - Check `POLYMARKET_PRIVATE_KEY` and `POLYMARKET_FUNDER_ADDRESS` in `.env`
 
+**Order aborted: slippage too high**
+- The pre-trade gate rejected the order — the book was too thin for your position size
+- Increase `SLIPPAGE_TOLERANCE_PERCENT` or reduce `CAPITAL_SPLIT_PERCENT`
+- Check `MIN_VOLUME_USD` — low-liquidity markets will frequently trigger this
+
 **Relayer orders failing**
 - Verify `RELAYER_API_KEY` and `RELAYER_API_KEY_ADDRESS` are set correctly
 - Generate a new key at [polymarket.com/settings?tab=api-keys](https://polymarket.com/settings?tab=api-keys)
@@ -475,6 +562,7 @@ Register in `strategies/registry.py` and set `STRATEGY=my_strategy` in `.env`.
 
 **Dashboard not accessible**
 - Check `DASHBOARD_ENABLED=True` and `DASHBOARD_PORT` in `.env`
+- Default host is `127.0.0.1` (localhost only) — change to `0.0.0.0` only with a reverse proxy
 - Check firewall rules for the configured port
 
 **ScyllaDB errors**
@@ -489,10 +577,11 @@ This framework is provided for educational purposes. Trading on prediction marke
 
 This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0-only)**.
 
-Copyright (C) 2026 Thomas Quinn (github.com/Thomas-quinn7)
+Copyright (C) 2026 [Thomas Quinn](https://github.com/Thomas-quinn7) ([LinkedIn](https://www.linkedin.com/in/thomassquinn/)) — primary author
+               [Ciaran McDonnell](https://github.com/CiaranMcDonnell) — co-author
 
 You may use, study, and modify this software for non-commercial and educational purposes. Any distribution or network deployment of this software, or derivative works, must be released under the same AGPL-3.0 license with full source code and attribution intact.
 
-Commercial use — including deploying this framework as a service or incorporating it into a commercial product — is not permitted without explicit written permission from the author.
+Commercial use — including deploying this framework as a service or incorporating it into a commercial product — is not permitted without explicit written permission from the authors.
 
 See the [LICENSE](LICENSE) file for the full license text.

@@ -5,6 +5,7 @@ Handles field name inconsistencies across the Gamma and CLOB APIs
 by normalising all raw API dicts into a single PolymarketMarket dataclass.
 """
 
+import json as _json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -53,6 +54,11 @@ class PolymarketMarket:
     volume: float
     end_time: Optional[datetime] = None
     outcome_prices: List[float] = field(default_factory=list)  # YES price at [0], NO at [1]
+
+    # Set by MarketProvider after applying the strategy's price_source_preference.
+    # Strategies should read this field instead of fetching prices themselves.
+    # None means the provider has not yet resolved the price for this market.
+    resolved_price: Optional[float] = field(default=None, repr=False, compare=False)
 
     # Keep raw dict for any fields not explicitly mapped
     _raw: dict = field(default_factory=dict, repr=False, compare=False)
@@ -126,14 +132,12 @@ def _parse_outcome_prices(raw: dict) -> List[float]:
     The field may arrive as a JSON-encoded string '["0.985","0.015"]'
     or as a plain Python list.  Returns a list of floats (empty on failure).
     """
-    import json as _json
-
     raw_prices = raw.get("outcomePrices")
     if not raw_prices:
         return []
     try:
         if isinstance(raw_prices, str):
-            raw_prices = _json.loads(raw_prices)
+            raw_prices = _json.loads(raw_prices)  # _json imported at top of module
         return [float(p) for p in raw_prices]
     except Exception:
         return []

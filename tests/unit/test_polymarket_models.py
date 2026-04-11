@@ -1,6 +1,6 @@
 """
 Unit tests for data/polymarket_models.py
-Covers TradeStatus, TradeOpportunity, TradePosition, FakeCurrency, TradeRecord,
+Covers TradeStatus, TradeOpportunity, TradePosition, FakeCurrency, TradeAuditRecord,
 MarketCache, and backward-compatibility aliases.
 """
 
@@ -13,7 +13,8 @@ from data.polymarket_models import (
     TradeOpportunity,
     TradePosition,
     FakeCurrency,
-    TradeRecord,
+    TradeAuditRecord,
+    TradeRecord,  # backward-compat alias
     MarketCache,
     ArbitrageStatus,
     ArbitrageOpportunity,
@@ -248,13 +249,13 @@ class TestFakeCurrencyToDict:
 
 
 # ---------------------------------------------------------------------------
-# TradeRecord.to_dict()
+# TradeAuditRecord.to_dict()
 # ---------------------------------------------------------------------------
 
 
 class TestTradeRecordToDict:
     def test_required_keys(self):
-        tr = TradeRecord(
+        tr = TradeAuditRecord(
             market_id="mkt-1",
             market_slug="mkt",
             token_id="tok",
@@ -288,7 +289,7 @@ class TestTradeRecordToDict:
             assert key in d
 
     def test_status_is_string(self):
-        tr = TradeRecord(
+        tr = TradeAuditRecord(
             market_id="m",
             market_slug="m",
             token_id="t",

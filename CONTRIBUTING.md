@@ -10,7 +10,7 @@ By submitting a contribution (pull request, patch, or otherwise) you agree that:
 
 - Your contribution is your original work and you have the right to submit it.
 - Your contribution will be licensed under AGPL-3.0-only, the same license as this project.
-- Copyright of the overall project remains with the original author: Thomas Quinn (github.com/Thomas-quinn7).
+- Copyright of the overall project remains with the primary author (Thomas Quinn, github.com/Thomas-quinn7) and co-author (Ciaran McDonnell, github.com/CiaranMcDonnell).
 
 If you are contributing on behalf of an employer or under a contract, ensure you have permission to do so under these terms before submitting.
 

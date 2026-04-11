@@ -14,6 +14,7 @@ from typing import List
 from data.polymarket_client import PolymarketClient
 from data.polymarket_models import TradeOpportunity, TradeStatus
 from data.market_schema import PolymarketMarket
+from data.market_provider import MarketCriteria
 from strategies.base import BaseStrategy
 from strategies.config_loader import load_strategy_config
 from utils.logger import logger
@@ -37,31 +38,22 @@ class DemoBuy(BaseStrategy):
         self._hold_seconds: int = int(cfg["hold_seconds"])
         self._scan_categories: List[str] = list(cfg["scan_categories"])
 
-    def get_scan_categories(self) -> List[str]:
-        return self._scan_categories
+    def get_market_criteria(self) -> MarketCriteria:
+        return MarketCriteria(
+            categories=self._scan_categories,
+            require_binary=True,
+        )
 
-    def scan_for_opportunities(self, markets: list) -> List[TradeOpportunity]:
+    def scan_for_opportunities(self, markets: List[PolymarketMarket]) -> List[TradeOpportunity]:
         opportunities = []
 
-        for raw_market in markets:
+        for market in markets:
             try:
-                market = PolymarketMarket.from_api(raw_market)
-                if market is None:
-                    continue
-
-                if len(market.token_ids) < 2:
-                    continue
-
                 token_id_yes = market.token_ids[0]
                 token_id_no = market.token_ids[1]
 
-                yes_price = (
-                    market.outcome_prices[0]
-                    if market.outcome_prices
-                    else self.client.get_price(token_id_yes)
-                )
-                if yes_price == 0:
-                    yes_price = 0.50  # fallback for thinly traded markets
+                # resolved_price is set by MarketProvider — no extra API call needed.
+                yes_price = market.resolved_price or 0.50  # fallback for thinly traded markets
 
                 opportunity = TradeOpportunity(
                     market_id=market.market_id,
@@ -89,7 +81,7 @@ class DemoBuy(BaseStrategy):
                 )
 
             except Exception as e:
-                logger.error(f"[DEMO] Error scanning {raw_market.get('slug', '?')}: {e}")
+                logger.error(f"[DEMO] Error scanning {market.slug}: {e}")
 
         return opportunities
 

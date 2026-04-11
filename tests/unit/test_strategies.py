@@ -18,6 +18,7 @@ from strategies.registry import load_strategy, available_strategies
 from strategies.config_loader import load_strategy_config
 from strategies.demo_buy import DemoBuy
 from strategies.settlement_arbitrage import SettlementArbitrage
+from data.market_schema import PolymarketMarket
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,6 +63,35 @@ def _make_raw_market(
         "volume": volume,
         "endDate": end_date,
     }
+
+
+def _make_market(
+    slug="test-market",
+    yes_price=0.60,
+    volume=10_000.0,
+    seconds_to_close=3600,
+    category="crypto",
+    resolved_price=None,
+) -> PolymarketMarket:
+    """
+    Build a PolymarketMarket with resolved_price set — matches what MarketProvider
+    delivers to strategies after pre-filtering and price resolution.
+    """
+    now = datetime.now(timezone.utc)
+    end_date = (now + timedelta(seconds=seconds_to_close)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    raw = {
+        "id": f"id-{slug}",
+        "slug": slug,
+        "question": f"Will {slug} happen?",
+        "clobTokenIds": [f"{slug}_yes", f"{slug}_no"],
+        "outcomePrices": [str(yes_price), str(round(1.0 - yes_price, 4))],
+        "tags": [{"label": category}],
+        "volume": volume,
+        "endDate": end_date,
+    }
+    market = PolymarketMarket.from_api(raw)
+    market.resolved_price = resolved_price if resolved_price is not None else yes_price
+    return market
 
 
 def _make_settlement_arb(**yaml_overrides):
@@ -268,29 +298,20 @@ class TestDemoBuy:
     def test_scan_empty_markets_returns_empty(self):
         assert DemoBuy(_make_client()).scan_for_opportunities([]) == []
 
-    def test_scan_skips_market_without_two_tokens(self):
-        raw = _make_raw_market()
-        raw["clobTokenIds"] = ["only_one"]
-        assert DemoBuy(_make_client()).scan_for_opportunities([raw]) == []
-
     def test_scan_returns_opportunity_per_market(self):
-        markets = [_make_raw_market(f"mkt-{i}") for i in range(3)]
+        markets = [_make_market(f"mkt-{i}") for i in range(3)]
         assert len(DemoBuy(_make_client()).scan_for_opportunities(markets)) == 3
 
     def test_opportunity_side_is_yes(self):
-        opps = DemoBuy(_make_client()).scan_for_opportunities([_make_raw_market()])
+        opps = DemoBuy(_make_client()).scan_for_opportunities([_make_market()])
         assert opps[0].side == "YES"
 
-    def test_opportunity_uses_outcome_price(self):
-        opps = DemoBuy(_make_client()).scan_for_opportunities([_make_raw_market(yes_price=0.65)])
+    def test_opportunity_uses_resolved_price(self):
+        opps = DemoBuy(_make_client()).scan_for_opportunities([_make_market(resolved_price=0.65)])
         assert opps[0].current_price == pytest.approx(0.65, abs=0.001)
 
-    def test_zero_price_falls_back_to_0_5(self):
-        raw = _make_raw_market()
-        raw["outcomePrices"] = ["0", "1"]
-        client = _make_client()
-        client.get_price.return_value = 0.0
-        opps = DemoBuy(client).scan_for_opportunities([raw])
+    def test_zero_resolved_price_falls_back_to_0_5(self):
+        opps = DemoBuy(_make_client()).scan_for_opportunities([_make_market(resolved_price=0.0)])
         assert opps[0].current_price == 0.50
 
     def test_get_best_opportunities_limits(self):
@@ -313,10 +334,13 @@ class TestDemoBuy:
     def test_get_exit_price_returns_current(self):
         assert DemoBuy(_make_client()).get_exit_price(_make_position(), 0.97) == pytest.approx(0.97)
 
-    def test_scan_handles_malformed_market_gracefully(self):
-        markets = [{"bad": "data"}, _make_raw_market()]
-        opps = DemoBuy(_make_client()).scan_for_opportunities(markets)
-        assert len(opps) >= 1
+    def test_scan_produces_valid_opportunity_fields(self):
+        market = _make_market(slug="sol-100k", resolved_price=0.72)
+        opps = DemoBuy(_make_client()).scan_for_opportunities([market])
+        assert len(opps) == 1
+        opp = opps[0]
+        assert opp.market_slug == "sol-100k"
+        assert opp.current_price == pytest.approx(0.72)
 
     def test_hold_seconds_loaded_from_yaml(self):
         s = DemoBuy(_make_client())
@@ -350,16 +374,7 @@ class TestSettlementArbitrage:
             cfg.MIN_VOLUME_USD = 100.0
             cfg.MIN_CONFIDENCE = 0.0
             cfg.TAKER_FEE_PERCENT = 2.0
-            opps = s.scan_for_opportunities([_make_raw_market(yes_price=0.50)])
-        assert opps == []
-
-    def test_scan_illiquid_market_skipped(self):
-        s = _make_settlement_arb()
-        with patch("strategies.settlement_arbitrage.strategy.config") as cfg:
-            cfg.MIN_VOLUME_USD = 1_000.0
-            cfg.MIN_CONFIDENCE = 0.0
-            cfg.TAKER_FEE_PERCENT = 2.0
-            opps = s.scan_for_opportunities([_make_raw_market(yes_price=0.990, volume=50.0)])
+            opps = s.scan_for_opportunities([_make_market(yes_price=0.50)])
         assert opps == []
 
     def test_should_exit_true_past_expiry(self):
@@ -409,14 +424,15 @@ class TestSettlementArbitrage:
                 score = s._calculate_confidence(price, float(ttc), 1.0)
                 assert 0.0 <= score <= 1.0
 
-    def test_scan_handles_malformed_market(self):
+    def test_scan_zero_resolved_price_skipped(self):
+        """Markets with resolved_price=0 are skipped (provider failed to price them)."""
         s = _make_settlement_arb()
         with patch("strategies.settlement_arbitrage.strategy.config") as cfg:
             cfg.MIN_VOLUME_USD = 100.0
             cfg.MIN_CONFIDENCE = 0.0
             cfg.TAKER_FEE_PERCENT = 2.0
-            opps = s.scan_for_opportunities([{"bad": "data"}, _make_raw_market(yes_price=0.50)])
-        assert isinstance(opps, list)
+            opps = s.scan_for_opportunities([_make_market(yes_price=0.990, resolved_price=0.0)])
+        assert opps == []
 
     def test_yaml_config_applied_at_init(self):
         s = _make_settlement_arb(min_price_threshold=0.970, execute_before_close_seconds=60)
@@ -492,7 +508,7 @@ class TestEdgeFilterMode:
     # ── Integration with scan_for_opportunities ──────────────────────────────
 
     def _scan(self, strategy, yes_price, fee_pct=2.0):
-        market = _make_raw_market(yes_price=yes_price, seconds_to_close=60, volume=100_000)
+        market = _make_market(yes_price=yes_price, seconds_to_close=60, volume=100_000)
         with patch("strategies.settlement_arbitrage.strategy.config") as cfg:
             cfg.MIN_VOLUME_USD = 100.0
             cfg.MIN_CONFIDENCE = 0.0

@@ -73,13 +73,18 @@ static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-# Add CORS middleware
+# Add CORS middleware — restrict to localhost origins so the dashboard is not
+# reachable from arbitrary third-party websites even if the port is exposed.
+# allow_credentials is omitted: the dashboard uses no cookies or auth headers.
+_ALLOWED_ORIGINS = [
+    f"http://localhost:{config.DASHBOARD_PORT}",
+    f"http://127.0.0.1:{config.DASHBOARD_PORT}",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -169,21 +174,47 @@ class ConfigResponse(BaseModel):
     fake_currency_balance: float
 
 
-# Helper function to get bot instance
+# Attributes that must be present for a bot instance to be considered fully
+# initialised.  Guards against partially-constructed objects being exposed
+# via the API if set_bot_instance() is ever called too early.
+_REQUIRED_BOT_ATTRS = (
+    "running",
+    "pnl_tracker",
+    "position_tracker",
+    "currency_tracker",
+    "strategy",
+)
+
+
 def get_bot():
-    """Get the bot instance or raise 503 if not yet registered."""
+    """
+    Return the current TradingBot instance or raise HTTP 503.
+
+    Raises 503 if:
+    - set_bot_instance() has not yet been called (None reference), or
+    - the stored instance is missing required attributes (partially initialised).
+    """
     bot = _get_bot_instance()
     if bot is None:
         raise HTTPException(
             status_code=503,
             detail="Trading bot not initialized. Please start the trading bot first.",
         )
+    missing = [attr for attr in _REQUIRED_BOT_ATTRS if not hasattr(bot, attr)]
+    if missing:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Trading bot is not fully initialized (missing: {', '.join(missing)}).",
+        )
     return bot
 
 
 def is_bot_available():
-    """Check if bot instance is available"""
-    return _get_bot_instance() is not None
+    """Return True only when a fully-initialised bot instance is registered."""
+    bot = _get_bot_instance()
+    if bot is None:
+        return False
+    return all(hasattr(bot, attr) for attr in _REQUIRED_BOT_ATTRS)
 
 
 # Dashboard Routes
@@ -429,7 +460,14 @@ async def get_config():
 
 # ── Settings Models ────────────────────────────────────────────────────
 class SettingsResponse(BaseModel):
-    """All user-editable settings (no secrets)"""
+    """
+    All user-editable settings returned by GET /api/settings.
+
+    Credential fields (webhook URLs, email passwords, private keys) are
+    NEVER included here.  Where a credential is relevant to the UI,
+    a boolean ``*_configured`` flag is returned instead so the frontend
+    can show "configured / not configured" without exposing the secret.
+    """
 
     trading_mode: str
     fake_currency_balance: float
@@ -440,11 +478,14 @@ class SettingsResponse(BaseModel):
     min_volume_usd: float
     enable_email_alerts: bool
     enable_discord_alerts: bool
-    discord_webhook_url: str
+    # Webhook URL is a bearer token — never echoed back.
+    # Frontend uses this flag to show "Discord webhook configured ✓".
+    discord_webhook_configured: bool
     alert_email_from: str
     alert_email_to: str
     smtp_server: str
     smtp_port: int
+    # Username is non-secret; password is NOT returned.
     smtp_username: str
     log_level: str
 
@@ -493,7 +534,13 @@ _ENV_MAP: Dict[str, tuple] = {
 
 @app.get("/api/settings", response_model=SettingsResponse)
 async def get_settings():
-    """Get all editable settings (no secrets)"""
+    """
+    Get all editable settings.
+
+    Credential fields are never returned in plaintext — the Discord webhook
+    URL is replaced with a boolean flag indicating whether it is configured.
+    To update the webhook URL, POST to this endpoint with the new value.
+    """
     return SettingsResponse(
         trading_mode=config.TRADING_MODE,
         fake_currency_balance=config.FAKE_CURRENCY_BALANCE,
@@ -504,7 +551,7 @@ async def get_settings():
         min_volume_usd=config.MIN_VOLUME_USD,
         enable_email_alerts=config.ENABLE_EMAIL_ALERTS,
         enable_discord_alerts=config.ENABLE_DISCORD_ALERTS,
-        discord_webhook_url=config.DISCORD_WEBHOOK_URL,
+        discord_webhook_configured=bool(config.DISCORD_WEBHOOK_URL),
         alert_email_from=config.ALERT_EMAIL_FROM,
         alert_email_to=config.ALERT_EMAIL_TO,
         smtp_server=config.SMTP_SERVER,
@@ -606,7 +653,7 @@ async def bot_stop():
     return {"success": success, "running": bot.running}
 
 
-def start_dashboard(port: int = 8080, host: str = "0.0.0.0"):
+def start_dashboard(port: int = 8080, host: str = config.DASHBOARD_HOST):
     """Start the dashboard server"""
     logger.info(f"Starting dashboard server on {host}:{port}")
 

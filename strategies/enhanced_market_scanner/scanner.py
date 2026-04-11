@@ -104,6 +104,16 @@ class EnhancedMarketScanner:
         self.market_cache: Dict[str, dict] = {}
         self.last_scan_time: Optional[datetime] = None
 
+        # Pre-compute lowercased keyword tuples and O(1) exclusion sets so that
+        # matches_filters() — called once per market per scan — does no repeated
+        # .lower() calls or O(n) list membership tests at scan time.
+        self._crypto_kws: tuple = tuple(kw.lower() for kw in self.config.crypto_keywords)
+        self._fed_kws: tuple = tuple(kw.lower() for kw in self.config.fed_keywords)
+        self._regulatory_kws: tuple = tuple(kw.lower() for kw in self.config.regulatory_keywords)
+        self._other_kws: tuple = tuple(kw.lower() for kw in self.config.other_keywords)
+        self._exclude_kws: tuple = tuple(kw.lower() for kw in self.config.exclude_keywords)
+        self._exclude_slugs_set: frozenset = frozenset(self.config.exclude_slugs)
+
         # Load persistent state
         self._load_seen_markets()
 
@@ -255,8 +265,23 @@ class EnhancedMarketScanner:
             logger.warning(f"Could not load seen markets file: {e} — starting fresh")
             self.seen_markets = set()
 
+    # Maximum number of market IDs to keep in the seen_markets set.
+    # Entries beyond this cap are pruned before each disk write to prevent
+    # unbounded memory growth and an ever-growing JSON file.
+    _SEEN_MARKETS_MAX = 10_000
+
     def _save_seen_markets(self):
         """Persist seen market IDs to JSON file."""
+        # Trim the in-memory set when it exceeds the size cap so memory and the
+        # JSON file don't grow unboundedly across long-running sessions.
+        if len(self.seen_markets) > self._SEEN_MARKETS_MAX:
+            overflow = len(self.seen_markets) - self._SEEN_MARKETS_MAX
+            trimmed = set(list(self.seen_markets)[overflow:])
+            self.seen_markets = trimmed
+            logger.debug(
+                f"Trimmed seen_markets from {len(self.seen_markets) + overflow} "
+                f"to {len(self.seen_markets)} entries (cap={self._SEEN_MARKETS_MAX})"
+            )
         try:
             path = os.path.abspath(_SEEN_MARKETS_FILE)
             with open(path, "w") as f:
@@ -265,30 +290,32 @@ class EnhancedMarketScanner:
             logger.warning(f"Could not save seen markets file: {e}")
 
     def matches_filters(self, market: PolymarketMarket, category: str) -> bool:
-        """Check if a PolymarketMarket matches all configured filters."""
+        """Check if a PolymarketMarket matches all configured filters.
+
+        Uses pre-lowercased keyword tuples and frozenset slug exclusions (built
+        at __init__ time) so no repeated .lower() or O(n) list scans at runtime.
+        """
         if not market.has_sufficient_liquidity(config.MIN_VOLUME_USD):
             return False
 
         if self.config.ignore_seen_markets and market.market_id in self.seen_markets:
             return False
 
-        keywords = self._get_category_keywords(category)
-        if keywords:
-            title_lower = market.question.lower()
-            slug_lower = market.slug.lower()
-            if not any(kw.lower() in title_lower or kw.lower() in slug_lower for kw in keywords):
-                return False
+        # Lowercase market text once — reused by both include and exclude checks.
+        title_lower = market.question.lower()
+        slug_lower = market.slug.lower()
 
-        if self.config.exclude_keywords:
-            title_lower = market.question.lower()
-            slug_lower = market.slug.lower()
-            if any(
-                kw.lower() in title_lower or kw.lower() in slug_lower
-                for kw in self.config.exclude_keywords
-            ):
-                return False
+        kws = self._get_category_keywords_lower(category)
+        if kws and not any(kw in title_lower or kw in slug_lower for kw in kws):
+            return False
 
-        if self.config.exclude_slugs and market.slug in self.config.exclude_slugs:
+        if self._exclude_kws and any(
+            kw in title_lower or kw in slug_lower for kw in self._exclude_kws
+        ):
+            return False
+
+        # O(1) frozenset lookup replaces O(n) list scan
+        if self._exclude_slugs_set and market.slug in self._exclude_slugs_set:
             return False
 
         if self.config.min_price is not None or self.config.max_price is not None:
@@ -315,12 +342,25 @@ class EnhancedMarketScanner:
 
         return True
 
+    def _get_category_keywords_lower(self, category: str) -> tuple:
+        """Return the pre-lowercased keyword tuple for a category."""
+        if category == "crypto":
+            return self._crypto_kws
+        elif category == "fed":
+            return self._fed_kws
+        elif category == "regulatory":
+            return self._regulatory_kws
+        elif category == "other":
+            return self._other_kws
+        return ()
+
     def _get_category_keywords(self, category: str) -> Optional[List[str]]:
+        """Return the original (non-lowercased) keyword list for a category."""
         if category == "crypto":
             return self.config.crypto_keywords
         elif category == "fed":
             return self.config.fed_keywords
-        elif category == "regulation":
+        elif category == "regulatory":
             return self.config.regulatory_keywords
         elif category == "other":
             return self.config.other_keywords
@@ -339,7 +379,7 @@ class EnhancedMarketScanner:
             return self.config.crypto_priority
         elif category == "fed":
             return self.config.fed_priority
-        elif category == "regulation":
+        elif category == "regulatory":
             return self.config.regulatory_priority
         elif category == "other":
             return self.config.other_priority
@@ -351,7 +391,7 @@ class EnhancedMarketScanner:
             return []
         elif category == "fed" and not self.config.fed_enabled:
             return []
-        elif category == "regulation" and not self.config.regulatory_enabled:
+        elif category == "regulatory" and not self.config.regulatory_enabled:
             return []
         elif category == "other" and not self.config.other_enabled:
             return []
@@ -392,7 +432,7 @@ class EnhancedMarketScanner:
         category_map = {
             "crypto": (self.config.crypto_enabled, self.config.crypto_priority),
             "fed": (self.config.fed_enabled, self.config.fed_priority),
-            "regulation": (self.config.regulatory_enabled, self.config.regulatory_priority),
+            "regulatory": (self.config.regulatory_enabled, self.config.regulatory_priority),
             "other": (self.config.other_enabled, self.config.other_priority),
         }
         sorted_categories = sorted(

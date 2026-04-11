@@ -3,9 +3,11 @@ Logging Utility
 Provides colored console logging and file logging with rotation
 """
 
+import csv
+import io
 import logging
 import sys
-import io
+import threading
 import codecs
 from pathlib import Path
 from datetime import datetime
@@ -65,7 +67,7 @@ def setup_logger(name: str, log_file: str = None) -> logging.Logger:
         Configured logger instance
     """
     logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(getattr(logging, config.LOG_LEVEL.upper(), logging.INFO))
 
     # Prevent duplicate handlers
     if logger.handlers:
@@ -121,11 +123,14 @@ class TradeLogger:
         logs_dir = Path(__file__).parent.parent / "logs"
         logs_dir.mkdir(exist_ok=True)
         self.trade_file = logs_dir / f"trade_history_{datetime.now().strftime('%Y%m%d')}.csv"
+        self._csv_lock = threading.Lock()
 
         # Create CSV header if file doesn't exist
         if not self.trade_file.exists():
-            with open(self.trade_file, "w") as f:
-                f.write("timestamp,action,symbol,quantity,price,total,reason\n")
+            with self._csv_lock, open(self.trade_file, "w", newline="") as f:
+                csv.writer(f).writerow(
+                    ["timestamp", "action", "symbol", "quantity", "price", "total", "reason"]
+                )
 
     def log_trade(self, action: str, symbol: str, quantity: float, price: float, reason: str = ""):
         """Log a trade to both logger and CSV"""
@@ -137,10 +142,11 @@ class TradeLogger:
 
         self.logger.info(message)
 
-        # Append to CSV
-        with open(self.trade_file, "a") as f:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            f.write(f"{timestamp},{action},{symbol},{quantity},{price},{total},{reason}\n")
+        # Append to CSV — use csv.writer so commas in field values don't corrupt columns.
+        with self._csv_lock, open(self.trade_file, "a", newline="") as f:
+            csv.writer(f).writerow(
+                [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), action, symbol, quantity, price, total, reason]
+            )
 
     def log_order_rejected(self, symbol: str, reason: str):
         """Log rejected orders"""

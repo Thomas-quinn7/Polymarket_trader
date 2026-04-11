@@ -4,13 +4,11 @@ Configuration settings for Polymarket Arbitrage Bot
 """
 
 import os
-from dataclasses import dataclass
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
-@dataclass
 class PolymarketConfig:
     """Polymarket configuration settings"""
 
@@ -116,7 +114,10 @@ class PolymarketConfig:
     # Dashboard Configuration
     DASHBOARD_ENABLED = os.getenv("DASHBOARD_ENABLED", "True").lower() == "true"
     DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "8080"))
-    DASHBOARD_HOST = os.getenv("DASHBOARD_HOST", "0.0.0.0")
+    # Bind to localhost by default so the dashboard is not exposed to the
+    # local network.  Set DASHBOARD_HOST=0.0.0.0 in .env only when you
+    # intentionally want remote access (e.g., behind a reverse proxy with auth).
+    DASHBOARD_HOST = os.getenv("DASHBOARD_HOST", "127.0.0.1")
 
     # Logging Configuration
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -151,24 +152,26 @@ class PolymarketConfig:
     # Override via SCAN_INTERVAL_MS in .env. Defaults to 30s (safe for verified/partner).
     SCAN_INTERVAL_MS = int(os.getenv("SCAN_INTERVAL_MS", "30000"))
 
-    # Market Categories (all enabled)
-    ENABLE_CRYPTO_MARKETS = True
-    ENABLE_FED_MARKETS = True
-    ENABLE_REGULATORY_MARKETS = True
-    ENABLE_OTHER_MARKETS = True
+    # Market Categories
+    ENABLE_CRYPTO_MARKETS = os.getenv("ENABLE_CRYPTO_MARKETS", "True").lower() == "true"
+    ENABLE_FED_MARKETS = os.getenv("ENABLE_FED_MARKETS", "True").lower() == "true"
+    ENABLE_REGULATORY_MARKETS = os.getenv("ENABLE_REGULATORY_MARKETS", "True").lower() == "true"
+    ENABLE_OTHER_MARKETS = os.getenv("ENABLE_OTHER_MARKETS", "True").lower() == "true"
 
     # Market Priority (1=highest, 5=lowest)
-    PRIORITY_CRYPTO = 1
-    PRIORITY_FED = 2
-    PRIORITY_REGULATORY = 3
-    PRIORITY_OTHER = 4
+    PRIORITY_CRYPTO = int(os.getenv("PRIORITY_CRYPTO", "1"))
+    PRIORITY_FED = int(os.getenv("PRIORITY_FED", "2"))
+    PRIORITY_REGULATORY = int(os.getenv("PRIORITY_REGULATORY", "3"))
+    PRIORITY_OTHER = int(os.getenv("PRIORITY_OTHER", "4"))
 
     # Execution Settings
-    ORDER_TYPE = "FOK"  # Fill or Kill
-    SLIPPAGE_TOLERANCE_PERCENT = 5.0  # 5% max slippage; live orders rejected if exceeded
-    TAKER_FEE_PERCENT = float(os.getenv("TAKER_FEE_PERCENT", "2.0"))  # Polymarket taker fee
-    MAX_RETRIES = 3
-    RETRY_DELAY_MS = 100
+    # ORDER_TYPE is intentionally absent: Polymarket's CLOB requires FOK (Fill-or-Kill)
+    # for all market orders at the protocol level. The SDK hardcodes OrderType.FOK and
+    # the exchange rejects any other type — it is not a user-configurable value.
+    SLIPPAGE_TOLERANCE_PERCENT = float(os.getenv("SLIPPAGE_TOLERANCE_PERCENT", "5.0"))
+    TAKER_FEE_PERCENT = float(os.getenv("TAKER_FEE_PERCENT", "2.0"))
+    MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
+    RETRY_DELAY_MS = int(os.getenv("RETRY_DELAY_MS", "100"))
 
     # Power management (Windows only)
     # PREVENT_SLEEP=true  — blocks Windows idle sleep while the bot runs.
@@ -186,8 +189,51 @@ class PolymarketConfig:
     SCYLLA_PORT = int(os.getenv("SCYLLA_PORT", "9042"))
     SCYLLA_KEYSPACE = os.getenv("SCYLLA_KEYSPACE", "polymarket")
 
+    # Names of fields that contain secrets and must never appear in repr/logs.
+    _SENSITIVE_FIELDS = frozenset({
+        "POLYMARKET_PRIVATE_KEY",
+        "RELAYER_API_KEY",
+        "RELAYER_API_KEY_ADDRESS",
+        "BUILDER_API_KEY",
+        "BUILDER_SECRET",
+        "BUILDER_PASSPHRASE",
+        "SMTP_PASSWORD",
+        "DISCORD_WEBHOOK_URL",
+    })
+
+    def __repr__(self) -> str:
+        """
+        Safe representation that masks all credential fields.
+
+        Prevents private keys and API secrets from appearing in log output,
+        exception tracebacks, or debug dumps.
+        """
+        return (
+            f"PolymarketConfig("
+            f"TRADING_MODE={self.TRADING_MODE!r}, "
+            f"STRATEGY={self.STRATEGY!r}, "
+            f"PAPER_TRADING_ONLY={self.PAPER_TRADING_ONLY}, "
+            f"MAX_POSITIONS={self.MAX_POSITIONS}, "
+            f"MIN_VOLUME_USD={self.MIN_VOLUME_USD}, "
+            f"SCAN_INTERVAL_MS={self.SCAN_INTERVAL_MS}, "
+            f"<credentials masked>)"
+        )
+
     def reload(self):
-        """Re-read .env and update all live-configurable fields in-place."""
+        """Re-read .env and update all live-configurable fields in-place.
+
+        RESTART REQUIRED for the following fields — they are consumed only during
+        __init__ of PolymarketClient (or AlertManager / TradeDatabase) and cannot
+        be hot-applied to an already-running instance:
+
+          * POLYMARKET_PRIVATE_KEY          — used to sign orders at client init
+          * RELAYER_ENABLED / RELAYER_API_KEY / RELAYER_API_KEY_ADDRESS
+          * BUILDER_ENABLED / BUILDER_TIER / BUILDER_API_KEY / BUILDER_SECRET / BUILDER_PASSPHRASE
+          * SCYLLA_ENABLED / SCYLLA_HOST / SCYLLA_PORT / SCYLLA_KEYSPACE
+          * DB_ENABLED / DB_PATH
+
+        All other fields below are live-reloadable via the /api/reload endpoint.
+        """
         from dotenv import dotenv_values
 
         env = dotenv_values()
@@ -212,6 +258,16 @@ class PolymarketConfig:
             for c in env.get("SCAN_CATEGORIES", "crypto,fed,regulatory,other").split(",")
             if c.strip()
         ]
+
+        # Market category filters
+        self.ENABLE_CRYPTO_MARKETS = env.get("ENABLE_CRYPTO_MARKETS", "True").lower() == "true"
+        self.ENABLE_FED_MARKETS = env.get("ENABLE_FED_MARKETS", "True").lower() == "true"
+        self.ENABLE_REGULATORY_MARKETS = env.get("ENABLE_REGULATORY_MARKETS", "True").lower() == "true"
+        self.ENABLE_OTHER_MARKETS = env.get("ENABLE_OTHER_MARKETS", "True").lower() == "true"
+        self.PRIORITY_CRYPTO = int(env.get("PRIORITY_CRYPTO", "1"))
+        self.PRIORITY_FED = int(env.get("PRIORITY_FED", "2"))
+        self.PRIORITY_REGULATORY = int(env.get("PRIORITY_REGULATORY", "3"))
+        self.PRIORITY_OTHER = int(env.get("PRIORITY_OTHER", "4"))
 
         # Execution
         self.SLIPPAGE_TOLERANCE_PERCENT = float(env.get("SLIPPAGE_TOLERANCE_PERCENT", "5.0"))
@@ -246,11 +302,14 @@ class PolymarketConfig:
         # Dashboard
         self.DASHBOARD_ENABLED = env.get("DASHBOARD_ENABLED", "True").lower() == "true"
         self.DASHBOARD_PORT = int(env.get("DASHBOARD_PORT", "8080"))
-        self.DASHBOARD_HOST = env.get("DASHBOARD_HOST", "0.0.0.0")
+        self.DASHBOARD_HOST = env.get("DASHBOARD_HOST", "127.0.0.1")
 
         # Logging
         self.LOG_LEVEL = env.get("LOG_LEVEL", "INFO")
         self.LOG_TO_FILE = env.get("LOG_TO_FILE", "True").lower() == "true"
+
+        # Power management
+        self.PREVENT_SLEEP = env.get("PREVENT_SLEEP", "False").lower() == "true"
 
         # Database
         self.DB_ENABLED = env.get("DB_ENABLED", "True").lower() == "true"

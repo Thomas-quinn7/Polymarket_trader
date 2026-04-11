@@ -38,6 +38,7 @@ from config.polymarket_config import config
 from data.polymarket_client import PolymarketClient
 from data.polymarket_models import TradeOpportunity, TradeStatus
 from data.market_schema import PolymarketMarket
+from data.market_provider import MarketCriteria
 from strategies.base import BaseStrategy
 from strategies.config_loader import load_strategy_config
 from utils.logger import logger
@@ -141,50 +142,35 @@ class ExampleStrategy(BaseStrategy):
         )
 
     # ------------------------------------------------------------------
-    # STEP 2 — Declare which market categories to scan
+    # STEP 2 — Declare which markets and price source this strategy needs
     # ------------------------------------------------------------------
-    # The main loop calls this and fetches markets for each category.
-    # Return the list loaded from config.yaml so it is user-configurable.
+    # MarketProvider uses this to pre-filter the universe and resolve prices
+    # before scan_for_opportunities() is called.
 
-    def get_scan_categories(self) -> List[str]:
-        return self._scan_categories
+    def get_market_criteria(self) -> MarketCriteria:
+        return MarketCriteria(
+            categories=self._scan_categories,
+            min_volume_usd=config.MIN_VOLUME_USD,
+            require_binary=True,
+        )
 
     # ------------------------------------------------------------------
-    # STEP 3 — Scan raw market data for entry signals
+    # STEP 3 — Scan pre-filtered markets for entry signals
     # ------------------------------------------------------------------
-    # markets: list of raw dicts from the Polymarket Gamma API.
-    # Return a list of TradeOpportunity objects — one per qualifying market.
-    # Return [] when nothing qualifies.
+    # markets: List[PolymarketMarket] — already filtered and priced by
+    # MarketProvider.  Read market.resolved_price; no from_api() needed.
 
-    def scan_for_opportunities(self, markets: list) -> List[TradeOpportunity]:
+    def scan_for_opportunities(self, markets: List[PolymarketMarket]) -> List[TradeOpportunity]:
         taker_fee = config.TAKER_FEE_PERCENT
         opportunities = []
 
-        for raw_market in markets:
+        for market in markets:
             try:
-                # Parse raw dict into a typed PolymarketMarket object.
-                # Returns None for markets missing required fields.
-                market = PolymarketMarket.from_api(raw_market)
-                if market is None:
-                    continue
-
-                # Always check liquidity before fetching prices.
-                if not market.has_sufficient_liquidity(config.MIN_VOLUME_USD):
-                    continue
-
-                if len(market.token_ids) != 2:
-                    continue
-
                 token_yes = market.token_ids[0]
                 token_no = market.token_ids[1]
 
-                # Prefer the price embedded in the Gamma response to avoid
-                # an extra CLOB API call per market.
-                yes_price = (
-                    market.outcome_prices[0]
-                    if market.outcome_prices
-                    else self.client.get_price(token_yes)
-                )
+                # resolved_price is set by MarketProvider — no extra API call.
+                yes_price = market.resolved_price or 0.0
                 if not yes_price:
                     continue
 
@@ -250,7 +236,7 @@ class ExampleStrategy(BaseStrategy):
                 )
 
             except Exception as exc:
-                logger.error(f"[Example] Error scanning {raw_market.get('slug', '?')}: {exc}")
+                logger.error(f"[Example] Error scanning {market.slug}: {exc}")
 
         return opportunities
 
