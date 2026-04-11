@@ -2,20 +2,20 @@
 
 **Reviewer:** Claude Sonnet 4.6  
 **Last updated:** 2026-04-11  
-**Sessions:** Session 1 (2026-04-10) · Session 2 (2026-04-11)
+**Sessions:** Session 1 (2026-04-10) · Session 2 (2026-04-11) · Session 3 (2026-04-11)
 
 ---
 
 ## Status Summary
 
-44 issues found across two review sessions. All 44 are resolved.
+48 issues found across three review sessions. 44 resolved; 4 open (#45, #46, #47, and the design note on `settlement_arbitrage.active_positions`).
 
 | Severity | Found | Fixed |
 |---|---|---|
-| P0 — Critical correctness | 7 | 7 ✓ |
-| P1 — High correctness | 8 | 8 ✓ |
-| P2 — Moderate | 9 | 9 ✓ |
-| P3 — Minor | 16 | 16 ✓ |
+| P0 — Critical correctness | 8 | 7 |
+| P1 — High correctness | 9 | 8 |
+| P2 — Moderate | 10 | 9 |
+| P3 — Minor | 17 | 16 |
 | P4 — Polish | 4 | 4 ✓ |
 | Security | 5 | 5 ✓ |
 
@@ -33,6 +33,7 @@
 | 32 | `execution/order_executor.py` | `settle_position()` charged a taker exit fee on auto-settlement — Polymarket token redemption is free | `settle_position()` now accepts an explicit `exit_fee=0.0` parameter; normal settlement path passes nothing |
 | 38 | `dashboard/api.py` | Newline injection via `_write_env_key` — a value containing `\n` could inject extra keys into `.env` | Strip `\r`, `\n`, `\x00` from every value before writing |
 | 39 | `dashboard/api.py` | No authentication on any control endpoint — anyone who could reach the port could modify settings or stop the bot | Added optional `DASHBOARD_API_KEY` env var; all endpoints except `/api/health` require matching `X-API-Key` header |
+| 45 | `portfolio/position_tracker.py` + `main.py` | **Open positions are not restored on restart.** `PositionTracker.__init__` starts with `self.positions = {}`. DB rows survive but are invisible to the trading loop — capital is never freed and exits are never checked. | On startup, load open positions from `database.get_positions(status="open")` and re-populate `position_tracker.positions` and `currency_tracker`. |
 
 ---
 
@@ -48,6 +49,7 @@
 | 34 | `data/polymarket_client.py` | Pagination broke on `not page_markets` — exits early when a full page happens to contain only inactive markets | Only break on `len(events) < page_size` (last page sentinel) |
 | 35 | `data/market_provider.py` | `_convert_and_filter` never applied `criteria.categories` — entire market universe passed to strategy for unmapped categories | Added category gate (check 0) before all other filters |
 | 40 | `dashboard/api.py` | `detail=str(e)` in all 500 handlers — exposed stack traces, file paths, config values to HTTP clients | Replaced with `"Internal server error"`; added `exc_info=True` to server-side log |
+| 46 | `strategies/settlement_arbitrage/strategy.py` | `should_exit()` does not distinguish a market that resolved NO (price → 0) from a data error — calls `execute_sell()` on a resolved NO market and pays a taker fee instead of the free redemption path | Add a resolved-NO branch: if `current_price < RESOLUTION_THRESHOLD` and market is past `end_time`, call `settle_position()` with `settlement_price=0` rather than `execute_sell()` |
 
 ---
 
@@ -85,6 +87,7 @@
 | 37 | `data/market_scanner.py` | Timeout warning logged `Thread-1` not the category name | Added `name=f"scanner-{cat}"` to `Thread()` constructor |
 | 42 | `dashboard/api.py` | `?status` param accepted any string silently — invalid values returned all positions with no error | Changed type to `Optional[Literal["open", "settled"]]` |
 | 43 | `pkg/` + `api/` directories | Both directories were dead code — imported nowhere in the live system | Deleted both directories (11 files) and the two test files that only tested them |
+| 47 | `dashboard/api.py` | `POST /api/settings` with `trading_mode=live` updates `config.TRADING_MODE` but does not set `config.PAPER_TRADING_ONLY = False` — the actual live-order gate never opens via the dashboard | Decide: either wire the dashboard toggle to flip `PAPER_TRADING_ONLY` (requires private-key pre-check), or document that live mode requires a restart with `PAPER_TRADING_ONLY=False` in `.env` |
 
 ---
 
@@ -133,6 +136,14 @@ The dataclass models are used by the live trading loop; the ORM models are used 
 Fields not covered by `reload()` (require a process restart):
 `PREVENT_SLEEP`, `ENABLE_*_MARKETS`, `PRIORITY_*`, `ORDER_TYPE`, `CHAIN_ID`, `CLOB_API_URL`, `GAMMA_API_URL`, and all auth credentials.
 This is documented in the `reload()` docstring.
+
+### DB is write-only (audit log, not recovery store)
+
+`data/database.py` persists every position and trade on create/settle. But no code path reads positions back into runtime state. On restart, `PositionTracker` and `FakeCurrencyTracker` start empty. The DB is effectively an audit log. Issue #45 addresses the immediate P0 (positions lost on restart); longer-term, consider whether the DB should be the authoritative source of truth for `balance` and `deployed` as well (today those are recomputed from scratch on each boot).
+
+### `settlement_arbitrage` active_positions in-memory list
+
+`strategy.active_positions: List = []` (line 52 of `settlement_arbitrage/strategy.py`) is a parallel position register maintained entirely in memory. It is not persisted and is reset on every bot restart. This is separate from `PositionTracker` and means the strategy's internal view of open positions diverges from the DB after a restart, even if issue #45 is fixed. The strategy list and `PositionTracker` must both be restored consistently.
 
 ### `safe_scan_interval_ms` call-count assumption
 

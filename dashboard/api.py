@@ -688,6 +688,82 @@ async def bot_stop():
     return {"success": success, "running": bot.running}
 
 
+# ── Session Endpoints ─────────────────────────────────────────────────
+
+
+@app.get("/api/sessions", dependencies=[_auth])
+async def get_sessions(
+    strategy: Optional[str] = None,
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    """
+    List past strategy sessions, newest first.
+    Pass ?strategy=settlement_arbitrage to filter to one strategy.
+    """
+    bot = _get_bot_instance()
+    if bot is None or bot.session_store is None:
+        return []
+    return bot.session_store.get_sessions(strategy=strategy, limit=limit)
+
+
+@app.get("/api/sessions/{session_id}", dependencies=[_auth])
+async def get_session(session_id: str):
+    """Return full session data including every settled trade and the Ollama review."""
+    bot = _get_bot_instance()
+    if bot is None or bot.session_store is None:
+        raise HTTPException(status_code=503, detail="Session store unavailable")
+    data = bot.session_store.get_session(session_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return data
+
+
+@app.post("/api/sessions/{session_id}/review", dependencies=[_auth])
+async def regenerate_review(session_id: str):
+    """
+    Re-run the Ollama review for a past session.
+    Useful for re-generating with a different model or after a model upgrade.
+    """
+    bot = _get_bot_instance()
+    if bot is None or bot.session_store is None:
+        raise HTTPException(status_code=503, detail="Session store unavailable")
+    if bot.session_reviewer is None:
+        raise HTTPException(
+            status_code=503, detail="Ollama not enabled (set OLLAMA_ENABLED=true)"
+        )
+    session_data = bot.session_store.get_session(session_id)
+    if not session_data:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Reshape the flat DB row into the format generate_review expects
+    stats_keys = {
+        "total_trades", "winning_trades", "losing_trades", "break_even_trades",
+        "win_rate", "total_gross_pnl", "total_net_pnl", "total_fees",
+        "avg_hold_seconds", "avg_edge_pct", "avg_entry_price",
+        "best_trade_pnl", "worst_trade_pnl", "profit_factor",
+    }
+    review_payload = {
+        "session": {
+            "session_id": session_data.get("session_id"),
+            "strategy": session_data.get("strategy_name"),
+            "start_time": session_data.get("start_time"),
+            "end_time": session_data.get("end_time"),
+            "trading_mode": session_data.get("trading_mode"),
+            "starting_balance": session_data.get("starting_balance"),
+            "ending_balance": session_data.get("ending_balance"),
+        },
+        "stats": {k: session_data.get(k) for k in stats_keys},
+        "trades": session_data.get("trades", []),
+    }
+
+    review = bot.session_reviewer.generate_review(review_payload)
+    if review is None:
+        raise HTTPException(status_code=502, detail="Ollama generation failed")
+
+    bot.session_store.save_review(session_id, review, config.OLLAMA_MODEL)
+    return {"session_id": session_id, "review": review}
+
+
 def start_dashboard(port: int = 8080, host: str = config.DASHBOARD_HOST):
     """Start the dashboard server"""
     logger.info(f"Starting dashboard server on {host}:{port}")

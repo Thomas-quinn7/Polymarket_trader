@@ -38,7 +38,7 @@ If you are contributing on behalf of an employer or under a contract, ensure you
 
 ## Code style
 
-- Python 3.9+ compatible
+- Python 3.10+ compatible (minimum version required by `@dataclass(slots=True)`)
 - Follow the existing patterns in `strategies/example_strategy/` for any strategy work
 - Run `black` and `flake8` before submitting
 

@@ -15,6 +15,8 @@ A Python framework for building and running automated trading bots on [Polymarke
 - **Hot-Reload Config**: Update `.env` and call `/api/reload` — most settings apply without a restart
 - **Relayer API Support**: Unlimited order relay transactions via Polymarket Relayer keys (no tier approval required)
 - **Builder API Support**: Tiered order attribution with rate limits (unverified → verified → partner)
+- **Strategy Session Recording**: Every completed trade is saved per-run to SQLite and JSON — price, market, hold time, P&L, outcome, and equity curve — ready for charting or algorithmic analysis
+- **Ollama Strategy Review**: On shutdown, a local LLM (`llama3.2:3b`) generates a human-readable performance review of the session; runs entirely on-device via Docker, no cloud API required
 - **Modular Strategy Architecture**: Plug in your own strategy — the framework handles the rest
 - **617 unit tests** covering execution, portfolio, data models, slippage estimation, config reload, and pipeline
 
@@ -222,6 +224,22 @@ SCYLLA_PORT=9042
 SCYLLA_KEYSPACE=polymarket
 ```
 
+### Session Tracking & Ollama Review
+
+```env
+# Directory where per-session JSON exports are written
+SESSIONS_DIR=./logs/sessions
+
+# Set to True to enable Ollama review generation on shutdown
+OLLAMA_ENABLED=False
+# URL of the Ollama server (use http://ollama:11434 inside Docker Compose)
+OLLAMA_HOST=http://localhost:11434
+# Model to use for review generation — llama3.2:3b is pulled automatically on first run
+OLLAMA_MODEL=llama3.2:3b
+```
+
+Each bot run produces one JSON file per strategy in `SESSIONS_DIR`. The file contains the full session header, per-trade records (price, market, hold time, P&L, outcome), an equity-curve time series, and the Ollama review text. The dashboard exposes these at `GET /api/sessions` and `GET /api/sessions/{id}`, and lets you re-trigger a review via `POST /api/sessions/{id}/review`.
+
 ### Logging
 
 ```env
@@ -230,6 +248,31 @@ LOG_TO_FILE=True
 ```
 
 ## Usage
+
+### Docker Compose (recommended for full stack)
+
+`docker-compose.yml` starts three services together:
+
+| Service | Purpose |
+|---------|---------|
+| `trading-bot` | The bot + FastAPI dashboard (`localhost:8080`) |
+| `scylla` | ScyllaDB for order-book snapshot storage |
+| `ollama` | Local LLM for post-session strategy review |
+
+```bash
+# Start everything (builds the bot image on first run)
+docker compose up -d
+
+# Tail logs
+docker compose logs -f trading-bot
+
+# Stop and remove containers (data volumes are preserved)
+docker compose down
+```
+
+The Ollama container downloads `llama3.2:3b` (~2 GB) automatically on its first review generation. Model weights are stored in the `ollama_data` Docker volume and persist across restarts.
+
+If you have an NVIDIA GPU, uncomment the `deploy` block in the `ollama` service in `docker-compose.yml` for faster inference.
 
 ### Validate Setup
 
@@ -345,6 +388,7 @@ Polymarket_Trading/
 │   ├── market_provider.py         # MarketProvider: fetch → filter → price resolve pipeline
 │   ├── market_scanner.py          # Multi-category parallel scanner (Gamma API)
 │   ├── database.py                # SQLite session and upsert helpers
+│   ├── session_store.py           # Per-run session + trade persistence (SQLite tables + JSON export)
 │   ├── order_book_store.py        # ScyllaDB order book snapshot writer
 │   └── simulation_markets.py      # Synthetic market generator for offline testing
 ├── strategies/
@@ -366,6 +410,7 @@ Polymarket_Trading/
 │   ├── logger.py                  # Structured logging with thread-safe CSV trade log
 │   ├── pnl_tracker.py             # P&L statistics (win rate, profit factor, drawdown)
 │   ├── slippage.py                # Order-book VWAP slippage estimator
+│   ├── session_reviewer.py        # Ollama HTTP client — generates post-session strategy review
 │   ├── execution_timer.py         # Execution timing utilities
 │   └── webhook_sender.py          # Discord webhook implementation
 ├── dashboard/
@@ -394,7 +439,7 @@ Polymarket_Trading/
 ├── main.py                        # Bot entry point and orchestrator
 ├── pyproject.toml
 ├── requirements.txt
-├── docker-compose.yml             # ScyllaDB container
+├── docker-compose.yml             # ScyllaDB + Ollama containers (full-stack Docker setup)
 └── .env                           # Your configuration (not committed)
 ```
 
@@ -473,9 +518,40 @@ This is used both as the pre-trade gate and as the simulated fill price recorded
 
 Unified alerting with email (SMTP) and Discord (webhook) support. Alerts fire on opportunity detection, trade execution, position settlement, and system errors. The alert thread pool shuts down cleanly on process exit.
 
+### Strategy Session Tracking (`data/session_store.py`, `utils/session_reviewer.py`)
+
+Every bot run creates one session per strategy. On each settled trade, the session records:
+
+- Market question, slug, token ID of the winning side
+- Entry and exit price, hold time, edge %, fees
+- Gross and net P&L, outcome (`WIN` / `LOSS` / `BREAK_EVEN`)
+- Running balance after the trade (equity curve)
+
+When the bot shuts down, `SessionStore.close_session()` computes aggregate stats (win rate, profit factor, max drawdown, average hold) and writes a JSON file to `SESSIONS_DIR`. If `OLLAMA_ENABLED=True`, `SessionReviewer` sends the session summary and trade log to the local Ollama server and the review text is embedded in the JSON and stored in SQLite.
+
+JSON files are structured for downstream use:
+
+```json
+{
+  "session": { "strategy_name": "...", "trading_mode": "paper", ... },
+  "stats":   { "win_rate": 0.67, "profit_factor": 2.1, ... },
+  "equity_curve": [{"time": "2026-04-11T10:00:00Z", "balance": 10050.0, "trade_count": 1}, ...],
+  "trades":  [{ "market_id": "...", "entry_price": 0.985, "net_pnl": 14.70, ... }],
+  "ollama_review": "Session showed strong edge capture on near-settled markets..."
+}
+```
+
 ### Web Dashboard (`dashboard/api.py`)
 
 FastAPI-backed dashboard serving real-time portfolio data via a browser UI at `http://localhost:8080`. Displays positions, P&L, trade history, and system status.
+
+**Session endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/sessions` | List all recorded sessions (optional `?strategy=` and `?limit=` filters) |
+| `GET` | `/api/sessions/{id}` | Full session detail including trades array |
+| `POST` | `/api/sessions/{id}/review` | Re-generate the Ollama review for a past session |
 
 ## Paper Trading
 

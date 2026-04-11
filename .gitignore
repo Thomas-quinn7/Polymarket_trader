@@ -42,10 +42,27 @@ passphrase.txt
 # PROJECT-SPECIFIC FILES
 # ============================================================
 
-# SQLite database — persisted via Docker volume or local storage/
-storage/*.db
-storage/*.db-shm
-storage/*.db-wal
+# ── Trading data outputs (NEVER commit) ─────────────────────
+#
+# storage/ — SQLite database with real trade records and P&L.
+#   Auto-created by the bot; all contents are runtime data.
+storage/
+# Allow the directory placeholder so `git clone` creates the folder.
+!storage/.gitkeep
+
+# logs/ — includes logs/sessions/*.json (per-strategy session exports
+#   with trade history, equity curves, and Ollama reviews).
+#   Already covered by the `logs/` rule below, listed here for clarity.
+
+# ── Docker-mounted directories ───────────────────────────────
+#
+# docker-compose.yml mounts two host directories into the container:
+#   ./logs    → /app/logs    (covered by `logs/` below)
+#   ./storage → /app/storage (covered by `storage/` above)
+#
+# Docker NAMED volumes (scylla_data, ollama_data) are stored in
+# Docker's internal volume store — they live outside this repository
+# entirely and cannot be accidentally committed.
 
 # Polymarket specific
 data/.seen_markets.json
@@ -208,6 +225,15 @@ OWNERSHIP.md
 
 # Internal development notes
 TODO.md
+
+# ── Private development documentation ───────────────────────
+# docs/ARCHITECTURE.md is intentionally public (kept in repo).
+# The files below contain internal schema detail, known bugs,
+# and endpoint internals that are not suitable for public release.
+docs/DEV_GUIDE.md
+docs/DATABASE_SCHEMA.md
+docs/API_REFERENCE.md
+docs/KNOWN_ISSUES.md
 
 
 # Backup files
