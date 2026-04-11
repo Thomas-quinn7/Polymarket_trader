@@ -153,17 +153,10 @@ Also, `PREVENT_SLEEP` is missing from `reload()` entirely. Since it triggers a W
 ---
 
 ### 16. `get_available()` is identical to `get_balance()`
-**File:** `portfolio/fake_currency_tracker.py`, line 119
+**File:** `portfolio/fake_currency_tracker.py`
+**Status: FIXED** ✓
 
-```python
-def get_available(self) -> float:
-    """Get available balance for new positions"""
-    return self.balance
-```
-
-This is an exact duplicate of `get_balance()`. The name suggests it should return only the balance that is safe to deploy (e.g., excluding a reserve), but it just returns the full balance. This is confusing for any caller that uses both methods expecting different values.
-
-**Fix:** Either remove one method, or make `get_available()` meaningful (e.g., `return max(0.0, self.balance - minimum_reserve)`).
+Removed `get_available()` entirely. Updated the two callers (`order_executor.py` and `dashboard/api.py`) to call `get_balance()` directly. Removed the test that encoded the duplicate.
 
 ---
 
@@ -284,10 +277,9 @@ The retry delays are fixed: `(0.1, 0.5, 2.0)`. Under load, multiple concurrent c
 
 ### 28. `PolymarketConfig` `_TIER_DAILY_LIMITS` and `_SENSITIVE_FIELDS` accessed as instance attributes
 **File:** `config/polymarket_config.py`
+**Status: FIXED** ✓
 
-`_TIER_DAILY_LIMITS` and `_SENSITIVE_FIELDS` are class variables but accessed as `self._TIER_DAILY_LIMITS` in instance methods. Python resolves these via the normal attribute lookup chain (instance → class), so it works, but it can mislead readers into thinking these are per-instance fields that could be overridden.
-
-**Fix:** Access them as `PolymarketConfig._TIER_DAILY_LIMITS` (class attribute access) inside methods, or decorate the property methods with `@classmethod`.
+Changed `self._TIER_DAILY_LIMITS` to `PolymarketConfig._TIER_DAILY_LIMITS` in `daily_request_limit`. Removed `_SENSITIVE_FIELDS` entirely — it was defined but never referenced anywhere in the codebase.
 
 ---
 
@@ -499,11 +491,10 @@ Fix: Changed type annotation to `Optional[Literal["open", "settled"]]`, which ca
 ## Remaining Open Areas
 
 ### 43. `pkg/config.py` (Pydantic Settings class) is unreachable dead code
-**File:** `pkg/config.py`
+**File:** `pkg/` directory
+**Status: FIXED** ✓
 
-A `PydanticSettings`-based configuration class exists in `pkg/config.py` but is imported nowhere in the codebase. `config/polymarket_config.py` is the live config path; `pkg/config.py` represents an incomplete migration or abandoned experiment. It may confuse new contributors who discover it and assume it is authoritative.
-
-**Recommended action:** Delete `pkg/config.py` (and the `pkg/` directory if it becomes empty). If a Pydantic Settings migration is planned, open a tracked ticket for it.
+Deleted the entire `pkg/` directory (`config.py`, `errors.py`, `logger.py`, `__init__.py`) and the sibling `api/` directory which depended on it (`router.py`, `routes/`). Neither was imported by the live trading system. Removed the two unit test files (`test_config.py`, `test_errors.py`) that only tested this dead code.
 
 ---
 
@@ -523,7 +514,7 @@ A `PydanticSettings`-based configuration class exists in `pkg/config.py` but is 
 | S1 | `dashboard/api.py` | `allow_origins=["*"]` with `allow_credentials=True` | **FIXED** — see item 11 |
 | S2 | `dashboard/api.py` | `host="0.0.0.0"` default in `start_dashboard()` | **FIXED** — see item 12 |
 | S3 | `dashboard/api.py` | Settings endpoint writes `.env`; no auth meant any caller could change `TRADING_MODE`, email credentials, etc. | **FIXED** — see items 38 & 39 |
-| S4 | `data/polymarket_client.py:165` | Relayer headers (`RELAYER_API_KEY`) stored in plain dict on instance; ensure this is never serialised or logged | **OPEN** — add `__repr__` suppression or scrub before any logging call |
+| S4 | `data/polymarket_client.py` | Relayer headers (`RELAYER_API_KEY`) stored in plain dict on instance | **FIXED** — added `__repr__` that never exposes `_relayer_headers`; shows only mode flags |
 | S5 | `config/polymarket_config.py:204` | `__repr__` correctly masks credentials; ensure no other `str()` / `print()` paths expose the raw config | **OPEN** — no code change needed; operational awareness required |
 
 | # | Location | Issue |
@@ -604,8 +595,8 @@ This is partially intentional but is undocumented. Adding a comment listing relo
 | **P4** ✓ | 26 | `polymarket_client.py` | ~~`get_market()` no retry~~ FIXED — wrapped with `_with_retry()` |
 | **P4** ✓ | 27 | `polymarket_client.py` | ~~Retry has no jitter~~ FIXED — delay multiplied by `random.random()` in [0.5, 1.5) |
 | **P4** ✓ | 29 | `logger.py` | ~~CSV written without `csv.writer`~~ FIXED — uses `csv.writer` with `newline=""` |
-| **P3** | 16 | `fake_currency_tracker.py` | `get_available()` is identical to `get_balance()` — misleading duplicate |
-| **P3** | 28 | `polymarket_config.py` | Class vars `_TIER_DAILY_LIMITS` / `_SENSITIVE_FIELDS` accessed as `self.X` — misleading |
+| **P3** ✓ | 16 | `fake_currency_tracker.py` | ~~`get_available()` is identical to `get_balance()`~~ FIXED — removed `get_available()` |
+| **P3** ✓ | 28 | `polymarket_config.py` | ~~Class vars accessed as `self.X`~~ FIXED — `PolymarketConfig._TIER_DAILY_LIMITS`; `_SENSITIVE_FIELDS` removed |
 | **P3** | 30 | `market_schema.py` | `has_sufficient_liquidity(min_volume=0)` still rejects zero-volume markets — undocumented |
 | **P0** ✓ | 31 | `settlement_arbitrage/strategy.py` | ~~Edge formula on wrong basis — ROI understated~~ FIXED → `(1/price - 1) × 100` |
 | **P0** ✓ | 32 | `order_executor.py` | ~~Auto-settlement charged exit taker fee — Polymarket redemption is free~~ FIXED |
@@ -619,5 +610,5 @@ This is partially intentional but is undocumented. Adding a comment listing relo
 | **P1** ✓ | 40 | `dashboard/api.py` | ~~`detail=str(e)` leaks internals in 500 responses~~ FIXED — generic message + `exc_info` |
 | **P2** ✓ | 41 | `dashboard/api.py` | ~~Unbounded `limit` on `/api/trades`~~ FIXED — `Query(ge=1, le=500)` |
 | **P3** ✓ | 42 | `dashboard/api.py` | ~~`status` param accepts any string silently~~ FIXED — `Literal["open", "settled"]` |
-| **P3** | 43 | `pkg/config.py` | Pydantic Settings class is dead code — imported nowhere; delete or adopt |
+| **P3** ✓ | 43 | `pkg/` + `api/` directories | ~~Dead code — imported nowhere~~ FIXED — deleted both directories and their tests |
 | **P4** | 44 | `polymarket_config.py` | `safe_scan_interval_ms` assumes fixed API call count per scan — may under/over-throttle |
