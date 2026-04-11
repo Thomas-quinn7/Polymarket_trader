@@ -18,7 +18,6 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: GNU Affero General Public License v3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -61,8 +60,6 @@ all = [
 
 [project.scripts]
 polymarket = "main:main"
-bot = "cmd.bot:main"
-api = "api.router:main"
 
 [project.urls]
 Homepage = "https://github.com/Thomas-quinn7/Polymarket_trader"
@@ -82,7 +79,7 @@ exclude = ["tests*", "*.egg-info*"]
 
 [tool.black]
 line-length = 100
-target-version = ['py39', 'py310', 'py311', 'py312']
+target-version = ['py310', 'py311', 'py312']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -143,7 +140,7 @@ exclude_lines = [
 ]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

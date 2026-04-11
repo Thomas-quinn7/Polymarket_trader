@@ -21,6 +21,8 @@ This document explains the internal mechanics of each major component: how data 
 13. [Authentication Modes](#13-authentication-modes)
 14. [Alert System](#14-alert-system)
 15. [SQLite Persistence](#15-sqlite-persistence)
+16. [Strategy Session Tracking](#16-strategy-session-tracking)
+17. [Ollama Strategy Review](#17-ollama-strategy-review)
 
 ---
 
@@ -537,6 +539,115 @@ All writes use `upsert_position()` / `upsert_trade()` — insert-or-update seman
 ### SQLite vs ScyllaDB
 
 SQLite stores the trading state (positions, P&L, trade history) and is suitable for all use cases. ScyllaDB (`data/order_book_store.py`) is an optional time-series store for order book snapshots — only needed if you want to analyse historical book depth. Leave `SCYLLA_ENABLED=False` unless you have a Docker environment running.
+
+---
+
+---
+
+## 16. Strategy Session Tracking
+
+Every bot run creates exactly one session per strategy. The session captures every settled trade from that run so you can review and analyse strategy performance historically.
+
+### Data flow
+
+```
+TradingBot.__init__()
+    └─ SessionStore.connect()          ← opens SQLite, creates tables if needed
+
+TradingBot.start_trading_loop()
+    └─ SessionStore.create_session()   ← inserts session row, returns UUID
+
+Each settled trade (_check_strategy_exits / _check_stop_losses):
+    └─ SessionStore.record_settled_trade()   ← inserts one session_trades row
+
+TradingBot.stop()
+    ├─ SessionStore.close_session()    ← computes stats, writes JSON export, returns dict
+    ├─ SessionReviewer.generate_review()   ← optional: sends prompt to Ollama
+    ├─ SessionStore.save_review()      ← patches SQLite row + JSON file
+    └─ SessionStore.close()            ← closes SQLite connection
+```
+
+### SessionStore (`data/session_store.py`)
+
+Shares the same SQLite file (`DB_PATH`) as `TradeDatabase` but uses two separate tables (`strategy_sessions`, `session_trades`). All public methods are non-fatal — they log a warning on failure and return a safe default, so storage errors never interrupt the trading loop.
+
+**Key design choices:**
+- `create_session()` always returns a valid UUID even when the DB is unavailable, so callers never need to branch on `None`
+- `close_session()` computes all aggregate stats in Python after fetching rows, rather than using SQL aggregates, to keep the code readable and testable
+- The JSON export is written atomically in `_write_json()` — the file is only created once all stats are finalised
+- `profit_factor` is `None` (not infinity) when there are no losing trades — this is the correct mathematical sentinel and avoids division-by-zero in downstream code
+
+### JSON export format
+
+Written to `SESSIONS_DIR/<YYYYMMDD>_<strategy>_<session_id_8chars>.json`:
+
+```
+{
+  "session": { session metadata },
+  "stats":   { aggregate performance metrics },
+  "equity_curve": [
+    { "time": "<iso>", "balance": <float>, "trade_count": <int> },
+    ...
+  ],
+  "trades": [ { one dict per settled trade, all fields } ],
+  "ollama_review": "<string> | null"
+}
+```
+
+The equity curve has one point before any trades (the opening balance) and one point per settled trade. This is sufficient for charting a P&L curve without requiring any joins.
+
+### Fields excluded from the Ollama prompt
+
+`SessionReviewer._REVIEW_SAFE_TRADE_FIELDS` is a whitelist. Fields stripped before the prompt is built include: `winning_token_id`, `position_id`, `trade_id`, `session_id`, `market_id`, `shares`, `allocated_capital`, `entry_fee`, `exit_fee`, `balance_after`. See `utils/session_reviewer.py` for the full list and rationale.
+
+---
+
+## 17. Ollama Strategy Review
+
+When `OLLAMA_ENABLED=True`, `SessionReviewer` (`utils/session_reviewer.py`) generates a natural language performance review on bot shutdown. The call is **synchronous and blocking** — the process does not exit until the review is complete (or times out at 3 minutes).
+
+### Ollama API calls
+
+| Step | Method | Endpoint | Purpose |
+|------|--------|----------|---------|
+| 1 | `GET` | `/api/tags` | Check if model is already downloaded |
+| 2 | `POST` | `/api/pull` | Pull model if not present (up to 10 min timeout) |
+| 3 | `POST` | `/api/generate` | Generate review text (`stream=false`, 3 min timeout) |
+
+### Prompt structure
+
+```
+STRATEGY: <name>
+DATE: <YYYY-MM-DD>
+DURATION: <Xh YYm>
+MODE: paper | live | simulation
+BALANCE: $<start> → $<end> (<pct>%)
+
+PERFORMANCE
+Trades: N | Won: W | Lost: L | Win rate: X%
+Net PnL: $X | Fees paid: $X | Profit factor: X
+Avg hold time: Xh YYm | Avg edge at entry: X%
+Best trade: $X | Worst trade: $X
+
+TRADE LOG
+# Market                  Entry   Exit    Hold      Edge%   Net PnL  Outcome
+...
+
+Write a concise strategy review covering: [4 points]
+Limit: 250 words.
+```
+
+### Failure modes
+
+Every Ollama failure is non-fatal:
+- Network unreachable → `generate_review()` returns `None`; bot shuts down normally; JSON export is complete without `ollama_review`
+- Model pull timeout → same
+- Generation timeout (3 min) → same
+- `_ensure_model()` HTTP error → returns `False`; `generate_review()` returns `None`
+
+### Docker Compose
+
+The `ollama` service in `docker-compose.yml` uses `ollama list` as its healthcheck. The `trading-bot` service declares `depends_on: ollama: condition: service_healthy`, so the bot never starts until Ollama is accepting requests. The model itself is pulled lazily on first review generation, not at container startup.
 
 ---
 

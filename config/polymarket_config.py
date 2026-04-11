@@ -199,6 +199,14 @@ class PolymarketConfig:
     SCYLLA_PORT = int(os.getenv("SCYLLA_PORT", "9042"))
     SCYLLA_KEYSPACE = os.getenv("SCYLLA_KEYSPACE", "polymarket")
 
+    # Session storage — per-strategy JSON exports for charting and algo processing
+    SESSIONS_DIR = os.getenv("SESSIONS_DIR", "./logs/sessions")
+
+    # Ollama — local LLM used to generate end-of-session strategy reviews
+    OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "False").lower() == "true"
+    OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+
     def __repr__(self) -> str:
         """
         Safe representation that masks all credential fields.
@@ -319,6 +327,10 @@ class PolymarketConfig:
         self.SCYLLA_HOST = env.get("SCYLLA_HOST", "127.0.0.1")
         self.SCYLLA_PORT = int(env.get("SCYLLA_PORT", "9042"))
         self.SCYLLA_KEYSPACE = env.get("SCYLLA_KEYSPACE", "polymarket")
+        self.SESSIONS_DIR = env.get("SESSIONS_DIR", "./logs/sessions")
+        self.OLLAMA_ENABLED = env.get("OLLAMA_ENABLED", "False").lower() == "true"
+        self.OLLAMA_HOST = env.get("OLLAMA_HOST", "http://localhost:11434")
+        self.OLLAMA_MODEL = env.get("OLLAMA_MODEL", "llama3.2:3b")
 
 
 # Global config instance

@@ -23,6 +23,11 @@ services:
       - SCYLLA_HOST=scylla
       - SCYLLA_PORT=9042
       - SCYLLA_KEYSPACE=polymarket
+      # Session storage and Ollama review generation
+      - SESSIONS_DIR=/app/logs/sessions
+      - OLLAMA_ENABLED=true
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2:3b
     ports:
       - "8080:8080"
     volumes:
@@ -34,6 +39,8 @@ services:
       - ./.env.example:/app/.env.example:ro
     depends_on:
       scylla:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     networks:
       - trading-bot-network
@@ -70,10 +77,39 @@ services:
       retries: 10
       start_period: 90s
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: polymarket-ollama
+    restart: unless-stopped
+    volumes:
+      # Persist downloaded models so they survive container restarts
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - trading-bot-network
+    # GPU support: uncomment the deploy block below if you have NVIDIA Container Toolkit
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      # ollama list exits 0 once the daemon is ready
+      test: ["CMD", "ollama", "list"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
 networks:
   trading-bot-network:
     driver: bridge
 
 volumes:
   scylla_data:
+    driver: local
+  ollama_data:
     driver: local

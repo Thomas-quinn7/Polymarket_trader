@@ -34,6 +34,7 @@ from data.polymarket_client import PolymarketClient
 from data.database import TradeDatabase
 from data.market_provider import MarketProvider
 from data.order_book_store import OrderBookStore, OrderBookSnapshot, OrderBookLevel
+from data.session_store import SessionStore
 from strategies.registry import load_strategy
 from strategies.base import BaseStrategy
 from portfolio.fake_currency_tracker import FakeCurrencyTracker
@@ -42,6 +43,7 @@ from execution.order_executor import OrderExecutor
 from utils.logger import logger
 from utils.pnl_tracker import PnLTracker
 from utils.alerts import alert_manager
+from utils.session_reviewer import SessionReviewer
 from config.polymarket_config import config
 
 import dashboard.api
@@ -90,6 +92,26 @@ class TradingBot:
                 self.order_book_store = None
 
         self.market_provider = MarketProvider(self.client)
+
+        # Session store — records settled trades per strategy run for later review
+        self.session_store: Optional[SessionStore] = None
+        self._session_id: Optional[str] = None
+        _session_db_path = config.DB_PATH  # share the same SQLite file
+        self.session_store = SessionStore(
+            db_path=_session_db_path,
+            sessions_dir=config.SESSIONS_DIR,
+        )
+        if not self.session_store.connect():
+            logger.warning("SessionStore unavailable — session data will not be persisted")
+            self.session_store = None
+
+        # Ollama reviewer — generates natural language review at end of each session
+        self.session_reviewer: Optional[SessionReviewer] = None
+        if config.OLLAMA_ENABLED:
+            self.session_reviewer = SessionReviewer(
+                host=config.OLLAMA_HOST,
+                model=config.OLLAMA_MODEL,
+            )
 
         self.running = False
         self._trading_thread: Optional[threading.Thread] = None
@@ -173,6 +195,23 @@ class TradingBot:
                 self._trading_thread.join(timeout=5)
 
         self._print_final_report()
+
+        # Close the session, export JSON, then generate the Ollama review (blocking).
+        if self.session_store is not None and self._session_id is not None:
+            session_data = self.session_store.close_session(
+                self._session_id,
+                ending_balance=self.currency_tracker.get_balance(),
+            )
+            if self.session_reviewer is not None and session_data:
+                review = self.session_reviewer.generate_review(session_data)
+                if review:
+                    self.session_store.save_review(
+                        self._session_id, review, config.OLLAMA_MODEL
+                    )
+
+        if self.session_store is not None:
+            self.session_store.close()
+
         alert_manager.send_system_stop_alert()
         _release_power_policy()
         logger.info("Trading Bot stopped")
@@ -191,6 +230,14 @@ class TradingBot:
         self.strategy = load_strategy(config.STRATEGY, self.client)
         self.executor.polymarket_client = self.client
         self.market_provider = MarketProvider(self.client)
+
+        # Open a new session record for this run
+        if self.session_store is not None:
+            self._session_id = self.session_store.create_session(
+                strategy_name=config.STRATEGY,
+                trading_mode=config.TRADING_MODE,
+                starting_balance=self.currency_tracker.get_balance(),
+            )
 
         self.running = True
         self._trading_thread = threading.Thread(target=self._run_loop_thread, daemon=True)
@@ -298,14 +345,28 @@ class TradingBot:
                     # Paper / simulation: settle directly against the strategy price.
                     self.executor.settle_position(pos.position_id, settlement_price=exit_price)
 
-                if self.db:
-                    settled = self.position_tracker.get_position(pos.position_id)
-                    if settled:
-                        self.db.upsert_position(settled)
+                settled = self.position_tracker.get_position(pos.position_id)
+                if self.db and settled:
+                    self.db.upsert_position(settled)
                     for trade in self.pnl_tracker.trades:
                         if trade.position_id == pos.position_id and trade.exit_time:
                             self.db.upsert_trade(trade)
                             break
+                if (
+                    self.session_store is not None
+                    and self._session_id is not None
+                    and settled
+                    and settled.status == "SETTLED"
+                ):
+                    # Paper: settled directly (no sell order) → "settlement"
+                    # Live: went through execute_sell → "strategy_exit"
+                    exit_reason = "settlement" if config.PAPER_TRADING_ONLY else "strategy_exit"
+                    self.session_store.record_settled_trade(
+                        self._session_id,
+                        settled,
+                        self.currency_tracker.get_balance(),
+                        exit_reason,
+                    )
 
             except Exception as e:
                 logger.error(f"Error checking exit for {pos.position_id}: {e}")
@@ -337,10 +398,21 @@ class TradingBot:
                         f"(dropped {drop_pct:.1f}%)"
                     )
                     self.executor.execute_sell(pos.position_id, current_price, reason="stop_loss")
-                    if self.db:
-                        settled = self.position_tracker.get_position(pos.position_id)
-                        if settled:
-                            self.db.upsert_position(settled)
+                    settled = self.position_tracker.get_position(pos.position_id)
+                    if self.db and settled:
+                        self.db.upsert_position(settled)
+                    if (
+                        self.session_store is not None
+                        and self._session_id is not None
+                        and settled
+                        and settled.status == "SETTLED"
+                    ):
+                        self.session_store.record_settled_trade(
+                            self._session_id,
+                            settled,
+                            self.currency_tracker.get_balance(),
+                            "stop_loss",
+                        )
             except Exception as e:
                 logger.error(f"Error checking stop-loss for {pos.position_id}: {e}")
 
