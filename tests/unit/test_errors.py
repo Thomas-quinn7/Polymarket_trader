@@ -2,21 +2,15 @@
 Unit tests for error handling module.
 """
 
-import pytest
-
 from pkg.errors import (
     AppError,
     MarketClientError,
-    ConfigurationError,
     AuthenticationError,
     RateLimitError,
     OrderError,
     InsufficientBalanceError,
-    InvalidOrderError,
     SettlementError,
     NotificationError,
-    DiscordError,
-    EmailError,
     StrategyError,
     DashboardError,
     SystemError,

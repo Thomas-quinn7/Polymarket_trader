@@ -5,7 +5,7 @@ MarketCache, and backward-compatibility aliases.
 """
 
 import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 
 from data.polymarket_models import (
     TradeStatus,
@@ -14,7 +14,6 @@ from data.polymarket_models import (
     TradePosition,
     FakeCurrency,
     TradeAuditRecord,
-    TradeRecord,  # backward-compat alias
     MarketCache,
     ArbitrageStatus,
     ArbitrageOpportunity,

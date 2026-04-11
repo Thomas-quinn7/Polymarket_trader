@@ -82,7 +82,6 @@ class TestClosePosition:
         # First trade: profit → sets peak above 10k
         tracker.open_position("pos1", "mkt1", 100.0, 0.985)
         tracker.close_position("pos1", exit_price=1.0)
-        peak = tracker.peak_balance
         # Second trade: loss → drawdown non-zero
         tracker.open_position("pos2", "mkt2", 500.0, 0.985)
         tracker.close_position("pos2", exit_price=0.0)

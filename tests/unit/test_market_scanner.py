@@ -3,7 +3,7 @@ Unit tests for data/market_scanner.py — scan_categories.
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from data.market_scanner import scan_categories, ALL_CATEGORIES
 

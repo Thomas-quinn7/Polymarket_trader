@@ -4,15 +4,14 @@ Wrapper around py-clob-client SDK
 """
 
 import math
-import os
 import random
 import time as _time
-from typing import List, Optional, Dict
+from typing import Optional, Dict
 
 import requests as _requests
 from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import MarketOrderArgs, OrderType
-from py_clob_client.order_builder.constants import BUY, SELL
+from py_clob_client.order_builder.constants import BUY
 
 from config.polymarket_config import config
 from utils.logger import logger
@@ -268,7 +267,8 @@ class PolymarketClient:
                 break
             except _requests.exceptions.RequestException as e:
                 logger.error(
-                    f"Request error fetching markets page (offset={offset}) for category '{category}': {e}"
+                    f"Request error fetching markets page (offset={offset}) "
+                    f"for category '{category}': {e}"
                 )
                 break
 
@@ -283,7 +283,8 @@ class PolymarketClient:
                 events = response.json()
             except ValueError as e:
                 logger.error(
-                    f"Failed to parse Gamma API response for category '{category}' (offset={offset}): {e}"
+                    f"Failed to parse Gamma API response for category '{category}' "
+                    f"(offset={offset}): {e}"
                 )
                 break
 

@@ -5,28 +5,25 @@ REST API for monitoring and controlling the trading bot
 
 import os
 import threading
+from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import List, Literal, Optional, Dict, Any
+from typing import Dict, List, Literal, Optional
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+import uvicorn
+
+from config.polymarket_config import config
+from utils.logger import logger
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DOTENV_PATH = os.path.join(_PROJECT_ROOT, ".env")
 
 # Fields that only take effect after a full process restart
 _RESTART_REQUIRED = {"fake_currency_balance"}
-from contextlib import asynccontextmanager
-
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
-import uvicorn
-
-from utils.logger import logger
-from utils.pnl_tracker import PnLTracker, TradeRecord, PnLSummary
-from portfolio.position_tracker import Position
-from portfolio.fake_currency_tracker import FakeCurrencyTracker
-from execution.order_executor import OrderExecutor
-from config.polymarket_config import config
 
 # Bot instance — written by main.py via set_bot_instance() before the
 # dashboard thread starts, then read from dashboard endpoint handlers.
@@ -66,9 +63,6 @@ app = FastAPI(
 )
 
 # Add static files mount
-from fastapi.staticfiles import StaticFiles
-import os
-
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")

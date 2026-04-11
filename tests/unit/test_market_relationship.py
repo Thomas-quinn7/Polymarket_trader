@@ -3,8 +3,6 @@ Unit tests for data/market_relationship.py
 Covers RelationshipType, MarketRelationship, and MarketBasket.
 """
 
-import pytest
-
 from data.market_relationship import (
     RelationshipType,
     MarketRelationship,

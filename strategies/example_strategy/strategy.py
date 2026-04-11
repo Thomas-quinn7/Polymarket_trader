@@ -32,7 +32,7 @@ Pattern used throughout:
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List
 
 from config.polymarket_config import config
 from data.polymarket_client import PolymarketClient

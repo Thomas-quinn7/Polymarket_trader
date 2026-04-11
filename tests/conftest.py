@@ -3,7 +3,6 @@ Pytest configuration and fixtures.
 """
 
 import pytest
-from datetime import datetime
 
 
 @pytest.fixture

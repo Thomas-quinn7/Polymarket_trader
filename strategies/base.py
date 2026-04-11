@@ -11,11 +11,11 @@ get_scan_categories) have sensible defaults and can be overridden as needed.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, TYPE_CHECKING
+from typing import List
 
 from data.polymarket_models import TradeOpportunity
 from data.market_schema import PolymarketMarket
-from data.market_provider import MarketCriteria, MarketDataSource
+from data.market_provider import MarketCriteria
 
 
 class BaseStrategy(ABC):
