@@ -197,12 +197,22 @@ class MarketProvider:
           3. Time-to-close bounds
         """
         out: List[PolymarketMarket] = []
-        skipped_parse = skipped_binary = skipped_volume = skipped_time = 0
+        skipped_parse = skipped_binary = skipped_volume = skipped_time = skipped_category = 0
 
         for raw in raw_markets:
             market = PolymarketMarket.from_api(raw)
             if market is None:
                 skipped_parse += 1
+                continue
+
+            # 0. Category gate (cheapest after parse — no I/O).
+            # The Gamma API tag_id filter covers "crypto" and "fed" at the
+            # fetch level, but "regulatory" and "other" have no tag_id mapping
+            # so scan_categories returns the entire market universe for those
+            # categories.  Without this gate, every fetched market passes
+            # through to the strategy regardless of criteria.categories.
+            if criteria.categories and market.category not in criteria.categories:
+                skipped_category += 1
                 continue
 
             # 1. Binary gate (cheapest — just a len() check)
@@ -238,10 +248,10 @@ class MarketProvider:
 
             out.append(market)
 
-        if skipped_parse or skipped_binary or skipped_volume or skipped_time:
+        if skipped_parse or skipped_category or skipped_binary or skipped_volume or skipped_time:
             logger.debug(
                 f"[MarketProvider] Pre-filter: {len(raw_markets)} raw → {len(out)} kept "
-                f"(parse={skipped_parse}, binary={skipped_binary}, "
+                f"(parse={skipped_parse}, category={skipped_category}, binary={skipped_binary}, "
                 f"volume={skipped_volume}, time={skipped_time} skipped)"
             )
 
