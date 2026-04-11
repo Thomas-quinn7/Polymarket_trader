@@ -349,19 +349,30 @@ class OrderExecutor:
             if filled_price:
                 current_price = float(filled_price)
 
-        return self.settle_position(position_id, settlement_price=current_price)
+        # A SELL order (paper or live) incurs a taker fee on the exit proceeds.
+        # This is distinct from automatic settlement (token redemption at expiry)
+        # which is free — settle_position defaults exit_fee=0 for that path.
+        exit_fee = position.shares * current_price * (config.TAKER_FEE_PERCENT / 100.0)
+        return self.settle_position(position_id, settlement_price=current_price, exit_fee=exit_fee)
 
     def settle_position(
         self,
         position_id: str,
         settlement_price: float = 0.0,
+        exit_fee: float = 0.0,
     ) -> Optional[float]:
         """
-        Settle a position (paper trading)
+        Settle a position at a given price.
 
         Args:
-            position_id: Position ID
-            settlement_price: Final settlement price
+            position_id:      Position to close.
+            settlement_price: Final settlement price.
+            exit_fee:         Taker fee paid on the closing transaction, if any.
+                              Pass 0.0 (the default) for automatic market settlement
+                              — Polymarket token redemption at expiry is free (no
+                              SELL order is placed, so no exchange fee is charged).
+                              execute_sell() computes and forwards the actual fee
+                              when an early-exit SELL order is submitted.
 
         Returns:
             Realized PnL
@@ -388,10 +399,10 @@ class OrderExecutor:
                 )
                 settlement_price = 1.0
 
-            # Calculate gross return and fees
+            # Gross return and net proceeds.
+            # entry_fee (paid at open) is deducted here from the return so that
+            # the full round-trip fee burden is reflected in the balance flow.
             gross_return = position.shares * settlement_price
-            exit_fee = gross_return * (config.TAKER_FEE_PERCENT / 100.0)
-            # Deduct both exit fee and entry fee (originally paid at open) from the return
             net_return = gross_return - exit_fee - position.entry_fee
 
             # Return net proceeds to balance
