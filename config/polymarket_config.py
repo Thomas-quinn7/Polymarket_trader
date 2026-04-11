@@ -61,7 +61,13 @@ class PolymarketConfig:
     def safe_scan_interval_ms(self) -> int:
         """
         Return the minimum safe scan interval in ms for the current auth mode.
-        Each full scan consumes ~4 API calls (one per market category).
+
+        The divisor of 4 assumes one Gamma API call per enabled market category
+        (crypto, fed, regulatory, other).  If fewer categories are enabled, or
+        if multi-page pagination triggers additional calls, the actual call rate
+        will differ.  Treat this value as a conservative lower bound and tune
+        SCAN_INTERVAL_MS manually if needed.
+
         Relayer / Partner: unlimited → 30,000ms (30s) as a sensible default
         Verified:   3000/day ÷ 4 = 750 scans → 86400000ms / 750 = 115,200ms (~2 min)
         Unverified: 100/day ÷ 4 = 25 scans → 86400000ms / 25 = 3,456,000ms (~57 min)

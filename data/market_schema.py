@@ -120,8 +120,16 @@ class PolymarketMarket:
         return max(0.0, delta.total_seconds())
 
     def has_sufficient_liquidity(self, min_volume: float) -> bool:
-        # Also require volume > 0 so markets with missing volume data
-        # (stored as 0.0) never pass when min_volume is set to 0.
+        """Return True only when the market has known, positive volume >= min_volume.
+
+        The ``volume > 0`` guard is intentional: Polymarket markets with no
+        recorded trades store volume as 0.0, which is indistinguishable from
+        markets whose volume data simply failed to load.  Passing
+        ``min_volume=0`` therefore does NOT disable the filter — it still
+        rejects zero-volume markets.  If you want to include zero-volume
+        markets, filter on ``volume >= 0`` at the call site instead of using
+        this method.
+        """
         return self.volume > 0 and self.volume >= min_volume
 
 
