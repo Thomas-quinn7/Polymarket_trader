@@ -30,6 +30,10 @@ class Position:
     expected_profit: float
     edge_percent: float
     entry_fee: float = 0.0  # fee paid at entry (simulated or actual)
+    # Whether this market uses neg-risk (inverse) settlement.
+    # Must be passed to create_market_order on the SELL side to produce the
+    # correct order hash.  Defaults False (standard markets).
+    neg_risk: bool = False
     status: str = "OPEN"  # OPEN, SETTLED, FAILED
     opened_at: datetime = field(default_factory=datetime.now)
     expires_at: Optional[datetime] = None  # absolute time this position should settle
@@ -111,6 +115,7 @@ class PositionTracker:
             position_id = f"{opportunity.market_id}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
 
         expires_at = getattr(opportunity, "expires_at", None)
+        neg_risk = getattr(opportunity, "neg_risk", False)
 
         position = Position(
             position_id=position_id,
@@ -127,6 +132,7 @@ class PositionTracker:
             edge_percent=opportunity.edge_percent,
             expires_at=expires_at,
             entry_fee=entry_fee,
+            neg_risk=neg_risk,
         )
 
         with self._lock:

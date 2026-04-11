@@ -4,7 +4,6 @@ Handles order execution with paper trading
 """
 
 import math
-import time
 from collections import deque
 from datetime import datetime
 from typing import Optional, Dict, List
@@ -137,30 +136,25 @@ class OrderExecutor:
             # Simulate entry fee (paper) / record actual fee (live)
             entry_fee = capital_to_allocate * (config.TAKER_FEE_PERCENT / 100.0)
 
-            # Place real order on exchange if live trading is enabled
+            # Place real order on exchange if live trading is enabled.
+            # create_market_order handles retries internally using the same signed
+            # order (safe — exchange deduplicates by salt).  We do NOT retry here;
+            # each call would generate a new signed order and risk a double-spend.
             if not config.PAPER_TRADING_ONLY and self.polymarket_client is not None:
-                order_response = None
-                retry_delay = config.RETRY_DELAY_MS / 1000.0
-                for attempt in range(1, config.MAX_RETRIES + 1):
-                    try:
-                        order_response = self.polymarket_client.create_market_order(
-                            token_id=opportunity.winning_token_id,
-                            amount=capital_to_allocate,
-                        )
-                        if order_response:
-                            break
-                    except Exception as exc:
-                        logger.warning(
-                            f"Order attempt {attempt}/{config.MAX_RETRIES} failed for "
-                            f"{position_id}: {exc}"
-                        )
-                    if attempt < config.MAX_RETRIES:
-                        time.sleep(retry_delay)
+                # neg_risk must match the market type to produce a valid order hash.
+                # Standard YES-token markets use neg_risk=False; neg-risk markets
+                # (inverse settlement) require True.  The opportunity carries the
+                # flag from MarketProvider; default False if not present.
+                neg_risk = getattr(opportunity, "neg_risk", False)
+                order_response = self.polymarket_client.create_market_order(
+                    token_id=opportunity.winning_token_id,
+                    amount=capital_to_allocate,
+                    neg_risk=neg_risk,
+                )
 
                 if not order_response:
                     logger.error(
-                        f"Exchange rejected order for {position_id} after "
-                        f"{config.MAX_RETRIES} attempt(s) — aborting"
+                        f"Exchange rejected order for {position_id} — aborting"
                     )
                     return False
                 order_status = order_response.get("status", "")
@@ -335,31 +329,20 @@ class OrderExecutor:
             f"(entry ${position.entry_price:.4f}, reason={reason})"
         )
 
-        # Place real SELL order when live trading is enabled
+        # Place real SELL order when live trading is enabled.
+        # Retries are handled inside create_market_order (same signed order each time).
         if not config.PAPER_TRADING_ONLY and self.polymarket_client is not None:
-            order_response = None
-            retry_delay = config.RETRY_DELAY_MS / 1000.0
-            for attempt in range(1, config.MAX_RETRIES + 1):
-                try:
-                    order_response = self.polymarket_client.create_market_order(
-                        token_id=position.winning_token_id,
-                        amount=position.shares,
-                        side=SELL,
-                    )
-                    if order_response:
-                        break
-                except Exception as exc:
-                    logger.warning(
-                        f"SELL attempt {attempt}/{config.MAX_RETRIES} failed for "
-                        f"{position_id}: {exc}"
-                    )
-                if attempt < config.MAX_RETRIES:
-                    time.sleep(retry_delay)
+            neg_risk = getattr(position, "neg_risk", False)
+            order_response = self.polymarket_client.create_market_order(
+                token_id=position.winning_token_id,
+                amount=position.shares,
+                side=SELL,
+                neg_risk=neg_risk,
+            )
 
             if not order_response:
                 logger.error(
-                    f"Exchange rejected SELL order for {position_id} after "
-                    f"{config.MAX_RETRIES} attempt(s)"
+                    f"Exchange rejected SELL order for {position_id}"
                 )
                 return None
             filled_price = order_response.get("price")
