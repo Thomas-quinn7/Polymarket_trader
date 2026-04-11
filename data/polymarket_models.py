@@ -3,10 +3,10 @@ Polymarket Data Models
 Strategy-agnostic database models for the trading bot.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import Column, Integer, String, Float, DateTime, Enum, Index
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 import enum
 
 Base = declarative_base()
@@ -93,7 +93,7 @@ class TradePosition(Base):
     expected_pnl = Column(Float, nullable=False)
     edge_percent = Column(Float, nullable=False)
     status = Column(Enum(PositionStatus), default=PositionStatus.OPEN, nullable=False)
-    opened_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    opened_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     settled_at = Column(DateTime, nullable=True)
     settlement_price = Column(Float, nullable=True)
     realized_pnl = Column(Float, nullable=True)
@@ -127,8 +127,8 @@ class FakeCurrency(Base):
     balance = Column(Float, nullable=False, default=10000.00)
     deployed = Column(Float, nullable=False, default=0.0)
     pending_returns = Column(Float, nullable=False, default=0.0)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
         return {
@@ -141,7 +141,7 @@ class FakeCurrency(Base):
         }
 
 
-class TradeRecord(Base):
+class TradeAuditRecord(Base):
     """Immutable audit record for every completed trade."""
 
     __tablename__ = "trade_records"
@@ -157,7 +157,7 @@ class TradeRecord(Base):
     pnl_percent = Column(Float, nullable=False)
     edge_percent = Column(Float, nullable=False)
     status = Column(Enum(TradeStatus), nullable=False)
-    opened_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    opened_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     settled_at = Column(DateTime, nullable=True)
     settlement_price = Column(Float, nullable=True)
 
@@ -192,7 +192,7 @@ class MarketCache(Base):
     yes_price = Column(Float, nullable=True)
     no_price = Column(Float, nullable=True)
     mid_price = Column(Float, nullable=True)
-    cached_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    cached_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     expires_at = Column(DateTime, nullable=False)
 
     def to_dict(self):
@@ -213,3 +213,6 @@ class MarketCache(Base):
 ArbitrageStatus = TradeStatus
 ArbitrageOpportunity = TradeOpportunity
 ArbitragePosition = TradePosition
+# TradeRecord was renamed to TradeAuditRecord to avoid collision with the
+# utils.pnl_tracker.TradeRecord dataclass.  This alias keeps old imports working.
+TradeRecord = TradeAuditRecord

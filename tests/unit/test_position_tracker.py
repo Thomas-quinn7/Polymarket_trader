@@ -157,3 +157,176 @@ class TestCanOpenPosition:
         t.create_position(opp, 10.0, 985.0, 15.0, position_id="p1")
         t.settle_position("p1", settlement_price=1.0)
         assert t.can_open_position() is True
+
+
+class TestPositionSlots:
+    def test_position_has_slots(self):
+        from portfolio.position_tracker import Position
+        assert hasattr(Position, "__slots__")
+
+    def test_position_no_instance_dict(self, tracker):
+        opp = make_opportunity()
+        tracker.create_position(opp, 10.0, 985.0, 15.0, position_id="p1")
+        pos = tracker.get_position("p1")
+        assert not hasattr(pos, "__dict__")
+
+    def test_position_slots_allow_field_assignment(self, tracker):
+        """Slots must support all declared fields — no AttributeError on normal ops."""
+        opp = make_opportunity()
+        tracker.create_position(opp, 10.0, 985.0, 15.0, position_id="p1")
+        tracker.settle_position("p1", settlement_price=1.0)
+        pos = tracker.get_position("p1")
+        assert pos.status == "SETTLED"
+        assert pos.settlement_price == 1.0
+
+
+class TestSettlePositionConcurrency:
+    def test_concurrent_settle_does_not_double_settle(self):
+        """Two threads racing to settle the same position — only one should succeed."""
+        import threading
+
+        pnl = PnLTracker()
+        t = make_tracker(pnl)
+        opp = make_opportunity()
+        t.create_position(opp, 10.0, 985.0, 15.0, position_id="race")
+
+        results = []
+        errors = []
+
+        def settle():
+            try:
+                result = t.settle_position("race", settlement_price=1.0)
+                results.append(result)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=settle) for _ in range(5)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+
+        assert errors == [], f"Unexpected exceptions: {errors}"
+        # Position should be SETTLED with consistent final state
+        pos = t.get_position("race")
+        assert pos.status == "SETTLED"
+        # Exactly one non-None result (the first thread to win); others return None
+        non_none = [r for r in results if r is not None]
+        assert len(non_none) == 1
+
+    def test_settle_position_consistent_state_after_concurrent_calls(self):
+        """After concurrent settlement, pnl and position status agree."""
+        import threading
+
+        pnl = PnLTracker()
+        t = make_tracker(pnl)
+        opp = make_opportunity(current_price=0.985)
+        t.create_position(opp, 100.0, 985.0, 15.0, position_id="consistent")
+
+        barrier = threading.Barrier(3)
+        results = []
+
+        def settle():
+            barrier.wait()
+            results.append(t.settle_position("consistent", settlement_price=1.0))
+
+        threads = [threading.Thread(target=settle) for _ in range(3)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+
+        pos = t.get_position("consistent")
+        assert pos.status == "SETTLED"
+        assert pos.realized_pnl is not None
+
+    def test_concurrent_create_and_settle_different_positions(self):
+        """
+        Multiple threads each create their own position and immediately settle it.
+        No shared position IDs — verifies that locking does not deadlock and
+        all positions end in SETTLED state with consistent PnL.
+        """
+        import threading
+
+        NUM = 10
+        pnl = PnLTracker()
+        t = make_tracker(pnl, max_positions=NUM)
+        errors = []
+
+        def create_and_settle(n):
+            try:
+                pid = f"pos-{n}"
+                opp = make_opportunity(market_id=f"mkt-{n}", current_price=0.985)
+                t.create_position(opp, 10.0, 98.5, 0.15, position_id=pid)
+                result = t.settle_position(pid, settlement_price=1.0)
+                if result is None:
+                    errors.append(f"settle returned None for {pid}")
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=create_and_settle, args=(i,)) for i in range(NUM)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+
+        assert errors == [], f"Errors during concurrent create+settle: {errors}"
+        settled = t.get_settled_positions()
+        assert len(settled) == NUM
+        for pos in settled:
+            assert pos.status == "SETTLED"
+            assert pos.realized_pnl is not None
+
+    def test_settle_while_create_races_on_same_tracker(self):
+        """
+        One thread continuously creates positions while another continuously
+        settles them.  Verifies no deadlock, no AttributeError, and that
+        every created position eventually reaches SETTLED.
+        """
+        import threading, time as _time
+
+        pnl = PnLTracker()
+        t = make_tracker(pnl, max_positions=50)
+        created_ids = []
+        errors = []
+        stop_event = threading.Event()
+
+        def creator():
+            for n in range(20):
+                try:
+                    pid = f"cr-{n}"
+                    opp = make_opportunity(market_id=f"m-{n}", current_price=0.99)
+                    t.create_position(opp, 5.0, 4.95, 0.05, position_id=pid)
+                    created_ids.append(pid)
+                    _time.sleep(0.002)
+                except Exception as e:
+                    errors.append(e)
+
+        def settler():
+            settled = set()
+            deadline = _time.monotonic() + 5.0
+            while _time.monotonic() < deadline:
+                for pid in list(created_ids):
+                    if pid not in settled:
+                        pos = t.get_position(pid)
+                        if pos and pos.status == "OPEN":
+                            try:
+                                t.settle_position(pid, settlement_price=1.0)
+                                settled.add(pid)
+                            except Exception as e:
+                                errors.append(e)
+                _time.sleep(0.001)
+
+        creator_thread = threading.Thread(target=creator)
+        settler_thread = threading.Thread(target=settler)
+        creator_thread.start()
+        settler_thread.start()
+        creator_thread.join()
+        settler_thread.join()
+
+        assert errors == [], f"Errors: {errors}"
+        # All created positions must be settled
+        for pid in created_ids:
+            pos = t.get_position(pid)
+            assert pos is not None
+            assert pos.status == "SETTLED", f"{pid} stuck in {pos.status}"

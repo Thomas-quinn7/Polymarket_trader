@@ -143,3 +143,66 @@ class TestHistory:
         history = tracker.get_pnl_history()
         assert len(history) == 1
         assert history[0]["balance"] == pytest.approx(10_001.5, abs=0.01)
+
+
+class TestClosedTradesIndex:
+    """_closed_trades is the incremental index used by get_summary()."""
+
+    def test_starts_empty(self, tracker):
+        assert tracker._closed_trades == []
+
+    def test_appended_on_close(self, tracker):
+        tracker.open_position("p1", "m1", 100.0, 0.985)
+        tracker.close_position("p1", exit_price=1.0)
+        assert len(tracker._closed_trades) == 1
+
+    def test_open_position_not_in_index(self, tracker):
+        tracker.open_position("p1", "m1", 100.0, 0.985)
+        assert len(tracker._closed_trades) == 0
+
+    def test_multiple_closes_all_indexed(self, tracker):
+        for i in range(5):
+            tracker.open_position(f"p{i}", "m1", 10.0, 0.985)
+            tracker.close_position(f"p{i}", exit_price=1.0)
+        assert len(tracker._closed_trades) == 5
+
+    def test_index_count_matches_summary(self, tracker):
+        tracker.open_position("p1", "m1", 100.0, 0.985)
+        tracker.close_position("p1", exit_price=1.0)
+        tracker.open_position("p2", "m2", 100.0, 0.985)
+        tracker.close_position("p2", exit_price=0.0)
+        summary = tracker.get_summary()
+        assert summary.total_trades == len(tracker._closed_trades)
+
+    def test_reset_clears_index(self, tracker):
+        tracker.open_position("p1", "m1", 100.0, 0.985)
+        tracker.close_position("p1", exit_price=1.0)
+        tracker.reset()
+        assert tracker._closed_trades == []
+
+    def test_get_trade_history_uses_index(self, tracker):
+        tracker.open_position("p1", "m1", 100.0, 0.985)
+        tracker.close_position("p1", exit_price=1.0)
+        tracker.open_position("p2", "m2", 100.0, 0.990)  # still open
+        history = tracker.get_trade_history()
+        assert len(history) == 1
+        assert history[0].position_id == "p1"
+
+
+class TestSlots:
+    def test_trade_record_has_slots(self):
+        from utils.pnl_tracker import TradeRecord
+        assert hasattr(TradeRecord, "__slots__")
+
+    def test_trade_record_no_instance_dict(self, tracker):
+        tracker.open_position("p1", "m1", 10.0, 0.985)
+        record = tracker.open_positions["p1"]
+        assert not hasattr(record, "__dict__")
+
+    def test_pnl_summary_has_slots(self):
+        from utils.pnl_tracker import PnLSummary
+        assert hasattr(PnLSummary, "__slots__")
+
+    def test_pnl_summary_no_instance_dict(self, tracker):
+        summary = tracker.get_summary()
+        assert not hasattr(summary, "__dict__")

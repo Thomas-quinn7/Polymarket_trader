@@ -3,19 +3,43 @@ Polymarket API Client
 Wrapper around py-clob-client SDK
 """
 
+import math
+import os
+import random
+import time as _time
 from typing import List, Optional, Dict
+
+import requests as _requests
 from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import MarketOrderArgs, OrderType
 from py_clob_client.order_builder.constants import BUY, SELL
-import os
-import time as _time
-from utils.logger import logger
 
 from config.polymarket_config import config
+from utils.logger import logger
+
+# Module-level Session reuses TCP connections across all PolymarketClient instances.
+# This avoids the 3-way handshake + TLS negotiation overhead on every API call.
+_http_session = _requests.Session()
+_http_session.headers.update({"Accept": "application/json"})
 
 
-def _with_retry(fn, retries: int = 3, delays: tuple = (0.1, 0.5, 2.0)):
-    """Call fn(); on exception retry up to `retries` times with backoff."""
+def _with_retry(fn, retries: int = None, delays: tuple = None):
+    """Call fn(); on exception retry up to `retries` times with jittered backoff.
+
+    Defaults to config.MAX_RETRIES and a delay derived from config.RETRY_DELAY_MS
+    so that both the executor and the client-level HTTP calls honour the same
+    settings.  Callers may pass explicit values to override (e.g. tests).
+
+    Each base delay is multiplied by a random factor in [0.5, 1.5) so that
+    concurrent callers don't all hammer the API at the same instant after a
+    shared error (thundering-herd prevention).
+    """
+    if retries is None:
+        retries = config.MAX_RETRIES
+    if delays is None:
+        base_s = config.RETRY_DELAY_MS / 1000.0
+        delays = (base_s, base_s * 5, base_s * 20)
+
     last_exc = None
     for attempt in range(retries):
         try:
@@ -23,9 +47,10 @@ def _with_retry(fn, retries: int = 3, delays: tuple = (0.1, 0.5, 2.0)):
         except Exception as exc:
             last_exc = exc
             if attempt < retries - 1:
-                delay = delays[min(attempt, len(delays) - 1)]
+                base = delays[min(attempt, len(delays) - 1)]
+                delay = base * (0.5 + random.random())
                 logger.warning(
-                    f"Attempt {attempt + 1}/{retries} failed: {exc} — retrying in {delay}s"
+                    f"Attempt {attempt + 1}/{retries} failed: {exc} — retrying in {delay:.2f}s"
                 )
                 _time.sleep(delay)
     raise last_exc
@@ -216,7 +241,6 @@ class PolymarketClient:
             )
             return self._sim_markets
 
-        import requests
         import json as _json
 
         tag_map = {"crypto": "21", "fed": "7"}
@@ -231,18 +255,18 @@ class PolymarketClient:
 
             try:
                 response = _with_retry(
-                    lambda: requests.get(
+                    lambda: _http_session.get(
                         f"{config.GAMMA_API_URL}/events",
                         params=params,
                         timeout=10,
                     )
                 )
-            except requests.exceptions.Timeout:
+            except _requests.exceptions.Timeout:
                 logger.error(
                     f"Timeout fetching markets page (offset={offset}) for category '{category}'"
                 )
                 break
-            except Exception as e:
+            except _requests.exceptions.RequestException as e:
                 logger.error(
                     f"Request error fetching markets page (offset={offset}) for category '{category}': {e}"
                 )
@@ -306,10 +330,12 @@ class PolymarketClient:
             Market dictionary
         """
         try:
-            import requests
-            from config.polymarket_config import config
-
-            response = requests.get(f"{config.GAMMA_API_URL}/markets?token_id={market_id}")
+            response = _with_retry(
+                lambda: _http_session.get(
+                    f"{config.GAMMA_API_URL}/markets?token_id={market_id}",
+                    timeout=10,
+                )
+            )
 
             if response.status_code == 200:
                 return response.json()
@@ -343,8 +369,6 @@ class PolymarketClient:
             else:
                 raw = float(result) if result else 0.0
             # Reject NaN / Infinity — these propagate silently into calculations
-            import math
-
             if not math.isfinite(raw):
                 logger.warning(f"Non-finite price {raw!r} for {token_id} — treating as 0")
                 return 0.0
@@ -439,7 +463,6 @@ class PolymarketClient:
                 # that orders are attributed to the relayer account (unlimited relay
                 # transactions, no tier approval required).
                 import json as _json
-                import requests as _requests
                 from py_clob_client.headers.headers import create_level_2_headers
                 from py_clob_client.clob_types import RequestArgs
                 from py_clob_client.utilities import order_to_json
@@ -459,7 +482,7 @@ class PolymarketClient:
                 merged_headers = {**l2_headers, **self._relayer_headers}
 
                 def _submit_via_relayer():
-                    resp = _requests.post(
+                    resp = _http_session.post(
                         f"{_RELAYER_URL}{_ORDER_PATH}",
                         headers=merged_headers,
                         data=serialized,
@@ -471,12 +494,10 @@ class PolymarketClient:
                         )
                     return resp.json()
 
-                response = _with_retry(_submit_via_relayer, retries=3, delays=(0.1, 0.5, 2.0))
+                response = _with_retry(_submit_via_relayer)
             else:
                 response = _with_retry(
-                    lambda: self.client.post_order(signed_order, OrderType.FOK),
-                    retries=3,
-                    delays=(0.1, 0.5, 2.0),
+                    lambda: self.client.post_order(signed_order, OrderType.FOK)
                 )
 
             logger.info(

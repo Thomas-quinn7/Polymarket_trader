@@ -320,12 +320,20 @@ class TestMultiplePositions:
         assert positions.get_position_count() == 3
 
     def test_deployed_sums_across_positions(self):
+        # Capital sizing is dynamic: each allocation is 20% of the *remaining*
+        # available balance, not a fixed fraction of starting balance.
+        # Pos 0: 20% × $10,000 = $2,000  (avail → $8,000)
+        # Pos 1: 20% × $8,000  = $1,600  (avail → $6,400)
+        # Pos 2: 20% × $6,400  = $1,280  (avail → $5,120)
+        # Total deployed: $4,880
         executor, currency, pnl, positions = _make_all(max_positions=5)
         for i in range(3):
             _buy(
                 executor, _opp(market_id=f"mkt-{i}", market_slug=f"s{i}"), f"p{i}", max_positions=5
             )
-        assert currency.get_deployed() == pytest.approx(ALLOCATED * 3, abs=0.01)
+        b = STARTING_BALANCE
+        expected_deployed = sum(b * (0.8 ** i) * CAPITAL_SPLIT for i in range(3))
+        assert currency.get_deployed() == pytest.approx(expected_deployed, abs=0.01)
 
     def test_pnl_accumulates_across_settlements(self):
         executor, currency, pnl, positions = _make_all(max_positions=5)

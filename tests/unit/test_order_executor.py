@@ -105,15 +105,18 @@ class TestExecuteBuy:
         assert executor.order_history[0]["position_id"] == "p1"
 
     def test_returns_false_if_insufficient_funds(self):
+        # Capital sizing is dynamic (20% of available), so it never exceeds the
+        # available balance by itself.  The "insufficient funds" path fires when
+        # allocate_to_position() returns False — simulate that directly.
         executor, currency, pnl, positions = _make_executor()
-        # Drain balance to $1 so the $2000 allocation fails
-        currency.balance = 1.0
+        currency.allocate_to_position = MagicMock(return_value=False)
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
             cfg.TAKER_FEE_PERCENT = 0.0
             result = executor.execute_buy(make_opportunity(), "p1")
         assert result is False
+        assert positions.get_position("p1") is None
 
     def test_rollback_on_create_position_failure(self):
         """Balance must be restored if position creation raises; execute_buy returns False."""

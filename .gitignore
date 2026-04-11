@@ -12,10 +12,15 @@
 # .env is the actual configuration file - NEVER commit real credentials
 # Use .env.template with 1Password references for security
 
-# Critical: Never commit this file with real credentials
+# Critical: Never commit these files with real credentials
 .env
 .env.local
 .env.*.local
+# Catch all other .env variants (.env.production, .env.staging, .env.live, etc.)
+.env.*
+# Re-allow the safe example/template files
+!.env.example
+!.env.template
 
 # API Keys and Secrets
 *.key
@@ -43,6 +48,7 @@ storage/*.db-shm
 storage/*.db-wal
 
 # Polymarket specific
+data/.seen_markets.json
 polymarket_private_key.txt
 builder_credentials.txt
 wallet_mnemonic.txt
@@ -152,11 +158,12 @@ desktop.ini
 *.db
 *.sqlite
 *.sqlite3
-*.sql
 
-# Database backups
+# Database backups only — do NOT ignore *.sql broadly as it would
+# swallow legitimate schema/migration files
 *.db.backup
 *.sql.backup
+*.sqlite.backup
 
 # ============================================================
 # TEST COVERAGE AND METRICS
@@ -201,6 +208,9 @@ OWNERSHIP.md
 
 # Internal development notes
 TODO.md
+
+# Code review document (local only)
+CODE_REVIEW.md
 
 # Backup files
 *.bak

@@ -5,7 +5,8 @@ from .polymarket_models import (
     ArbitrageOpportunity,
     ArbitragePosition,
     FakeCurrency,
-    TradeRecord,
+    TradeAuditRecord,
+    TradeRecord,  # backward-compat alias for TradeAuditRecord
     MarketCache,
     ArbitrageStatus,
     PositionStatus,
@@ -17,6 +18,7 @@ __all__ = [
     "ArbitrageOpportunity",
     "ArbitragePosition",
     "FakeCurrency",
+    "TradeAuditRecord",
     "TradeRecord",
     "MarketCache",
     "ArbitrageStatus",

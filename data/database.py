@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import threading
+from datetime import datetime
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -77,6 +79,7 @@ class TradeDatabase:
     def __init__(self, db_path: str):
         self._db_path = db_path
         self._conn: Optional[sqlite3.Connection] = None
+        self._lock = threading.Lock()
 
     # ── Lifecycle ──────────────────────────────────────────────────────
 
@@ -116,24 +119,25 @@ class TradeDatabase:
             return False
         try:
             d = position.to_dict()
-            self._conn.execute(
-                """
-                INSERT INTO positions VALUES (
-                    :position_id, :market_id, :market_slug, :question,
-                    :token_id_yes, :token_id_no, :winning_token_id,
-                    :shares, :entry_price, :allocated_capital,
-                    :expected_profit, :edge_percent, :status,
-                    :opened_at, :settled_at, :settlement_price, :realized_pnl
+            with self._lock:
+                self._conn.execute(
+                    """
+                    INSERT INTO positions VALUES (
+                        :position_id, :market_id, :market_slug, :question,
+                        :token_id_yes, :token_id_no, :winning_token_id,
+                        :shares, :entry_price, :allocated_capital,
+                        :expected_profit, :edge_percent, :status,
+                        :opened_at, :settled_at, :settlement_price, :realized_pnl
+                    )
+                    ON CONFLICT(position_id) DO UPDATE SET
+                        status           = excluded.status,
+                        settled_at       = excluded.settled_at,
+                        settlement_price = excluded.settlement_price,
+                        realized_pnl     = excluded.realized_pnl
+                    """,
+                    d,
                 )
-                ON CONFLICT(position_id) DO UPDATE SET
-                    status           = excluded.status,
-                    settled_at       = excluded.settled_at,
-                    settlement_price = excluded.settlement_price,
-                    realized_pnl     = excluded.realized_pnl
-                """,
-                d,
-            )
-            self._conn.commit()
+                self._conn.commit()
             return True
         except Exception as e:
             logger.warning("DB upsert_position failed: %s", e)
@@ -149,22 +153,23 @@ class TradeDatabase:
             return False
         try:
             d = trade.to_dict()
-            self._conn.execute(
-                """
-                INSERT INTO trades VALUES (
-                    :trade_id, :position_id, :market_id, :action,
-                    :quantity, :entry_price, :exit_price,
-                    :entry_time, :exit_time, :pnl, :pnl_percent
+            with self._lock:
+                self._conn.execute(
+                    """
+                    INSERT INTO trades VALUES (
+                        :trade_id, :position_id, :market_id, :action,
+                        :quantity, :entry_price, :exit_price,
+                        :entry_time, :exit_time, :pnl, :pnl_percent
+                    )
+                    ON CONFLICT(trade_id) DO UPDATE SET
+                        exit_price  = excluded.exit_price,
+                        exit_time   = excluded.exit_time,
+                        pnl         = excluded.pnl,
+                        pnl_percent = excluded.pnl_percent
+                    """,
+                    d,
                 )
-                ON CONFLICT(trade_id) DO UPDATE SET
-                    exit_price  = excluded.exit_price,
-                    exit_time   = excluded.exit_time,
-                    pnl         = excluded.pnl,
-                    pnl_percent = excluded.pnl_percent
-                """,
-                d,
-            )
-            self._conn.commit()
+                self._conn.commit()
             return True
         except Exception as e:
             logger.warning("DB upsert_trade failed: %s", e)
@@ -175,13 +180,12 @@ class TradeDatabase:
         if self._conn is None:
             return False
         try:
-            from datetime import datetime
-
-            self._conn.execute(
-                "INSERT INTO pnl_history (recorded_at, balance, pnl) VALUES (?, ?, ?)",
-                (datetime.now().isoformat(), balance, pnl),
-            )
-            self._conn.commit()
+            with self._lock:
+                self._conn.execute(
+                    "INSERT INTO pnl_history (recorded_at, balance, pnl) VALUES (?, ?, ?)",
+                    (datetime.now().isoformat(), balance, pnl),
+                )
+                self._conn.commit()
             return True
         except Exception as e:
             logger.warning("DB add_pnl_snapshot failed: %s", e)

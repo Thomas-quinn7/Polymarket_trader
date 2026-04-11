@@ -1,4 +1,5 @@
 # Copyright (C) 2026  Thomas Quinn (github.com/Thomas-quinn7)
+#                     Ciaran McDonnell (github.com/CiaranMcDonnell)
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -19,18 +20,20 @@ Main Trading Bot
 Orchestrates all components and runs the strategy loop.
 """
 
+import argparse
 import os
-import time
 import signal
+import socket
 import sys
 import threading
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 from typing import Optional
 
 from data.polymarket_client import PolymarketClient
 from data.polymarket_models import TradeOpportunity
 from data.database import TradeDatabase
-from data.market_scanner import scan_categories
+from data.market_provider import MarketProvider
 from data.order_book_store import OrderBookStore, OrderBookSnapshot, OrderBookLevel
 from strategies.registry import load_strategy
 from strategies.base import BaseStrategy
@@ -87,9 +90,9 @@ class TradingBot:
                 logger.warning("ScyllaDB unavailable — order book snapshots disabled")
                 self.order_book_store = None
 
+        self.market_provider = MarketProvider(self.client)
+
         self.running = False
-        self.markets_cache: list = []
-        self.last_scan_time: float = 0
         self._trading_thread: Optional[threading.Thread] = None
 
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -103,7 +106,7 @@ class TradingBot:
 
     def _signal_handler(self, signum, frame):
         logger.info("\nShutdown signal received")
-        self.stop()
+        # Raise SystemExit so the finally block in start() calls stop() exactly once.
         sys.exit(0)
 
     def _start_dashboard(self, port: int):
@@ -127,12 +130,10 @@ class TradingBot:
         logger.info("Starting Trading Bot...")
 
         if config.DASHBOARD_ENABLED:
-            import socket as _socket
-
             port = config.DASHBOARD_PORT
             original_port = port
             while True:
-                with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     if s.connect_ex(("127.0.0.1", port)) != 0:
                         break
                 port += 1
@@ -150,7 +151,10 @@ class TradingBot:
                 logger.info(f"Dashboard: http://localhost:{port}")
                 dashboard.api.set_bot_instance(self)
                 threading.Thread(target=self._start_dashboard, args=(port,), daemon=True).start()
-                time.sleep(2)
+                # Brief pause to let uvicorn finish binding before the process
+                # proceeds; empirically 2 s is enough on all tested platforms.
+                _DASHBOARD_STARTUP_WAIT_S = 2
+                time.sleep(_DASHBOARD_STARTUP_WAIT_S)
 
         alert_manager.send_system_start_alert()
 
@@ -187,9 +191,7 @@ class TradingBot:
         self.client = PolymarketClient()
         self.strategy = load_strategy(config.STRATEGY, self.client)
         self.executor.polymarket_client = self.client
-
-        self.markets_cache = []
-        self.last_scan_time = 0
+        self.market_provider = MarketProvider(self.client)
 
         self.running = True
         self._trading_thread = threading.Thread(target=self._run_loop_thread, daemon=True)
@@ -226,14 +228,20 @@ class TradingBot:
     def run(self):
         """Main trading loop (runs in _trading_thread)."""
         iteration = 0
-        scan_interval = config.SCAN_INTERVAL_MS / 1000
 
         while self.running:
             iteration += 1
+            # Re-read scan interval each iteration so hot-reloading config.SCAN_INTERVAL_MS
+            # takes effect without a restart.
+            scan_interval = config.SCAN_INTERVAL_MS / 1000
             logger.debug(
                 f"Loop #{iteration} — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
                 f"| strategy={config.STRATEGY} mode={config.TRADING_MODE}"
             )
+
+            # Monotonic deadline: next iteration fires scan_interval seconds after
+            # this one *started*, not after it finished — eliminates drift from work time.
+            next_tick = time.monotonic() + scan_interval
 
             try:
                 # Fetch open positions once per iteration — shared by exits, stops, and scan.
@@ -245,14 +253,16 @@ class TradingBot:
                 self._scan_and_execute(open_positions)
                 self._print_status()
 
-                time.sleep(scan_interval)
-
             except Exception as e:
                 logger.error(f"Error in trading loop: {e}", exc_info=True)
                 alert_manager.send_error_alert(
                     str(e), f"Error in trading loop iteration #{iteration}"
                 )
-                time.sleep(scan_interval)
+
+            # Sleep only the remaining time in this interval; never negative.
+            remaining = next_tick - time.monotonic()
+            if remaining > 0:
+                time.sleep(remaining)
 
     # ── Strategy-driven exit ───────────────────────────────────────────
 
@@ -334,17 +344,9 @@ class TradingBot:
         open_positions: pre-fetched snapshot from run() — avoids a third lock acquisition.
         """
         try:
-            cache_ttl = 5 if config.TRADING_MODE == "simulation" else 60
-            if not self.markets_cache or time.time() - self.last_scan_time > cache_ttl:
-                categories = (
-                    self.strategy.get_scan_categories()
-                    if hasattr(self.strategy, "get_scan_categories")
-                    else config.SCAN_CATEGORIES
-                )
-                self.markets_cache = scan_categories(self.client, categories)
-                self.last_scan_time = time.time()
-
-            opportunities = self.strategy.scan_for_opportunities(self.markets_cache)
+            criteria = self.strategy.get_market_criteria()
+            markets = self.market_provider.get_markets(criteria)
+            opportunities = self.strategy.scan_for_opportunities(markets)
 
             if not opportunities:
                 logger.debug("No opportunities found in this scan")
@@ -392,8 +394,6 @@ class TradingBot:
             logger.error(f"Error in scan/execute: {e}", exc_info=True)
 
     def _capture_order_book_snapshots(self, opportunities: list):
-        from datetime import datetime, timezone
-
         now = datetime.now(timezone.utc)
         for opp in opportunities:
             try:
@@ -498,7 +498,9 @@ _BANNER = (
     "╔══════════════════════════════════════════════════════════════════════╗\n"
     "║      Polymarket Trading Framework  ·  pmf-7e3f-tq343                 ║\n"
     "║                                                                      ║\n"
-    "║  Author  : Thomas Quinn  (github.com/Thomas-quinn7)                  ║\n"
+    "║  Authors : Thomas Quinn  (github.com/Thomas-quinn7)                  ║\n"
+    "║            Ciaran McDonnell  (github.com/CiaranMcDonnell)           ║\n"
+    "║                                                                      ║\n"
     "║  Repo    : github.com/Thomas-quinn7/Polymarket_trader                ║\n"
     "║  License : GNU Affero General Public License v3  (AGPL-3.0-only)     ║\n"
     "╚══════════════════════════════════════════════════════════════════════╝"
@@ -506,38 +508,252 @@ _BANNER = (
 )
 
 
+def _confirm_live_trading(parser: argparse.ArgumentParser) -> None:
+    """
+    Apply live-trading config and prompt the user for explicit confirmation.
+
+    Exits via parser.error() (non-zero) if:
+      - POLYMARKET_PRIVATE_KEY is not set
+      - The user does not type the confirmation phrase
+
+    On success, mutates config in-place so the rest of main() proceeds in live mode.
+    """
+    # Guard: private key must be present before we commit to live mode
+    if not config.POLYMARKET_PRIVATE_KEY:
+        parser.error(
+            "--live requires POLYMARKET_PRIVATE_KEY to be set in .env "
+            "(or via --config). Refusing to start live trading without credentials."
+        )
+
+    funder = config.POLYMARKET_FUNDER_ADDRESS or "(not set)"
+    auth_mode = config.builder_tier_label
+
+    print("\n" + "=" * 70)
+    print("  ⚠️   LIVE TRADING MODE — REAL MONEY AT RISK   ⚠️")
+    print("=" * 70)
+    print(f"  Funder address : {funder}")
+    print(f"  Auth mode      : {auth_mode}")
+    print(f"  Strategy       : {config.STRATEGY}")
+    print(f"  Max positions  : {config.MAX_POSITIONS}")
+    print(f"  Capital / pos  : {config.CAPITAL_SPLIT_PERCENT * 100:.0f}%")
+    print(f"  Taker fee      : {config.TAKER_FEE_PERCENT:.1f}%")
+    print(f"  Slippage limit : {config.SLIPPAGE_TOLERANCE_PERCENT:.1f}%")
+    print("=" * 70)
+    print("  Real orders WILL be submitted to Polymarket.")
+    print("  Losses are possible. Only proceed if you understand the risks.")
+    print("=" * 70)
+
+    try:
+        answer = input("\n  Type  CONFIRM  to proceed, or press Enter to abort: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        answer = ""
+
+    if answer != "CONFIRM":
+        print("Aborted — live trading not started.")
+        raise SystemExit(0)
+
+    # Apply live-mode config after confirmation
+    config.TRADING_MODE = "live"
+    config.PAPER_TRADING_ONLY = False
+    print()
+
+
 def main():
     print(_BANNER)
     _apply_power_policy()
-    import argparse
 
-    parser = argparse.ArgumentParser(description="Polymarket Trading Bot")
+    parser = argparse.ArgumentParser(
+        description="Polymarket Trading Bot",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    # ── Environment / config file ──────────────────────────────────────
     parser.add_argument(
+        "--config",
+        metavar="PATH",
+        help=(
+            "Path to a .env file to load instead of the default .env "
+            "(useful for running multiple accounts or environments). "
+            "CLI args still take priority over values in this file."
+        ),
+    )
+
+    # ── Trading mode ───────────────────────────────────────────────────
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--paper",
+        action="store_true",
+        help="Paper trading: real prices, simulated execution (no real money)",
+    )
+    mode_group.add_argument(
         "--simulation",
         action="store_true",
-        help="Run in simulation mode (synthetic data, no real API calls)",
+        help="Simulation mode: fully offline, synthetic data, no API calls",
     )
+    mode_group.add_argument(
+        "--live",
+        action="store_true",
+        help=(
+            "LIVE trading: real prices, REAL orders submitted to Polymarket. "
+            "Requires POLYMARKET_PRIVATE_KEY to be set. "
+            "An interactive confirmation prompt is shown before the bot starts."
+        ),
+    )
+
+    # ── Loop control ───────────────────────────────────────────────────
     parser.add_argument(
         "--auto-start",
         action="store_true",
-        help="Automatically start the trading loop on launch",
+        help="Automatically start the trading loop on launch without waiting for the WebUI",
     )
+    parser.add_argument(
+        "--strategy",
+        metavar="NAME",
+        help="Strategy to load (e.g. settlement_arbitrage). Overrides STRATEGY in .env",
+    )
+    parser.add_argument(
+        "--scan-interval",
+        type=int,
+        metavar="MS",
+        help="Scan interval in milliseconds. Overrides SCAN_INTERVAL_MS in .env",
+    )
+    parser.add_argument(
+        "--categories",
+        metavar="LIST",
+        help=(
+            "Comma-separated list of market categories to scan "
+            "(e.g. crypto,fed). Overrides SCAN_CATEGORIES in .env"
+        ),
+    )
+
+    # ── Risk / execution ───────────────────────────────────────────────
+    parser.add_argument(
+        "--max-positions",
+        type=int,
+        metavar="N",
+        help="Maximum number of concurrent open positions. Overrides MAX_POSITIONS in .env",
+    )
+    parser.add_argument(
+        "--min-confidence",
+        type=float,
+        metavar="0.0-1.0",
+        help=(
+            "Minimum confidence score for a trade opportunity to be acted on (0.0–1.0). "
+            "Overrides MIN_CONFIDENCE in .env"
+        ),
+    )
+    parser.add_argument(
+        "--stop-loss",
+        type=float,
+        metavar="PCT",
+        help=(
+            "Stop-loss threshold as a percentage drop from entry price (e.g. 5.0 = 5%%). "
+            "Set 0 to disable. Overrides STOP_LOSS_PERCENT in .env"
+        ),
+    )
+
+    # ── Capital ────────────────────────────────────────────────────────
+    parser.add_argument(
+        "--balance",
+        type=float,
+        metavar="USD",
+        help="Starting paper-trading balance in USD. Overrides FAKE_CURRENCY_BALANCE in .env",
+    )
+
+    # ── Dashboard ──────────────────────────────────────────────────────
+    parser.add_argument(
+        "--no-dashboard",
+        action="store_true",
+        help="Disable the web dashboard (useful for headless / server runs)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        metavar="PORT",
+        help="Dashboard port. Overrides DASHBOARD_PORT in .env",
+    )
+
+    # ── Logging ────────────────────────────────────────────────────────
+    parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        metavar="LEVEL",
+        help="Log verbosity (DEBUG|INFO|WARNING|ERROR|CRITICAL). Overrides LOG_LEVEL in .env",
+    )
+
     args = parser.parse_args()
 
+    # ── 1. Load alternative .env if --config was given ─────────────────
+    # This runs before all other overrides so CLI args still win.
+    if args.config:
+        if not os.path.isfile(args.config):
+            parser.error(f"--config: file not found: {args.config}")
+        from dotenv import load_dotenv as _load_dotenv
+        _load_dotenv(dotenv_path=args.config, override=True)
+        config.reload()
+        logger.info("Loaded config from: %s", args.config)
+
+    # ── 2. Apply CLI overrides on top (highest priority) ───────────────
     if args.simulation:
-        os.environ["TRADING_MODE"] = "simulation"
         config.TRADING_MODE = "simulation"
+        config.PAPER_TRADING_ONLY = True
+    elif args.paper:
+        config.TRADING_MODE = "paper"
+        config.PAPER_TRADING_ONLY = True
+    elif args.live:
+        _confirm_live_trading(parser)
+
+    if args.strategy:
+        config.STRATEGY = args.strategy
+
+    if args.scan_interval is not None:
+        config.SCAN_INTERVAL_MS = args.scan_interval
+
+    if args.categories:
+        config.SCAN_CATEGORIES = [c.strip() for c in args.categories.split(",") if c.strip()]
+
+    if args.max_positions is not None:
+        config.MAX_POSITIONS = args.max_positions
+
+    if args.min_confidence is not None:
+        if not 0.0 <= args.min_confidence <= 1.0:
+            parser.error("--min-confidence must be between 0.0 and 1.0")
+        config.MIN_CONFIDENCE = args.min_confidence
+
+    if args.stop_loss is not None:
+        if args.stop_loss < 0:
+            parser.error("--stop-loss must be 0 or greater")
+        config.STOP_LOSS_PERCENT = args.stop_loss
+
+    if args.balance is not None:
+        config.FAKE_CURRENCY_BALANCE = args.balance
+
+    if args.no_dashboard:
+        config.DASHBOARD_ENABLED = False
+
+    if args.port is not None:
+        config.DASHBOARD_PORT = args.port
+
+    if args.log_level:
+        config.LOG_LEVEL = args.log_level
+        # Re-configure already-created loggers so the override takes effect
+        import logging as _logging
+        for name in ("polymarket_trading", "trades"):
+            _logging.getLogger(name).setLevel(
+                getattr(_logging, args.log_level, _logging.INFO)
+            )
 
     bot = TradingBot()
 
-    if args.simulation or args.auto_start:
-        import threading as _threading
-
+    if args.simulation or args.paper or args.live or args.auto_start:
         def _deferred_start():
-            time.sleep(3)
+            # Wait for the dashboard to become ready before kicking off the loop
+            # so the first status push lands on an already-listening server.
+            _AUTO_START_DELAY_S = 3
+            time.sleep(_AUTO_START_DELAY_S)
             bot.start_trading_loop()
 
-        _threading.Thread(target=_deferred_start, daemon=True).start()
+        threading.Thread(target=_deferred_start, daemon=True).start()
 
     bot.start()
 

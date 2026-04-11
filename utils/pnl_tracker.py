@@ -11,7 +11,7 @@ from datetime import datetime
 from utils.logger import logger
 
 
-@dataclass
+@dataclass(slots=True)
 class TradeRecord:
     """Single trade record"""
 
@@ -60,7 +60,7 @@ class TradeRecord:
         }
 
 
-@dataclass
+@dataclass(slots=True)
 class PnLSummary:
     """PnL summary statistics"""
 
@@ -115,6 +115,8 @@ class PnLTracker:
         self.current_balance = initial_balance
         self.peak_balance = initial_balance
         self.trades: List[TradeRecord] = []
+        # Closed trades kept separately so get_summary() avoids a full O(n) scan every call.
+        self._closed_trades: List[TradeRecord] = []
         self.open_positions: Dict[str, TradeRecord] = {}
         self.max_drawdown = 0.0
         self.current_drawdown = 0.0
@@ -227,8 +229,9 @@ class PnLTracker:
                 if abs(self.current_drawdown) > self.max_drawdown:
                     self.max_drawdown = abs(self.current_drawdown)
 
-            # Remove from open positions
+            # Remove from open positions and add to the closed-trade index
             del self.open_positions[position_id]
+            self._closed_trades.append(trade)
 
         # Log result
         fee_str = f" | fees ${total_fees:.2f}" if total_fees > 0 else ""
@@ -253,7 +256,9 @@ class PnLTracker:
             PnLSummary object
         """
         with self._lock:
-            closed_trades = [t for t in self.trades if t.exit_price is not None]
+            # _closed_trades is updated incrementally in close_position — O(1) per close,
+            # so this snapshot is O(k) where k = closed trades, not O(all trades).
+            closed_trades = list(self._closed_trades)
             peak_balance = self.peak_balance
             max_drawdown = self.max_drawdown
             current_drawdown = self.current_drawdown
@@ -311,7 +316,7 @@ class PnLTracker:
     def get_trade_history(self, limit: Optional[int] = None) -> List[TradeRecord]:
         """Get trade history"""
         with self._lock:
-            trades = [t for t in self.trades if t.exit_price is not None]
+            trades = list(self._closed_trades)
         trades.sort(key=lambda x: x.exit_time or x.entry_time, reverse=True)
 
         if limit:
@@ -352,6 +357,7 @@ class PnLTracker:
             self.current_balance = self.initial_balance
             self.peak_balance = self.initial_balance
             self.trades = []
+            self._closed_trades = []
             self.open_positions = {}
             self.max_drawdown = 0.0
             self.current_drawdown = 0.0

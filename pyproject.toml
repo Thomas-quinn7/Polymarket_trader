@@ -10,7 +10,8 @@ readme = "README.md"
 requires-python = ">=3.9.10"
 license = {text = "AGPL-3.0-only"}
 authors = [
-    {name = "Thomas Quinn", email = "thomas-quinn7@users.noreply.github.com"}
+    {name = "Thomas Quinn", email = "thomas-quinn7@users.noreply.github.com"},
+    {name = "Ciaran McDonnell", email = "CiaranMcDonnell@users.noreply.github.com"},
 ]
 keywords = ["polymarket", "trading", "arbitrage", "bot", "cryptocurrency"]
 classifiers = [

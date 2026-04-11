@@ -21,6 +21,7 @@ from typing import List
 from data.polymarket_client import PolymarketClient
 from data.polymarket_models import TradeOpportunity, TradeStatus
 from data.market_schema import PolymarketMarket
+from data.market_provider import MarketCriteria, MarketDataSource
 from strategies.base import BaseStrategy
 from strategies.config_loader import load_strategy_config
 from utils.logger import logger
@@ -60,14 +61,22 @@ class PaperDemo(BaseStrategy):
             f"primary_category={self._primary_scan_category!r}"
         )
 
-    def get_scan_categories(self) -> List[str]:
-        return self._scan_categories
+    def get_market_criteria(self) -> MarketCriteria:
+        return MarketCriteria(
+            categories=self._scan_categories,
+            min_volume_usd=self._min_volume,
+            require_binary=True,
+            price_source_preference=[
+                MarketDataSource.GAMMA_EMBEDDED,
+                MarketDataSource.CLOB_REST,
+            ],
+        )
 
     # ------------------------------------------------------------------
     # scan_for_opportunities
     # ------------------------------------------------------------------
 
-    def scan_for_opportunities(self, markets: list) -> List[TradeOpportunity]:
+    def scan_for_opportunities(self, markets: List[PolymarketMarket]) -> List[TradeOpportunity]:
         """
         Return at most ONE opportunity — the most-liquid market found.
         Once we already have an open position we return nothing so the
@@ -80,37 +89,20 @@ class PaperDemo(BaseStrategy):
         best_market: PolymarketMarket | None = None
         best_volume: float = -1.0
 
-        for raw in markets:
-            try:
-                market = PolymarketMarket.from_api(raw)
-                if market is None:
-                    continue
-                if len(market.token_ids) < 2:
-                    continue
-                if market.volume < self._min_volume:
-                    continue
-
-                if market.volume > best_volume:
-                    best_volume = market.volume
-                    best_market = market
-
-            except Exception as e:
-                logger.debug("[PaperDemo] Skipping malformed market: %s", e)
+        for market in markets:
+            if market.volume > best_volume:
+                best_volume = market.volume
+                best_market = market
 
         if best_market is None:
             logger.info("[PaperDemo] No suitable market found in this scan")
             return []
 
-        # Use embedded price from Gamma API response when available —
-        # avoids an extra CLOB call and is immune to dict/float type issues.
         token_yes = best_market.token_ids[0]
         token_no = best_market.token_ids[1]
 
-        if best_market.outcome_prices:
-            yes_price = best_market.outcome_prices[0]
-        else:
-            raw_price = self.client.get_price(token_yes)
-            yes_price = float(raw_price) if raw_price else 0.0
+        # resolved_price is set by MarketProvider — no extra API call needed.
+        yes_price = best_market.resolved_price or 0.0
 
         if yes_price <= 0.0 or yes_price >= 1.0:
             logger.warning(

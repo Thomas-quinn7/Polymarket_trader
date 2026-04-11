@@ -3,6 +3,7 @@ Fake Currency Tracker
 Tracks fake currency for paper trading
 """
 
+import threading
 from dataclasses import dataclass, field
 from typing import Dict
 from datetime import datetime
@@ -37,6 +38,7 @@ class FakeCurrencyTracker:
         self.starting_balance = config.FAKE_CURRENCY_BALANCE
         self.balance = self.starting_balance
         self.deployed = 0.0
+        self._lock = threading.Lock()
 
         logger.info(f"Fake currency tracker initialized with ${self.starting_balance:.2f}")
 
@@ -52,26 +54,27 @@ class FakeCurrencyTracker:
         Returns:
             True if successful
         """
-        if self.balance < amount:
-            logger.warning(f"Insufficient balance: ${self.balance:.2f}, need ${amount:.2f}")
-            return False
+        with self._lock:
+            if self.balance < amount:
+                logger.warning(f"Insufficient balance: ${self.balance:.2f}, need ${amount:.2f}")
+                return False
 
-        if len(self.positions) >= config.MAX_POSITIONS:
-            logger.warning(f"Max {config.MAX_POSITIONS} positions reached")
-            return False
+            if len(self.positions) >= config.MAX_POSITIONS:
+                logger.warning(f"Max {config.MAX_POSITIONS} positions reached")
+                return False
 
-        # 20% of starting balance per position
-        position_amount = min(amount, self.starting_balance * 0.2)
+            # 20% of starting balance per position
+            position_amount = min(amount, self.starting_balance * 0.2)
 
-        self.positions[position_id] = CurrencyPosition(
-            position_id=position_id,
-            market_id=market_id,
-            allocated=position_amount,
-            returned=0.0,
-        )
+            self.positions[position_id] = CurrencyPosition(
+                position_id=position_id,
+                market_id=market_id,
+                allocated=position_amount,
+                returned=0.0,
+            )
 
-        self.balance -= position_amount
-        self.deployed += position_amount
+            self.balance -= position_amount
+            self.deployed += position_amount
 
         logger.info(
             f"💰 Allocated ${position_amount:.2f} to {position_id} "
@@ -92,14 +95,15 @@ class FakeCurrencyTracker:
         Returns:
             True if successful
         """
-        if position_id not in self.positions:
-            logger.warning(f"Position {position_id} not found")
-            return False
+        with self._lock:
+            if position_id not in self.positions:
+                logger.warning(f"Position {position_id} not found")
+                return False
 
-        original_allocated = self.positions[position_id].allocated
-        self.balance += return_amount
-        self.deployed -= original_allocated
-        del self.positions[position_id]  # free the slot so a new position can be opened
+            original_allocated = self.positions[position_id].allocated
+            self.balance += return_amount
+            self.deployed -= original_allocated
+            del self.positions[position_id]  # free the slot so a new position can be opened
 
         logger.info(
             f"💵 Returned ${return_amount:.2f} from {position_id} "
@@ -110,19 +114,23 @@ class FakeCurrencyTracker:
 
     def get_balance(self) -> float:
         """Get current fake currency balance"""
-        return self.balance
+        with self._lock:
+            return self.balance
 
     def get_deployed(self) -> float:
         """Get total deployed capital"""
-        return self.deployed
+        with self._lock:
+            return self.deployed
 
     def get_available(self) -> float:
         """Get available balance for new positions"""
-        return self.balance
+        with self._lock:
+            return self.balance
 
     def reset(self):
         """Reset tracker for testing"""
-        self.positions = {}
-        self.balance = self.starting_balance
-        self.deployed = 0.0
+        with self._lock:
+            self.positions = {}
+            self.balance = self.starting_balance
+            self.deployed = 0.0
         logger.info("Fake currency tracker reset")

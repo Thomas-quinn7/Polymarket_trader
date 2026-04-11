@@ -3,7 +3,10 @@ Alert Notification System
 Manages alert creation and dispatch via email and webhooks
 """
 
+import atexit
 import threading
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 from datetime import datetime
 from enum import Enum
@@ -58,10 +61,17 @@ class AlertManager:
         self.email_enabled = config.ENABLE_EMAIL_ALERTS
         self.webhook_enabled = config.ENABLE_DISCORD_ALERTS
 
-        # Rate limiting
-        self.alert_history: List[Dict] = []
+        # Rate limiting — bounded deque so memory never grows unbounded
+        self.alert_history: deque = deque(maxlen=1000)
         self.cooldown_period = 300  # 5 minutes between similar alerts
         self._history_lock = threading.Lock()
+
+        # Thread pool for offloading blocking I/O (email + webhook) off the trading thread.
+        # max_workers=2: one worker per transport (email, Discord) so they run in parallel.
+        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="alert")
+        # Ensure the executor is shut down cleanly when the process exits so that
+        # in-flight alert tasks are not abandoned mid-send.
+        atexit.register(self._executor.shutdown, wait=False)
 
         # Import senders if needed
         self.email_sender = None
@@ -136,17 +146,14 @@ class AlertManager:
             "data": json.dumps(data) if data else None,
         }
 
-        # Dispatch notifications
+        # Dispatch notifications off the trading thread so blocking I/O (SMTP, Discord HTTP)
+        # never stalls the main loop.  Fire-and-forget: failures are logged inside each sender.
         if severity in [AlertSeverity.ERROR, AlertSeverity.CRITICAL]:
-            # Send via email
             if self.email_sender:
-                if not self.email_sender.send_alert(alert_data):
-                    logger.error("Failed to send email alert")
+                self._executor.submit(self._send_email_safe, alert_data)
 
-            # Send via webhook (will include Discord mention for critical alerts)
             if self.webhook_sender:
-                if not self.webhook_sender.send_alert(alert_data):
-                    logger.error("Failed to send webhook alert")
+                self._executor.submit(self._send_webhook_safe, alert_data)
 
         # Track alert history
         self._track_alert(alert_type, message)
@@ -163,16 +170,35 @@ class AlertManager:
 
         return True
 
+    def _send_email_safe(self, alert_data: Dict):
+        """Send email alert; called from the thread pool — never raises."""
+        try:
+            if not self.email_sender.send_alert(alert_data):
+                logger.error("Failed to send email alert")
+        except Exception as exc:
+            logger.error(f"Email alert thread error: {exc}")
+
+    def _send_webhook_safe(self, alert_data: Dict):
+        """Send webhook alert; called from the thread pool — never raises."""
+        try:
+            if not self.webhook_sender.send_alert(alert_data):
+                logger.error("Failed to send webhook alert")
+        except Exception as exc:
+            logger.error(f"Webhook alert thread error: {exc}")
+
     def _should_send_alert(self, alert_type: AlertType, message: str) -> bool:
-        """Check if alert should be sent based on rate limiting"""
+        """Check if alert should be sent based on rate limiting.
+
+        Uses the bounded deque directly — no list rebuild required.  Entries
+        older than cooldown_period are simply ignored during the scan rather
+        than being purged eagerly; the deque's maxlen of 1000 bounds worst-case
+        iteration to O(1000) which is negligible.
+        """
         now = datetime.now()
         with self._history_lock:
-            self.alert_history = [
-                entry
-                for entry in self.alert_history
-                if (now - entry["timestamp"]).total_seconds() < self.cooldown_period
-            ]
             for entry in self.alert_history:
+                if (now - entry["timestamp"]).total_seconds() >= self.cooldown_period:
+                    continue
                 if entry["type"] == alert_type and entry["message"] == message:
                     return False
         return True

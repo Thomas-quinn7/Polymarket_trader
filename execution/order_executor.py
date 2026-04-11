@@ -3,14 +3,16 @@ Order Executor Module
 Handles order execution with paper trading
 """
 
-from collections import deque
-from typing import Optional, Dict, List
-from datetime import datetime
+import math
 import time
+from collections import deque
+from datetime import datetime
+from typing import Optional, Dict, List
 
 from py_clob_client.order_builder.constants import SELL
 from utils.logger import logger, trade_logger
 from utils.alerts import alert_manager
+from utils.slippage import estimate_slippage, liquidity_available_usd
 from utils.pnl_tracker import PnLTracker
 from portfolio.position_tracker import PositionTracker
 from portfolio.fake_currency_tracker import FakeCurrencyTracker
@@ -43,11 +45,12 @@ class OrderExecutor:
         # Bounded deque: keeps the last 500 orders, O(1) append and bounded memory.
         self.order_history: deque = deque(maxlen=500)
 
-        # Safety check for paper trading only mode
         if config.PAPER_TRADING_ONLY:
-            logger.info("Order executor initialized — paper trading only, no real money trades")
+            logger.info("Order executor initialized — PAPER mode (no real money trades)")
         else:
-            logger.info("Order executor initialized (paper trading mode)")
+            logger.warning(
+                "Order executor initialized — LIVE mode: real orders WILL be submitted to Polymarket"
+            )
 
     def execute_buy(
         self,
@@ -65,9 +68,11 @@ class OrderExecutor:
             True if successful
         """
         try:
-            # Calculate position size (20% of starting balance)
+            # Size each position as a fixed fraction of currently available cash so
+            # that position sizes scale down naturally after drawdowns instead of
+            # attempting to allocate a fixed dollar amount that may exceed the balance.
             capital_to_allocate = (
-                self.currency_tracker.starting_balance * config.CAPITAL_SPLIT_PERCENT
+                self.currency_tracker.get_available() * config.CAPITAL_SPLIT_PERCENT
             )
 
             # Guard: invalid price means we cannot safely size the position
@@ -77,13 +82,60 @@ class OrderExecutor:
                 )
                 return False
 
+            # ── Pre-trade slippage estimate from real order book ───────────
+            # Fetch the live order book and walk the ask side to estimate how
+            # much price impact our order will have given current liquidity.
+            # In paper mode this becomes the recorded simulated slippage.
+            # In live mode it acts as a pre-trade gate AND we still compare the
+            # actual filled price post-trade as a second safety check.
+            slippage_pct = 0.0
+            order_book: dict = {}
+            if self.polymarket_client is not None:
+                try:
+                    order_book = self.polymarket_client.get_order_book(
+                        opportunity.winning_token_id, levels=10
+                    )
+                    slip_est = estimate_slippage(order_book, capital_to_allocate, side="BUY")
+                    slippage_pct = slip_est["slippage_pct"]
+
+                    total_liquidity = liquidity_available_usd(order_book, side="BUY")
+                    logger.debug(
+                        f"Pre-trade estimate for {position_id}: "
+                        f"VWAP=${slip_est['vwap']:.4f} "
+                        f"(best ask=${slip_est['best_price']:.4f}), "
+                        f"estimated slippage={slippage_pct:.3f}%, "
+                        f"book liquidity=${total_liquidity:.2f}, "
+                        f"levels consumed={slip_est['levels_consumed']}"
+                    )
+
+                    if slip_est["insufficient_liquidity"]:
+                        logger.warning(
+                            f"Thin book for {position_id}: only ${total_liquidity:.2f} "
+                            f"available vs ${capital_to_allocate:.2f} order size — "
+                            f"${slip_est['unfilled_usd']:.2f} would not fill"
+                        )
+
+                    if slippage_pct > config.SLIPPAGE_TOLERANCE_PERCENT:
+                        logger.warning(
+                            f"Pre-trade slippage estimate {slippage_pct:.2f}% exceeds tolerance "
+                            f"{config.SLIPPAGE_TOLERANCE_PERCENT:.1f}% for {position_id} — aborting"
+                        )
+                        return False
+
+                except Exception as exc:
+                    # Non-fatal: if the order book fetch fails we proceed without
+                    # the estimate rather than blocking the trade entirely.
+                    logger.warning(
+                        f"Could not fetch order book for pre-trade estimate "
+                        f"({position_id}): {exc} — proceeding without slippage gate"
+                    )
+
             # Calculate shares and expected profit
             shares = capital_to_allocate / opportunity.current_price
             expected_profit = capital_to_allocate * (opportunity.edge_percent / 100.0)
 
             # Simulate entry fee (paper) / record actual fee (live)
             entry_fee = capital_to_allocate * (config.TAKER_FEE_PERCENT / 100.0)
-            slippage_pct = 0.0
 
             # Place real order on exchange if live trading is enabled
             if not config.PAPER_TRADING_ONLY and self.polymarket_client is not None:
@@ -118,7 +170,10 @@ class OrderExecutor:
                     )
                     return False
 
-                # Extract filled price and enforce slippage tolerance
+                # Extract filled price and enforce slippage tolerance.
+                # Sign convention: positive = paid MORE than expected (adverse for buyer),
+                # negative = paid LESS than expected (favourable for buyer).
+                # Only positive (adverse) slippage is checked against the tolerance.
                 filled_price_raw = order_response.get("price") or order_response.get(
                     "average_price"
                 )
@@ -131,18 +186,21 @@ class OrderExecutor:
                                 / opportunity.current_price
                                 * 100
                             )
+                            # Reject only if we paid more than the tolerance allows.
+                            # Favourable fills (slippage_pct < 0) always pass.
                             if slippage_pct > config.SLIPPAGE_TOLERANCE_PERCENT:
                                 logger.error(
-                                    f"Slippage {slippage_pct:.2f}% exceeds tolerance "
+                                    f"Adverse slippage {slippage_pct:.2f}% exceeds tolerance "
                                     f"{config.SLIPPAGE_TOLERANCE_PERCENT:.1f}% for {position_id} "
                                     f"(expected ${opportunity.current_price:.4f}, "
                                     f"filled ${filled_price:.4f}) — aborting"
                                 )
                                 return False
                             if abs(slippage_pct) > 0.01:
+                                direction = "adverse" if slippage_pct > 0 else "favourable"
                                 logger.info(
                                     f"Slippage for {position_id}: {slippage_pct:+.2f}% "
-                                    f"(expected ${opportunity.current_price:.4f}, "
+                                    f"({direction}, expected ${opportunity.current_price:.4f}, "
                                     f"filled ${filled_price:.4f})"
                                 )
                     except (ValueError, TypeError):
@@ -279,13 +337,30 @@ class OrderExecutor:
 
         # Place real SELL order when live trading is enabled
         if not config.PAPER_TRADING_ONLY and self.polymarket_client is not None:
-            order_response = self.polymarket_client.create_market_order(
-                token_id=position.winning_token_id,
-                amount=position.shares,
-                side=SELL,
-            )
+            order_response = None
+            retry_delay = config.RETRY_DELAY_MS / 1000.0
+            for attempt in range(1, config.MAX_RETRIES + 1):
+                try:
+                    order_response = self.polymarket_client.create_market_order(
+                        token_id=position.winning_token_id,
+                        amount=position.shares,
+                        side=SELL,
+                    )
+                    if order_response:
+                        break
+                except Exception as exc:
+                    logger.warning(
+                        f"SELL attempt {attempt}/{config.MAX_RETRIES} failed for "
+                        f"{position_id}: {exc}"
+                    )
+                if attempt < config.MAX_RETRIES:
+                    time.sleep(retry_delay)
+
             if not order_response:
-                logger.error(f"Exchange rejected SELL order for {position_id}")
+                logger.error(
+                    f"Exchange rejected SELL order for {position_id} after "
+                    f"{config.MAX_RETRIES} attempt(s)"
+                )
                 return None
             filled_price = order_response.get("price")
             if filled_price:
@@ -317,8 +392,6 @@ class OrderExecutor:
 
             # Clamp settlement price to [0, 1] — Polymarket tokens can only
             # resolve to values in this range; anything outside is a bad input.
-            import math
-
             if not math.isfinite(settlement_price) or settlement_price < 0:
                 logger.warning(
                     f"Invalid settlement price {settlement_price!r} for {position_id} "
@@ -450,8 +523,10 @@ class OrderExecutor:
             if o["action"] == "BUY":
                 slippage_values.append(slip)
 
+        # avg_slippage: mean signed value (negative = fills were better than expected on average).
+        # max_slippage: worst adverse fill (largest positive slippage seen across all orders).
         avg_slippage = sum(slippage_values) / len(slippage_values) if slippage_values else 0.0
-        max_slippage = max(slippage_values) if slippage_values else 0.0
+        max_slippage = max((v for v in slippage_values if v > 0), default=0.0)
 
         return {
             "total_orders": total_orders,

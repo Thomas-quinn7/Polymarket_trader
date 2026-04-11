@@ -53,7 +53,9 @@ def scan_categories(
     for t in threads:
         t.start()
     for t in threads:
-        t.join()
+        t.join(timeout=30)
+        if t.is_alive():
+            logger.warning("market_scanner: thread for category '%s' did not finish within 30s", t.name)
 
     merged: list = []
     seen_ids: set = set()
