@@ -271,6 +271,10 @@ class TradingBot:
         Ask the strategy whether any open position should be closed.
         The strategy owns all exit logic — the infrastructure just calls it.
 
+        In live mode, exits go through execute_sell() so a real SELL order is
+        submitted to the exchange before the internal books are updated.
+        In paper/simulation mode, settle_position() is called directly (no order).
+
         open_positions: pre-fetched snapshot from run() — avoids a redundant lock acquisition.
         price_cache: dict shared with _check_stop_losses so each token is fetched at most once.
         """
@@ -285,7 +289,17 @@ class TradingBot:
 
                 exit_price = self.strategy.get_exit_price(pos, current_price)
                 logger.info(f"Strategy exit signal: {pos.position_id} @ ${exit_price:.4f}")
-                self.executor.settle_position(pos.position_id, settlement_price=exit_price)
+
+                if not config.PAPER_TRADING_ONLY:
+                    # Live mode: submit a real SELL to the exchange first.
+                    # execute_sell() falls through to settle_position() internally
+                    # once the exchange order is confirmed.
+                    self.executor.execute_sell(
+                        pos.position_id, exit_price, reason="strategy_exit"
+                    )
+                else:
+                    # Paper / simulation: settle directly against the strategy price.
+                    self.executor.settle_position(pos.position_id, settlement_price=exit_price)
 
                 if self.db:
                     settled = self.position_tracker.get_position(pos.position_id)
