@@ -46,7 +46,6 @@ def _make_bot(running=False, mode="paper"):
     # currency tracker
     bot.currency_tracker.get_balance.return_value = 10_000.0
     bot.currency_tracker.get_deployed.return_value = 0.0
-    bot.currency_tracker.get_available.return_value = 10_000.0
     bot.currency_tracker.starting_balance = 10_000.0
 
     # pnl tracker

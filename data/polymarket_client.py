@@ -66,6 +66,15 @@ class PolymarketClient:
     - Error handling and retries
     """
 
+    def __repr__(self) -> str:
+        """Safe representation — never exposes relayer keys or the private key."""
+        return (
+            f"PolymarketClient("
+            f"simulation={self._simulation}, "
+            f"relayer_enabled={self._relayer_headers is not None}, "
+            f"<credentials masked>)"
+        )
+
     def __init__(self):
         """Initialize Polymarket client"""
         self._simulation = config.TRADING_MODE == "simulation"

@@ -55,7 +55,7 @@ class PolymarketConfig:
         """Return the daily relay transaction limit. None = unlimited (relayer or partner tier)."""
         if self.RELAYER_ENABLED:
             return None  # Relayer keys have no daily transaction limit
-        return self._TIER_DAILY_LIMITS.get(self.BUILDER_TIER, 100)
+        return PolymarketConfig._TIER_DAILY_LIMITS.get(self.BUILDER_TIER, 100)
 
     @property
     def safe_scan_interval_ms(self) -> int:
@@ -192,20 +192,6 @@ class PolymarketConfig:
     SCYLLA_HOST = os.getenv("SCYLLA_HOST", "127.0.0.1")
     SCYLLA_PORT = int(os.getenv("SCYLLA_PORT", "9042"))
     SCYLLA_KEYSPACE = os.getenv("SCYLLA_KEYSPACE", "polymarket")
-
-    # Names of fields that contain secrets and must never appear in repr/logs.
-    _SENSITIVE_FIELDS = frozenset(
-        {
-            "POLYMARKET_PRIVATE_KEY",
-            "RELAYER_API_KEY",
-            "RELAYER_API_KEY_ADDRESS",
-            "BUILDER_API_KEY",
-            "BUILDER_SECRET",
-            "BUILDER_PASSPHRASE",
-            "SMTP_PASSWORD",
-            "DISCORD_WEBHOOK_URL",
-        }
-    )
 
     def __repr__(self) -> str:
         """
