@@ -598,14 +598,18 @@ async def update_settings(update: SettingsUpdate):
     needs_restart = []
     payload = update.model_dump(exclude_none=True)
 
-    # trading_mode is a runtime-only toggle — update config in memory, no file write
+    # trading_mode is a runtime-only toggle — update config in memory, no file write.
+    # PAPER_TRADING_ONLY is kept in sync so the executor's live-order gate matches
+    # what the UI shows. Live mode is only reachable via the --live CLI flag (which
+    # requires explicit confirmation), never through this endpoint.
+    new_trading_mode: Optional[str] = None
     if "trading_mode" in payload:
         mode = payload.pop("trading_mode").lower()
         if mode not in ("paper", "simulation"):
             raise HTTPException(
                 status_code=422, detail="trading_mode must be 'paper' or 'simulation'"
             )
-        config.TRADING_MODE = mode
+        new_trading_mode = mode
         changed.append("trading_mode")
 
     for field, value in payload.items():
@@ -623,8 +627,15 @@ async def update_settings(update: SettingsUpdate):
         if field in _RESTART_REQUIRED:
             needs_restart.append(field)
 
+    # Reload .env-backed fields first so they don't clobber the in-memory
+    # trading_mode we're about to apply.
     if any(f != "trading_mode" for f in changed):
         config.reload()
+
+    # Apply trading_mode AFTER reload so reload cannot overwrite it.
+    if new_trading_mode is not None:
+        config.TRADING_MODE = new_trading_mode
+        config.PAPER_TRADING_ONLY = True  # paper and simulation are both non-live
 
     return {
         "updated": changed,
