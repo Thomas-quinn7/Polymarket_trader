@@ -97,6 +97,7 @@ def _buy(executor, opp, pid, tolerance=5.0):
 
 # ── no client → zero slippage ──────────────────────────────────────────────
 
+
 class TestNoClient:
     def test_no_client_slippage_defaults_zero(self):
         executor, currency, pnl, positions = _executor(client=None)
@@ -110,6 +111,7 @@ class TestNoClient:
 
 
 # ── deep book → low/zero slippage ─────────────────────────────────────────
+
 
 class TestDeepBook:
     def test_deep_book_buy_succeeds(self):
@@ -140,12 +142,22 @@ class TestDeepBook:
 # covered by test_slippage.py.  These tests verify the executor's gate logic.
 
 _HIGH_SLIP = dict(
-    vwap=1.10, best_price=0.985, slippage_pct=15.0,
-    fill_ratio=1.0, unfilled_usd=0.0, insufficient_liquidity=False, levels_consumed=3
+    vwap=1.10,
+    best_price=0.985,
+    slippage_pct=15.0,
+    fill_ratio=1.0,
+    unfilled_usd=0.0,
+    insufficient_liquidity=False,
+    levels_consumed=3,
 )
 _ZERO_SLIP = dict(
-    vwap=0.985, best_price=0.985, slippage_pct=0.0,
-    fill_ratio=1.0, unfilled_usd=0.0, insufficient_liquidity=False, levels_consumed=1
+    vwap=0.985,
+    best_price=0.985,
+    slippage_pct=0.0,
+    fill_ratio=1.0,
+    unfilled_usd=0.0,
+    insufficient_liquidity=False,
+    levels_consumed=1,
 )
 
 
@@ -187,6 +199,7 @@ class TestPreTradeGate:
 
 # ── non-fatal order book failure ───────────────────────────────────────────
 
+
 class TestOrderBookFailure:
     def test_book_fetch_exception_is_non_fatal(self):
         """If get_order_book raises, buy should still proceed (no gate applied)."""
@@ -198,28 +211,33 @@ class TestOrderBookFailure:
 
     def test_book_fetch_exception_logs_warning(self, caplog):
         import logging
+
         client = MagicMock()
         client.get_order_book.side_effect = RuntimeError("timeout")
         executor, *_ = _executor(client=client)
         with caplog.at_level(logging.WARNING):
             _buy(executor, _opp(), "p1")
-        assert any("pre-trade estimate" in r.message.lower() or
-                   "order book" in r.message.lower()
-                   for r in caplog.records)
+        assert any(
+            "pre-trade estimate" in r.message.lower() or "order book" in r.message.lower()
+            for r in caplog.records
+        )
 
 
 # ── insufficient liquidity warning ────────────────────────────────────────
+
 
 class TestInsufficientLiquidityWarning:
     def test_thin_book_within_tolerance_logs_warning(self, caplog):
         """Thin book that still passes slippage gate should log an insufficient-liquidity warning."""
         import logging
+
         client = MagicMock()
         # Very little liquidity but slippage tolerance is generous (50%)
         client.get_order_book.return_value = _thin_book(shares=0.5)
         executor, *_ = _executor(client=client, tolerance=50.0)
         with caplog.at_level(logging.WARNING):
             _buy(executor, _opp(), "p1", tolerance=50.0)
-        assert any("thin book" in r.message.lower() or
-                   "insufficient" in r.message.lower()
-                   for r in caplog.records)
+        assert any(
+            "thin book" in r.message.lower() or "insufficient" in r.message.lower()
+            for r in caplog.records
+        )

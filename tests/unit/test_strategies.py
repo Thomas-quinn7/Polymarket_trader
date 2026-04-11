@@ -538,10 +538,11 @@ class TestEdgeFilterMode:
         assert len(self._scan(s, 0.985, 0.0)) == 1
 
     def test_net_edge_opportunity_edge_percent_is_net(self):
+        # gross_edge = (1/price - 1) * 100 — return on investment basis
         s = _make_settlement_arb(edge_filter_mode="net_edge")
         opps = self._scan(s, 0.985, 0.0)
         assert len(opps) == 1
-        assert opps[0].edge_percent == pytest.approx((1.0 - 0.985) * 100 - 0.0, abs=0.01)
+        assert opps[0].edge_percent == pytest.approx((1.0 / 0.985 - 1.0) * 100 - 0.0, abs=0.01)
 
     def test_slippage_adjusted_opportunity_edge_percent_is_net(self):
         s = _make_settlement_arb(
@@ -549,4 +550,4 @@ class TestEdgeFilterMode:
         )
         opps = self._scan(s, 0.985, 0.0)
         assert len(opps) == 1
-        assert opps[0].edge_percent == pytest.approx((1.0 - 0.985) * 100 - 0.0, abs=0.01)
+        assert opps[0].edge_percent == pytest.approx((1.0 / 0.985 - 1.0) * 100 - 0.0, abs=0.01)

@@ -93,11 +93,11 @@ def estimate_slippage(
 
     for level in levels:
         price = float(level.get("price", 0))
-        size = float(level.get("size", 0))   # shares available at this price
+        size = float(level.get("size", 0))  # shares available at this price
         if price <= 0 or size <= 0:
             continue
 
-        level_value_usd = price * size        # USD equivalent of this whole level
+        level_value_usd = price * size  # USD equivalent of this whole level
 
         if remaining_usd <= level_value_usd:
             # This level fully covers the remaining order

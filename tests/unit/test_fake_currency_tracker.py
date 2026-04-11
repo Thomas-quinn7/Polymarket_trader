@@ -40,10 +40,13 @@ class TestAllocate:
         tracker.allocate_to_position("p1", "m1", 2_000.0)
         assert tracker.deployed == 2_000.0
 
-    def test_allocate_caps_at_20_percent(self, tracker):
-        # Allocating more than 20 % of starting balance is capped
+    def test_allocate_full_amount_no_cap(self, tracker):
+        # The tracker honours the caller-supplied amount exactly.
+        # A hard cap at starting_balance * 0.2 was removed because it caused a
+        # silent mismatch: the executor's shares/fee calculations used the full
+        # amount while only the capped amount was deducted from the balance.
         tracker.allocate_to_position("p1", "m1", 9_000.0)
-        assert tracker.balance == 8_000.0  # 10k - 20% (2k)
+        assert tracker.balance == 1_000.0  # 10k - 9k
 
     def test_allocate_returns_true_on_success(self, tracker):
         result = tracker.allocate_to_position("p1", "m1", 1_000.0)

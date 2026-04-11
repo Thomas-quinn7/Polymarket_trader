@@ -93,7 +93,9 @@ class TradePosition(Base):
     expected_pnl = Column(Float, nullable=False)
     edge_percent = Column(Float, nullable=False)
     status = Column(Enum(PositionStatus), default=PositionStatus.OPEN, nullable=False)
-    opened_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    opened_at = Column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True
+    )
     settled_at = Column(DateTime, nullable=True)
     settlement_price = Column(Float, nullable=True)
     realized_pnl = Column(Float, nullable=True)
@@ -157,7 +159,9 @@ class TradeAuditRecord(Base):
     pnl_percent = Column(Float, nullable=False)
     edge_percent = Column(Float, nullable=False)
     status = Column(Enum(TradeStatus), nullable=False)
-    opened_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    opened_at = Column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True
+    )
     settled_at = Column(DateTime, nullable=True)
     settlement_price = Column(Float, nullable=True)
 
@@ -192,7 +196,9 @@ class MarketCache(Base):
     yes_price = Column(Float, nullable=True)
     no_price = Column(Float, nullable=True)
     mid_price = Column(Float, nullable=True)
-    cached_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    cached_at = Column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True
+    )
     expires_at = Column(DateTime, nullable=False)
 
     def to_dict(self):

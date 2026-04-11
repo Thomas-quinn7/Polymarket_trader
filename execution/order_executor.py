@@ -153,9 +153,7 @@ class OrderExecutor:
                 )
 
                 if not order_response:
-                    logger.error(
-                        f"Exchange rejected order for {position_id} — aborting"
-                    )
+                    logger.error(f"Exchange rejected order for {position_id} — aborting")
                     return False
                 order_status = order_response.get("status", "")
                 if order_status not in ("MATCHED", "DELAYED", "LIVE"):
@@ -341,9 +339,7 @@ class OrderExecutor:
             )
 
             if not order_response:
-                logger.error(
-                    f"Exchange rejected SELL order for {position_id}"
-                )
+                logger.error(f"Exchange rejected SELL order for {position_id}")
                 return None
             filled_price = order_response.get("price")
             if filled_price:

@@ -192,6 +192,7 @@ class TestClosedTradesIndex:
 class TestSlots:
     def test_trade_record_has_slots(self):
         from utils.pnl_tracker import TradeRecord
+
         assert hasattr(TradeRecord, "__slots__")
 
     def test_trade_record_no_instance_dict(self, tracker):
@@ -201,6 +202,7 @@ class TestSlots:
 
     def test_pnl_summary_has_slots(self):
         from utils.pnl_tracker import PnLSummary
+
         assert hasattr(PnLSummary, "__slots__")
 
     def test_pnl_summary_no_instance_dict(self, tracker):

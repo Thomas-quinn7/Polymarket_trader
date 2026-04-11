@@ -34,10 +34,10 @@ from data.market_scanner import scan_categories
 from data.market_schema import PolymarketMarket
 from utils.logger import logger
 
-
 # ---------------------------------------------------------------------------
 # Source registry
 # ---------------------------------------------------------------------------
+
 
 class MarketDataSource(str, Enum):
     """
@@ -63,6 +63,7 @@ class MarketDataSource(str, Enum):
 # ---------------------------------------------------------------------------
 # Criteria declaration
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class MarketCriteria:
@@ -96,9 +97,7 @@ class MarketCriteria:
         Gamma did not include an embedded price).
     """
 
-    categories: List[str] = field(
-        default_factory=lambda: ["crypto", "fed", "regulatory", "other"]
-    )
+    categories: List[str] = field(default_factory=lambda: ["crypto", "fed", "regulatory", "other"])
     min_volume_usd: float = 0.0
     require_binary: bool = True
     max_time_to_close_s: Optional[float] = None
@@ -114,6 +113,7 @@ class MarketCriteria:
 # ---------------------------------------------------------------------------
 # Provider
 # ---------------------------------------------------------------------------
+
 
 class MarketProvider:
     """
@@ -136,7 +136,7 @@ class MarketProvider:
     def __init__(self, client) -> None:
         self._client = client
         self._raw_cache: list = []
-        self._raw_cache_mono: float = 0.0          # time.monotonic() at last refresh
+        self._raw_cache_mono: float = 0.0  # time.monotonic() at last refresh
         self._last_categories: Optional[List[str]] = None
 
     # ── public API ──────────────────────────────────────────────────────────
@@ -313,9 +313,7 @@ class MarketProvider:
                     market.resolved_price = float(p)
                     clob_resolved += 1
             except Exception as exc:
-                logger.debug(
-                    f"[MarketProvider] CLOB price fetch failed for {market.slug}: {exc}"
-                )
+                logger.debug(f"[MarketProvider] CLOB price fetch failed for {market.slug}: {exc}")
 
         # Order-book batch (one get_order_book() per market that needs it)
         ob_resolved = 0
@@ -327,9 +325,7 @@ class MarketProvider:
                     market.resolved_price = float(mid)
                     ob_resolved += 1
             except Exception as exc:
-                logger.debug(
-                    f"[MarketProvider] Order-book fetch failed for {market.slug}: {exc}"
-                )
+                logger.debug(f"[MarketProvider] Order-book fetch failed for {market.slug}: {exc}")
 
         if needs_clob:
             logger.debug(

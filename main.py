@@ -294,9 +294,7 @@ class TradingBot:
                     # Live mode: submit a real SELL to the exchange first.
                     # execute_sell() falls through to settle_position() internally
                     # once the exchange order is confirmed.
-                    self.executor.execute_sell(
-                        pos.position_id, exit_price, reason="strategy_exit"
-                    )
+                    self.executor.execute_sell(pos.position_id, exit_price, reason="strategy_exit")
                 else:
                     # Paper / simulation: settle directly against the strategy price.
                     self.executor.settle_position(pos.position_id, settlement_price=exit_price)
@@ -703,6 +701,7 @@ def main():
         if not os.path.isfile(args.config):
             parser.error(f"--config: file not found: {args.config}")
         from dotenv import load_dotenv as _load_dotenv
+
         _load_dotenv(dotenv_path=args.config, override=True)
         config.reload()
         logger.info("Loaded config from: %s", args.config)
@@ -752,14 +751,14 @@ def main():
         config.LOG_LEVEL = args.log_level
         # Re-configure already-created loggers so the override takes effect
         import logging as _logging
+
         for name in ("polymarket_trading", "trades"):
-            _logging.getLogger(name).setLevel(
-                getattr(_logging, args.log_level, _logging.INFO)
-            )
+            _logging.getLogger(name).setLevel(getattr(_logging, args.log_level, _logging.INFO))
 
     bot = TradingBot()
 
     if args.simulation or args.paper or args.live or args.auto_start:
+
         def _deferred_start():
             # Wait for the dashboard to become ready before kicking off the loop
             # so the first status push lands on an already-listening server.
