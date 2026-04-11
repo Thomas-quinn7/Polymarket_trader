@@ -118,6 +118,10 @@ class PolymarketConfig:
     # local network.  Set DASHBOARD_HOST=0.0.0.0 in .env only when you
     # intentionally want remote access (e.g., behind a reverse proxy with auth).
     DASHBOARD_HOST = os.getenv("DASHBOARD_HOST", "127.0.0.1")
+    # Optional API key for dashboard authentication.
+    # When set, all endpoints (except /api/health) require the header
+    # "X-API-Key: <value>".  Leave empty to disable auth (localhost-only default).
+    DASHBOARD_API_KEY = os.getenv("DASHBOARD_API_KEY", "")
 
     # Logging Configuration
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -303,6 +307,7 @@ class PolymarketConfig:
         self.DASHBOARD_ENABLED = env.get("DASHBOARD_ENABLED", "True").lower() == "true"
         self.DASHBOARD_PORT = int(env.get("DASHBOARD_PORT", "8080"))
         self.DASHBOARD_HOST = env.get("DASHBOARD_HOST", "127.0.0.1")
+        self.DASHBOARD_API_KEY = env.get("DASHBOARD_API_KEY", "")
 
         # Logging
         self.LOG_LEVEL = env.get("LOG_LEVEL", "INFO")

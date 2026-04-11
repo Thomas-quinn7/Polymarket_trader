@@ -6,7 +6,7 @@ REST API for monitoring and controlling the trading bot
 import os
 import threading
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Literal, Optional, Dict, Any
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DOTENV_PATH = os.path.join(_PROJECT_ROOT, ".env")
@@ -15,7 +15,7 @@ _DOTENV_PATH = os.path.join(_PROJECT_ROOT, ".env")
 _RESTART_REQUIRED = {"fake_currency_balance"}
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -86,6 +86,29 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+
+
+# ── Authentication ──────────────────────────────────────────────────────────
+async def verify_api_key(x_api_key: Optional[str] = Header(default=None)) -> None:
+    """
+    Enforce API-key authentication when DASHBOARD_API_KEY is configured.
+
+    Pass the key in the ``X-API-Key`` request header.  If DASHBOARD_API_KEY
+    is empty (the default), authentication is disabled so existing setups
+    continue to work without any changes.
+
+    /api/health is intentionally excluded — it is a monitoring-only endpoint
+    that returns no sensitive data and must remain reachable without credentials.
+    """
+    configured_key = config.DASHBOARD_API_KEY
+    if not configured_key:
+        return  # auth disabled
+    if x_api_key != configured_key:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
+# Shared dependency applied to every endpoint that should be protected.
+_auth = Depends(verify_api_key)
 
 
 # Request/Response Models
@@ -218,7 +241,7 @@ def is_bot_available():
 
 
 # Dashboard Routes
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, dependencies=[_auth])
 async def get_dashboard():
     """Serve the dashboard HTML page"""
     try:
@@ -233,7 +256,7 @@ async def get_dashboard():
 
 
 # Status Endpoints
-@app.get("/api/status", response_model=BotStatusResponse)
+@app.get("/api/status", response_model=BotStatusResponse, dependencies=[_auth])
 async def get_status():
     """Get bot status"""
     try:
@@ -262,8 +285,8 @@ async def get_status():
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/health")
@@ -282,7 +305,7 @@ async def get_health():
 
 
 # Portfolio Endpoints
-@app.get("/api/portfolio")
+@app.get("/api/portfolio", dependencies=[_auth])
 async def get_portfolio():
     """Get portfolio summary"""
     try:
@@ -303,11 +326,11 @@ async def get_portfolio():
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting portfolio: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting portfolio: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@app.get("/api/pnl", response_model=PnLResponse)
+@app.get("/api/pnl", response_model=PnLResponse, dependencies=[_auth])
 async def get_pnl():
     """Get PnL summary"""
     try:
@@ -333,14 +356,14 @@ async def get_pnl():
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting PnL: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting PnL: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # Position Endpoints
-@app.get("/api/positions", response_model=List[PositionResponse])
-async def get_positions(status: Optional[str] = None):
-    """Get positions (open, settled, or all)"""
+@app.get("/api/positions", response_model=List[PositionResponse], dependencies=[_auth])
+async def get_positions(status: Optional[Literal["open", "settled"]] = None):
+    """Get positions — pass ?status=open or ?status=settled to filter."""
     try:
         bot = get_bot()
 
@@ -376,14 +399,14 @@ async def get_positions(status: Optional[str] = None):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting positions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting positions: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # Trade Endpoints
-@app.get("/api/trades", response_model=List[TradeResponse])
-async def get_trades(limit: int = 50):
-    """Get recent trades"""
+@app.get("/api/trades", response_model=List[TradeResponse], dependencies=[_auth])
+async def get_trades(limit: int = Query(default=50, ge=1, le=500)):
+    """Get recent trades (max 500 — the order history buffer size)."""
     try:
         bot = get_bot()
         orders = bot.executor.get_order_history(limit=limit)
@@ -415,12 +438,12 @@ async def get_trades(limit: int = 50):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting trades: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting trades: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # Execution Stats Endpoint
-@app.get("/api/execution/stats")
+@app.get("/api/execution/stats", dependencies=[_auth])
 async def get_execution_stats():
     """Execution quality metrics: fill rate, fees paid, slippage."""
     try:
@@ -442,12 +465,12 @@ async def get_execution_stats():
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting execution stats: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting execution stats: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # Configuration Endpoints
-@app.get("/api/config", response_model=ConfigResponse)
+@app.get("/api/config", response_model=ConfigResponse, dependencies=[_auth])
 async def get_config():
     """Get configuration"""
     return ConfigResponse(
@@ -532,7 +555,7 @@ _ENV_MAP: Dict[str, tuple] = {
 }
 
 
-@app.get("/api/settings", response_model=SettingsResponse)
+@app.get("/api/settings", response_model=SettingsResponse, dependencies=[_auth])
 async def get_settings():
     """
     Get all editable settings.
@@ -568,7 +591,14 @@ def _write_env_key(dotenv_path: str, key: str, value: str) -> None:
     python-dotenv's set_key() writes to a tmp file then renames it, which
     fails on Docker bind mounts on Windows ("Device or resource busy").
     Writing directly to the file avoids that rename entirely.
+
+    Security: strip CR, LF, and NUL from the value before writing.  A value
+    containing a newline would split into two lines in the .env file, allowing
+    a caller to inject arbitrary keys (e.g. "smtp.host\nPAPER_TRADING_ONLY=false")
+    that would take effect on the next config.reload() call.
     """
+    value = value.replace("\r", "").replace("\n", "").replace("\x00", "")
+
     try:
         with open(dotenv_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -591,7 +621,7 @@ def _write_env_key(dotenv_path: str, key: str, value: str) -> None:
         f.writelines(new_lines)
 
 
-@app.post("/api/settings")
+@app.post("/api/settings", dependencies=[_auth])
 async def update_settings(update: SettingsUpdate):
     """Write changed values to .env and hot-reload config"""
     changed = []
@@ -644,7 +674,7 @@ async def update_settings(update: SettingsUpdate):
 
 
 # ── Bot Control Endpoints ──────────────────────────────────────────────
-@app.post("/api/bot/start")
+@app.post("/api/bot/start", dependencies=[_auth])
 async def bot_start():
     """Start the trading loop (reinitialises client for current mode)."""
     bot = get_bot()
@@ -654,7 +684,7 @@ async def bot_start():
     return {"success": success, "running": bot.running, "mode": config.TRADING_MODE}
 
 
-@app.post("/api/bot/stop")
+@app.post("/api/bot/stop", dependencies=[_auth])
 async def bot_stop():
     """Signal the trading loop to stop after its current iteration."""
     bot = get_bot()
