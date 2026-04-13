@@ -14,8 +14,10 @@ import colorlog
 
 from config.polymarket_config import config
 
-# Configure UTF-8 encoding for stdout on Windows
-if sys.platform == "win32":
+# Configure UTF-8 encoding for stdout on Windows.
+# Skip when running under pytest — replacing sys.stdout/stderr conflicts with
+# pytest's capture mechanism and causes "I/O operation on closed file" on teardown.
+if sys.platform == "win32" and "pytest" not in sys.modules:
     if hasattr(sys.stdout, "buffer"):
         sys.stdout = io.TextIOWrapper(
             sys.stdout.buffer, encoding="utf-8", errors="replace", write_through=True

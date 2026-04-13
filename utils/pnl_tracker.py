@@ -337,7 +337,7 @@ class PnLTracker:
             trades_snapshot = list(self.trades)
 
         for trade in sorted(trades_snapshot, key=lambda x: x.exit_time or x.entry_time):
-            if trade.exit_price is not None:
+            if trade.exit_price is not None and trade.pnl is not None:
                 running_balance += trade.pnl
                 history.append(
                     {

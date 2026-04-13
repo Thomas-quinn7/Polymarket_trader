@@ -20,7 +20,6 @@ import requests
 
 from utils.logger import logger
 
-
 # ── Privacy whitelist ────────────────────────────────────────────────────────
 # Only these trade fields are forwarded to the Ollama model.
 # Everything else — position UUIDs, session IDs, token IDs, wallet-adjacent
@@ -36,20 +35,22 @@ from utils.logger import logger
 #   entry_fee, exit_fee                — granular fee breakdown
 #   balance_after                      — running account balance per trade
 #   strategy_name                      — already in the session header
-_REVIEW_SAFE_TRADE_FIELDS: frozenset[str] = frozenset({
-    "market_slug",    # human-readable market identifier (public Polymarket data)
-    "question",       # market question text (public)
-    "entry_time",
-    "exit_time",
-    "hold_seconds",
-    "entry_price",
-    "exit_price",
-    "edge_pct",
-    "gross_pnl",
-    "net_pnl",
-    "outcome",        # WIN | LOSS | BREAK_EVEN
-    "exit_reason",    # settlement | stop_loss | strategy_exit
-})
+_REVIEW_SAFE_TRADE_FIELDS: frozenset[str] = frozenset(
+    {
+        "market_slug",  # human-readable market identifier (public Polymarket data)
+        "question",  # market question text (public)
+        "entry_time",
+        "exit_time",
+        "hold_seconds",
+        "entry_price",
+        "exit_price",
+        "edge_pct",
+        "gross_pnl",
+        "net_pnl",
+        "outcome",  # WIN | LOSS | BREAK_EVEN
+        "exit_reason",  # settlement | stop_loss | strategy_exit
+    }
+)
 
 
 _PROMPT_TEMPLATE = """\
@@ -93,9 +94,7 @@ def _fmt_trade_log(trades: list) -> str:
     """Build a compact ASCII table of settled trades for the prompt."""
     if not trades:
         return "(no settled trades this session)"
-    header = (
-        "#   Market                  Entry   Exit    Hold      Edge%   Net PnL  Outcome"
-    )
+    header = "#   Market                  Entry   Exit    Hold      Edge%   Net PnL  Outcome"
     lines = [header]
     for i, t in enumerate(trades, 1):
         slug = (t.get("market_slug") or "")[:22].ljust(22)
@@ -121,7 +120,7 @@ class SessionReviewer:
     need to be pulled (~2 GB download).  Every failure is non-fatal.
     """
 
-    _PULL_TIMEOUT_S = 600   # model pull can be slow on first run
+    _PULL_TIMEOUT_S = 600  # model pull can be slow on first run
     _GENERATE_TIMEOUT_S = 180
 
     def __init__(self, host: str, model: str):
@@ -175,8 +174,7 @@ class SessionReviewer:
         # regardless of how session_data was assembled by the caller.
         raw_trades = session_data.get("trades", [])
         trades = [
-            {k: v for k, v in t.items() if k in _REVIEW_SAFE_TRADE_FIELDS}
-            for t in raw_trades
+            {k: v for k, v in t.items() if k in _REVIEW_SAFE_TRADE_FIELDS} for t in raw_trades
         ]
 
         # Session duration

@@ -122,9 +122,7 @@ class SessionStore:
 
     # ── Session lifecycle ──────────────────────────────────────────────
 
-    def create_session(
-        self, strategy_name: str, trading_mode: str, starting_balance: float
-    ) -> str:
+    def create_session(self, strategy_name: str, trading_mode: str, starting_balance: float) -> str:
         """
         Insert a new session row and return its session_id.
 
@@ -294,9 +292,7 @@ class SessionStore:
             profit_factor = (gross_wins / gross_losses) if gross_losses > 0 else None
 
             # ── Equity curve (chart-ready time series) ─────────────────
-            equity_curve = [
-                {"time": start_time, "balance": starting_balance, "trade_count": 0}
-            ]
+            equity_curve = [{"time": start_time, "balance": starting_balance, "trade_count": 0}]
             running_balance = starting_balance
             for i, t in enumerate(trades, 1):
                 if t["balance_after"] is not None:
@@ -409,9 +405,7 @@ class SessionStore:
                 ).fetchone()
 
             if row:
-                json_path = self._json_path(
-                    session_id, row["strategy_name"], row["start_time"]
-                )
+                json_path = self._json_path(session_id, row["strategy_name"], row["start_time"])
                 if json_path.exists():
                     with open(json_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
@@ -424,9 +418,7 @@ class SessionStore:
 
     # ── Query helpers (used by the dashboard) ─────────────────────────
 
-    def get_sessions(
-        self, strategy: Optional[str] = None, limit: int = 50
-    ) -> List[Dict]:
+    def get_sessions(self, strategy: Optional[str] = None, limit: int = 50) -> List[Dict]:
         """Return session rows (newest first), optionally filtered by strategy name."""
         if self._conn is None:
             return []
@@ -486,9 +478,7 @@ class SessionStore:
         safe_strategy = strategy_name.replace("/", "_").replace(" ", "_")
         return self._sessions_dir / f"{date_str}_{safe_strategy}_{session_id[:8]}.json"
 
-    def _write_json(
-        self, session_id: str, strategy_name: str, start_time: str, data: dict
-    ) -> None:
+    def _write_json(self, session_id: str, strategy_name: str, start_time: str, data: dict) -> None:
         path = self._json_path(session_id, strategy_name, start_time)
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
