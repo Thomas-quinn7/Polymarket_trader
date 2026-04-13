@@ -70,13 +70,11 @@ if os.path.exists(static_dir):
 # Add CORS middleware — restrict to localhost origins so the dashboard is not
 # reachable from arbitrary third-party websites even if the port is exposed.
 # allow_credentials is omitted: the dashboard uses no cookies or auth headers.
-_ALLOWED_ORIGINS = [
-    f"http://localhost:{config.DASHBOARD_PORT}",
-    f"http://127.0.0.1:{config.DASHBOARD_PORT}",
-]
+# Uses a regex to match any localhost port so that port auto-increment and
+# hot-reload changes are reflected without a restart.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_ALLOWED_ORIGINS,
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1):\d+$",
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
@@ -728,19 +726,27 @@ async def regenerate_review(session_id: str):
     if bot is None or bot.session_store is None:
         raise HTTPException(status_code=503, detail="Session store unavailable")
     if bot.session_reviewer is None:
-        raise HTTPException(
-            status_code=503, detail="Ollama not enabled (set OLLAMA_ENABLED=true)"
-        )
+        raise HTTPException(status_code=503, detail="Ollama not enabled (set OLLAMA_ENABLED=true)")
     session_data = bot.session_store.get_session(session_id)
     if not session_data:
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Reshape the flat DB row into the format generate_review expects
     stats_keys = {
-        "total_trades", "winning_trades", "losing_trades", "break_even_trades",
-        "win_rate", "total_gross_pnl", "total_net_pnl", "total_fees",
-        "avg_hold_seconds", "avg_edge_pct", "avg_entry_price",
-        "best_trade_pnl", "worst_trade_pnl", "profit_factor",
+        "total_trades",
+        "winning_trades",
+        "losing_trades",
+        "break_even_trades",
+        "win_rate",
+        "total_gross_pnl",
+        "total_net_pnl",
+        "total_fees",
+        "avg_hold_seconds",
+        "avg_edge_pct",
+        "avg_entry_price",
+        "best_trade_pnl",
+        "worst_trade_pnl",
+        "profit_factor",
     }
     review_payload = {
         "session": {

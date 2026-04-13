@@ -17,16 +17,13 @@ Covers:
 
 import json
 import sqlite3
-import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from data.session_store import SessionStore
-
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
@@ -110,9 +107,13 @@ class TestConnect:
     def test_returns_false_on_invalid_path(self):
         """Simulate a sqlite3 failure — on Windows, any path may resolve so we mock."""
         import sqlite3 as _sqlite3
+
         store = SessionStore(db_path=":memory:", sessions_dir="/tmp/sessions")
         with (
-            patch("data.session_store.sqlite3.connect", side_effect=_sqlite3.OperationalError("disk full")),
+            patch(
+                "data.session_store.sqlite3.connect",
+                side_effect=_sqlite3.OperationalError("disk full"),
+            ),
             patch("data.session_store.Path.mkdir"),
         ):
             result = store.connect()

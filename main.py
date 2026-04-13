@@ -205,9 +205,7 @@ class TradingBot:
             if self.session_reviewer is not None and session_data:
                 review = self.session_reviewer.generate_review(session_data)
                 if review:
-                    self.session_store.save_review(
-                        self._session_id, review, config.OLLAMA_MODEL
-                    )
+                    self.session_store.save_review(self._session_id, review, config.OLLAMA_MODEL)
 
         if self.session_store is not None:
             self.session_store.close()

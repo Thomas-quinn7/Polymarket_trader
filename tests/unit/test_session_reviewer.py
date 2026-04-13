@@ -16,8 +16,7 @@ Covers:
 - host trailing slash stripped in __init__
 """
 
-from unittest.mock import MagicMock, patch, call
-import pytest
+from unittest.mock import MagicMock, patch
 import requests
 
 from utils.session_reviewer import (
@@ -26,7 +25,6 @@ from utils.session_reviewer import (
     _fmt_trade_log,
     _REVIEW_SAFE_TRADE_FIELDS,
 )
-
 
 # ── _fmt_hold ──────────────────────────────────────────────────────────────
 
@@ -84,22 +82,47 @@ class TestFmtTradeLog:
 
     def test_slug_truncated_to_22_chars(self):
         long_slug = "a" * 40
-        trades = [{"market_slug": long_slug, "entry_price": 0.9, "exit_price": 1.0,
-                   "hold_seconds": 60, "edge_pct": 1.0, "net_pnl": 5.0, "outcome": "WIN"}]
+        trades = [
+            {
+                "market_slug": long_slug,
+                "entry_price": 0.9,
+                "exit_price": 1.0,
+                "hold_seconds": 60,
+                "edge_pct": 1.0,
+                "net_pnl": 5.0,
+                "outcome": "WIN",
+            }
+        ]
         result = _fmt_trade_log(trades)
         # The slug column is padded to exactly 22 chars
         row = result.splitlines()[1]
         assert "a" * 23 not in row  # never more than 22 a's in sequence
 
     def test_none_exit_price_renders_na(self):
-        trades = [{"market_slug": "test", "entry_price": 0.9, "exit_price": None,
-                   "hold_seconds": 60, "edge_pct": 1.0, "net_pnl": None, "outcome": "UNKNOWN"}]
+        trades = [
+            {
+                "market_slug": "test",
+                "entry_price": 0.9,
+                "exit_price": None,
+                "hold_seconds": 60,
+                "edge_pct": 1.0,
+                "net_pnl": None,
+                "outcome": "UNKNOWN",
+            }
+        ]
         result = _fmt_trade_log(trades)
         assert "n/a" in result
 
     def test_multiple_rows_numbered(self):
-        trade = {"market_slug": "mkt", "entry_price": 0.9, "exit_price": 1.0,
-                 "hold_seconds": 60, "edge_pct": 1.0, "net_pnl": 5.0, "outcome": "WIN"}
+        trade = {
+            "market_slug": "mkt",
+            "entry_price": 0.9,
+            "exit_price": 1.0,
+            "hold_seconds": 60,
+            "edge_pct": 1.0,
+            "net_pnl": 5.0,
+            "outcome": "WIN",
+        }
         result = _fmt_trade_log([trade, trade, trade])
         lines = result.splitlines()
         assert len(lines) == 4  # header + 3 rows
@@ -113,9 +136,18 @@ class TestFmtTradeLog:
 
 class TestReviewSafeFields:
     _EXPECTED_SAFE = {
-        "market_slug", "question", "entry_time", "exit_time",
-        "hold_seconds", "entry_price", "exit_price", "edge_pct",
-        "gross_pnl", "net_pnl", "outcome", "exit_reason",
+        "market_slug",
+        "question",
+        "entry_time",
+        "exit_time",
+        "hold_seconds",
+        "entry_price",
+        "exit_price",
+        "edge_pct",
+        "gross_pnl",
+        "net_pnl",
+        "outcome",
+        "exit_reason",
     }
 
     _EXPECTED_EXCLUDED = {
@@ -138,9 +170,9 @@ class TestReviewSafeFields:
 
     def test_sensitive_fields_absent(self):
         for field in self._EXPECTED_EXCLUDED:
-            assert field not in _REVIEW_SAFE_TRADE_FIELDS, (
-                f"{field!r} should NOT be in the whitelist — it is sensitive or non-useful"
-            )
+            assert (
+                field not in _REVIEW_SAFE_TRADE_FIELDS
+            ), f"{field!r} should NOT be in the whitelist — it is sensitive or non-useful"
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
