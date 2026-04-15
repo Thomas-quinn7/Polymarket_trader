@@ -25,6 +25,7 @@
         <button class="nav-item active" data-page="overview">Overview</button>
         <button class="nav-item" data-page="positions">Positions</button>
         <button class="nav-item" data-page="trades">Trades</button>
+        <button class="nav-item" data-page="analytics">Analytics</button>
       </div>
       <div class="nav-section">
         <div class="nav-section-label">System</div>
@@ -175,6 +176,78 @@
         </div>
 
       </div>
+    </section>
+
+    <!-- Analytics -->
+    <section id="page-analytics" class="page hidden">
+      <h1 class="page-title">Risk &amp; Evaluation</h1>
+
+      <div id="analytics-warning" class="analytics-warning hidden"></div>
+
+      <!-- Row 0: top-line stat cards -->
+      <div class="stats-row" id="analytics-stats-row">
+        <div class="stat-card"><div class="stat-number" id="an-sample">—</div><div class="stat-label">Trades Analysed</div></div>
+        <div class="stat-card"><div class="stat-number" id="an-var95">—</div><div class="stat-label">VaR 95%</div><div class="stat-sub">Worst 5th-pct trade</div></div>
+        <div class="stat-card"><div class="stat-number" id="an-sharpe">—</div><div class="stat-label">Sharpe (per-trade)</div><div class="stat-sub">mean ÷ σ of returns</div></div>
+        <div class="stat-card"><div class="stat-number" id="an-feedrag">—</div><div class="stat-label">Fee Drag</div><div class="stat-sub">fees ÷ gross P&amp;L</div></div>
+      </div>
+
+      <!-- Row 1: Risk KV + Transaction Costs KV -->
+      <div class="status-grid" style="margin-bottom:16px;">
+        <div class="card">
+          <div class="card-header">
+            <span>Risk Metrics</span>
+            <span class="card-sub" id="an-risk-sub"></span>
+          </div>
+          <div id="risk-kv" class="kv-list"><div class="kv-empty">Loading…</div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span>Transaction Costs</span></div>
+          <div id="costs-kv" class="kv-list"><div class="kv-empty">Loading…</div></div>
+        </div>
+      </div>
+
+      <!-- Row 2: P&L Distribution + Entry Edge Distribution -->
+      <div class="status-grid" style="margin-bottom:16px;">
+        <div class="card">
+          <div class="card-header"><span>P&amp;L Distribution</span><span class="card-sub">net per trade</span></div>
+          <div id="pnl-dist-chart" style="height:200px;"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span>Entry Edge Distribution</span>
+            <span class="card-sub">break-even line = taker fee</span>
+          </div>
+          <div id="edge-dist-chart" style="height:200px;"></div>
+        </div>
+      </div>
+
+      <!-- Row 3: Edge Realization Scatter + Slippage -->
+      <div class="status-grid" style="margin-bottom:16px;">
+        <div class="card">
+          <div class="card-header">
+            <span>Edge Realization</span>
+            <span class="card-sub">expected vs realised (%)</span>
+          </div>
+          <div id="an-edge-kv" class="kv-list" style="margin-bottom:12px;"></div>
+          <div id="edge-scatter-chart" style="height:200px;"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span>Slippage</span>
+            <span class="card-sub" id="slip-note">current session</span>
+          </div>
+          <div id="slippage-kv" class="kv-list" style="margin-bottom:12px;"></div>
+          <div id="slippage-dist-chart" style="height:160px;"></div>
+        </div>
+      </div>
+
+      <!-- Row 4: Hold Time Distribution (full width) -->
+      <div class="card">
+        <div class="card-header"><span>Hold-Time Distribution</span></div>
+        <div id="hold-dist-chart" style="height:180px;"></div>
+      </div>
+
     </section>
 
   </main>

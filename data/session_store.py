@@ -442,6 +442,25 @@ class SessionStore:
             logger.warning("SessionStore.get_sessions failed: %s", exc)
             return []
 
+    def get_all_trades(self, limit: Optional[int] = None) -> List[Dict]:
+        """Return all settled trades across every session, newest first.
+
+        Used by the analytics endpoint to compute cross-session metrics
+        (VaR, Sharpe, fee drag, edge realization, hold-time distribution).
+        """
+        if self._conn is None:
+            return []
+        try:
+            q = "SELECT * FROM session_trades ORDER BY entry_time DESC"
+            if limit:
+                q += f" LIMIT {int(limit)}"
+            with self._lock:
+                rows = self._conn.execute(q).fetchall()
+            return [dict(r) for r in rows]
+        except Exception as exc:
+            logger.warning("SessionStore.get_all_trades failed: %s", exc)
+            return []
+
     def get_session(self, session_id: str) -> dict:
         """Return full session dict including the trades array."""
         if self._conn is None:

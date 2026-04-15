@@ -4,6 +4,7 @@ REST API for monitoring and controlling the trading bot
 """
 
 import os
+import statistics as _stats
 import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -286,10 +287,18 @@ async def get_health():
     """Get system health"""
     try:
         bot = _get_bot_instance()
+        session_trades = 0
+        if bot is not None and getattr(bot, "session_store", None) is not None:
+            try:
+                session_trades = len(bot.session_store.get_all_trades(limit=9999))
+            except Exception:
+                pass
         return {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
+            "bot_registered": bot is not None,
             "bot_running": bot.running if bot is not None else False,
+            "session_trades_in_db": session_trades,
         }
     except Exception as e:
         logger.error(f"Error getting health: {e}")
@@ -398,13 +407,20 @@ async def get_positions(status: Optional[Literal["open", "settled"]] = None):
 # Trade Endpoints
 @app.get("/api/trades", response_model=List[TradeResponse], dependencies=[_auth])
 async def get_trades(limit: int = Query(default=50, ge=1, le=500)):
-    """Get recent trades (max 500 — the order history buffer size)."""
+    """Get recent trades — current-session order history merged with historical session trades."""
     try:
-        bot = get_bot()
-        orders = bot.executor.get_order_history(limit=limit)
+        bot = _get_bot_instance()
+        if bot is None:
+            return []
 
-        return [
-            TradeResponse(
+        results: list = []
+
+        # Current session: individual BUY/SELL orders from executor (in-memory)
+        orders = bot.executor.get_order_history(limit=limit)
+        current_position_ids: set = set()
+        for o in orders:
+            current_position_ids.add(o.get("position_id", ""))
+            results.append(TradeResponse(
                 order_id=o["order_id"],
                 position_id=o["position_id"],
                 action=o["action"],
@@ -419,14 +435,42 @@ async def get_trades(limit: int = Query(default=50, ge=1, le=500)):
                 executed_at=(
                     o["executed_at"].isoformat()
                     if isinstance(o["executed_at"], datetime)
-                    else o["executed_at"]
+                    else str(o["executed_at"])
                 ),
                 status=o["status"],
                 gross_pnl=o.get("gross_pnl"),
                 pnl=o.get("pnl"),
-            )
-            for o in orders
-        ]
+            ))
+
+        # Historical: completed round-trip trades from session store (survives restarts)
+        # Skip any position already in the current executor history to avoid duplicates.
+        if getattr(bot, "session_store", None) is not None:
+            session_trades = bot.session_store.get_all_trades(limit=limit)
+            for t in session_trades:
+                if t.get("position_id") in current_position_ids:
+                    continue
+                results.append(TradeResponse(
+                    order_id=t["trade_id"],
+                    position_id=t["position_id"],
+                    action="SETTLED",
+                    market_id=t["market_id"],
+                    market_slug=t.get("market_slug") or "",
+                    token_id=t.get("winning_token_id") or "",
+                    quantity=float(t.get("shares") or 0),
+                    price=float(t.get("entry_price") or 0),
+                    total=float(t.get("allocated_capital") or 0),
+                    fee=float((t.get("entry_fee") or 0) + (t.get("exit_fee") or 0)),
+                    slippage_pct=0.0,
+                    executed_at=t.get("exit_time") or t.get("entry_time") or "",
+                    status=t.get("outcome") or "SETTLED",
+                    gross_pnl=t.get("gross_pnl"),
+                    pnl=t.get("net_pnl"),
+                ))
+
+        # Sort newest first and cap at requested limit
+        results.sort(key=lambda x: x.executed_at or "", reverse=True)
+        return results[:limit]
+
     except HTTPException:
         raise
     except Exception as e:
@@ -459,6 +503,249 @@ async def get_execution_stats():
     except Exception as e:
         logger.error(f"Error getting execution stats: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/analytics", dependencies=[_auth])
+async def get_analytics():
+    """
+    Deep strategy evaluation metrics computed across all persisted session trades.
+
+    Metrics returned
+    ----------------
+    risk          — VaR (95%), CVaR (95%), VaR (99% when ≥100 trades), per-trade
+                    Sharpe and Sortino ratios, maximum drawdown.
+    costs         — Total / entry / exit fees, fee-drag %, avg fee per trade,
+                    break-even price and minimum edge needed to cover taker fee.
+    edge_realization — Average expected edge at entry vs average realised net-edge,
+                    plus a scatter array for the chart.
+    slippage      — Distribution across 5 buckets (current-session order history).
+    hold_times    — Distribution across 5 time buckets, min/avg/max seconds.
+    distributions — Pre-bucketed PnL and entry-edge histograms for bar charts.
+    """
+    try:
+        return _compute_analytics()
+    except Exception as e:
+        logger.error("Error computing analytics: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Analytics computation failed")
+
+
+def _compute_analytics():
+    """Compute analytics — extracted so get_analytics() can wrap it in try/except."""
+    bot = _get_bot_instance()
+
+    # ── Trades from session store (all historical sessions) ───────────
+    trades: list = []
+    if bot is not None and getattr(bot, "session_store", None) is not None:
+        trades = bot.session_store.get_all_trades(limit=1000)
+
+    # ── Slippage from in-memory order history (deque, last 500 orders) ─
+    # Note: slippage is not stored in session_trades — this is the current
+    # and recent session only.  See CODE_REVIEW #S-slip for the full fix.
+    slip_values: list = []
+    if bot is not None and hasattr(bot, "executor"):
+        for o in bot.executor.get_order_history(limit=500):
+            if o.get("action") == "BUY" and o.get("slippage_pct") is not None:
+                slip_values.append(float(o["slippage_pct"]))
+
+    n = len(trades)
+
+    # ── Per-trade return series (net PnL as % of allocated capital) ────
+    returns: list = []
+    for t in trades:
+        cap = t.get("allocated_capital") or 0.0
+        pnl = t.get("net_pnl")
+        if cap > 0 and pnl is not None:
+            returns.append(pnl / cap * 100.0)
+
+    net_pnls_raw = [t["net_pnl"] for t in trades if t.get("net_pnl") is not None]
+    net_pnls_sorted = sorted(net_pnls_raw)
+
+    # ── Risk metrics ──────────────────────────────────────────────────
+    var_95 = var_99 = cvar_95 = sharpe = sortino = None
+
+    if len(net_pnls_sorted) >= 4:
+        idx_95 = max(0, int(len(net_pnls_sorted) * 0.05) - 1)
+        var_95 = round(net_pnls_sorted[idx_95], 4)
+        tail_95 = net_pnls_sorted[: max(1, int(len(net_pnls_sorted) * 0.05))]
+        cvar_95 = round(sum(tail_95) / len(tail_95), 4)
+
+    if len(net_pnls_sorted) >= 100:
+        idx_99 = max(0, int(len(net_pnls_sorted) * 0.01) - 1)
+        var_99 = round(net_pnls_sorted[idx_99], 4)
+
+    if len(returns) >= 2:
+        mean_r = _stats.mean(returns)
+        stdev_r = _stats.stdev(returns)
+        if stdev_r > 0:
+            sharpe = round(mean_r / stdev_r, 3)
+        downside = [r for r in returns if r < 0]
+        if len(downside) >= 2:
+            ds_std = _stats.stdev(downside)
+            if ds_std > 0:
+                sortino = round(mean_r / ds_std, 3)
+
+    max_dd = None
+    if bot is not None and hasattr(bot, "pnl_tracker"):
+        max_dd = round(bot.pnl_tracker.max_drawdown, 2)
+
+    # ── Cost metrics ──────────────────────────────────────────────────
+    entry_fees = sum(t.get("entry_fee") or 0.0 for t in trades)
+    exit_fees = sum(t.get("exit_fee") or 0.0 for t in trades)
+    total_fees = entry_fees + exit_fees
+    total_gross = sum(t.get("gross_pnl") or 0.0 for t in trades)
+    total_net = sum(t.get("net_pnl") or 0.0 for t in trades)
+    fee_drag = round(total_fees / total_gross * 100.0, 2) if total_gross > 0 else None
+    avg_fee = round(total_fees / n, 4) if n > 0 else 0.0
+    taker_fee = config.TAKER_FEE_PERCENT
+    break_even_price = round(1.0 / (1.0 + taker_fee / 100.0), 6)
+
+    # ── Edge realization ─────────────────────────────────────────────
+    edge_scatter: list = []
+    for t in trades:
+        cap = t.get("allocated_capital") or 0.0
+        exp_edge = t.get("edge_pct")
+        pnl = t.get("net_pnl")
+        if cap > 0 and exp_edge is not None and pnl is not None:
+            edge_scatter.append({
+                "expected": round(float(exp_edge), 4),
+                "realized": round(pnl / cap * 100.0, 4),
+                "outcome": t.get("outcome") or "",
+            })
+    # Limit scatter payload to most recent 300 trades
+    edge_scatter = edge_scatter[-300:]
+
+    avg_exp = round(sum(p["expected"] for p in edge_scatter) / len(edge_scatter), 4) if edge_scatter else None
+    avg_real = round(sum(p["realized"] for p in edge_scatter) / len(edge_scatter), 4) if edge_scatter else None
+    avg_leak = (
+        round(avg_exp - avg_real, 4)
+        if avg_exp is not None and avg_real is not None
+        else None
+    )
+
+    # ── Slippage distribution ─────────────────────────────────────────
+    slip_buckets = ["< -1%", "-1% to 0%", "0% to 0.5%", "0.5% to 1%", "> 1%"]
+    slip_counts = [0, 0, 0, 0, 0]
+    for s in slip_values:
+        if s < -1.0:
+            slip_counts[0] += 1
+        elif s < 0.0:
+            slip_counts[1] += 1
+        elif s <= 0.5:
+            slip_counts[2] += 1
+        elif s <= 1.0:
+            slip_counts[3] += 1
+        else:
+            slip_counts[4] += 1
+    pct_adverse = (
+        round(sum(1 for s in slip_values if s > 0) / len(slip_values) * 100.0, 1)
+        if slip_values else 0.0
+    )
+
+    # ── Hold time distribution ────────────────────────────────────────
+    hold_times = [
+        t.get("hold_seconds") for t in trades if t.get("hold_seconds") is not None
+    ]
+    hold_buckets = ["< 1 min", "1–5 min", "5–30 min", "30 min–1 h", "> 1 h"]
+    hold_counts = [0, 0, 0, 0, 0]
+    for h in hold_times:
+        if h < 60:
+            hold_counts[0] += 1
+        elif h < 300:
+            hold_counts[1] += 1
+        elif h < 1800:
+            hold_counts[2] += 1
+        elif h < 3600:
+            hold_counts[3] += 1
+        else:
+            hold_counts[4] += 1
+
+    # ── PnL histogram ────────────────────────────────────────────────
+    def _histogram(values: list, n_bins: int, fmt_fn) -> tuple:
+        """Return (bucket_labels, counts) for a list of floats."""
+        if len(values) < 2:
+            return [], []
+        lo, hi = min(values), max(values)
+        span = hi - lo
+        if span < 1e-9:
+            return [fmt_fn((lo + hi) / 2)], [len(values)]
+        bins = min(n_bins, max(4, len(values) // 3))
+        step = span / bins
+        labels, counts = [], []
+        for i in range(bins):
+            b_lo = lo + i * step
+            b_hi = lo + (i + 1) * step
+            if i < bins - 1:
+                c = sum(1 for v in values if b_lo <= v < b_hi)
+            else:
+                c = sum(1 for v in values if b_lo <= v <= b_hi)
+            labels.append(fmt_fn((b_lo + b_hi) / 2))
+            counts.append(c)
+        return labels, counts
+
+    pnl_buckets, pnl_counts = _histogram(
+        net_pnls_raw, 12, lambda v: f"${v:.2f}"
+    )
+    edge_vals = [t.get("edge_pct") for t in trades if t.get("edge_pct") is not None]
+    edge_hist_buckets, edge_hist_counts = _histogram(
+        edge_vals, 10, lambda v: f"{v:.2f}%"
+    )
+
+    return {
+        "sample_size": n,
+        "insufficient_data": n < 5,
+        "risk": {
+            "var_95": var_95,
+            "var_99": var_99,
+            "cvar_95": cvar_95,
+            "sharpe": sharpe,
+            "sortino": sortino,
+            "max_drawdown_pct": max_dd,
+        },
+        "costs": {
+            "total_fees": round(total_fees, 4),
+            "entry_fees": round(entry_fees, 4),
+            "exit_fees": round(exit_fees, 4),
+            "total_gross_pnl": round(total_gross, 4),
+            "total_net_pnl": round(total_net, 4),
+            "fee_drag_pct": fee_drag,
+            "avg_fee_per_trade": avg_fee,
+            "break_even_price": break_even_price,
+            "break_even_edge_pct": round(taker_fee, 2),
+            "taker_fee_pct": round(taker_fee, 2),
+        },
+        "edge_realization": {
+            "avg_expected_edge": avg_exp,
+            "avg_realized_edge": avg_real,
+            "avg_leakage": avg_leak,
+            "scatter": edge_scatter,
+        },
+        "slippage": {
+            "count": len(slip_values),
+            "note": "Current-session order history only",
+            "avg_pct": round(sum(slip_values) / len(slip_values), 4) if slip_values else None,
+            "max_adverse_pct": round(
+                max((s for s in slip_values if s > 0), default=0.0), 4
+            ),
+            "pct_adverse_trades": pct_adverse,
+            "buckets": slip_buckets,
+            "counts": slip_counts,
+        },
+        "hold_times": {
+            "count": len(hold_times),
+            "avg_seconds": round(sum(hold_times) / len(hold_times), 1) if hold_times else None,
+            "min_seconds": round(min(hold_times), 1) if hold_times else None,
+            "max_seconds": round(max(hold_times), 1) if hold_times else None,
+            "buckets": hold_buckets,
+            "counts": hold_counts,
+        },
+        "distributions": {
+            "pnl_buckets": pnl_buckets,
+            "pnl_counts": pnl_counts,
+            "edge_buckets": edge_hist_buckets,
+            "edge_counts": edge_hist_counts,
+            "edge_breakeven_pct": round(taker_fee, 2),
+        },
+    }
 
 
 # Configuration Endpoints

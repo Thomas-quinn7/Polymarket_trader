@@ -277,6 +277,7 @@ class OrderExecutor:
                 "slippage_pct": slippage_pct,
                 "executed_at": datetime.now(),
                 "status": "FILLED",
+                "trading_mode": config.TRADING_MODE,
             }
             self.order_history.append(order_record)
 
@@ -459,6 +460,7 @@ class OrderExecutor:
                 "executed_at": datetime.now(),
                 "status": "FILLED",
                 "pnl": pnl,
+                "trading_mode": config.TRADING_MODE,
             }
             self.order_history.append(order_record)
 
