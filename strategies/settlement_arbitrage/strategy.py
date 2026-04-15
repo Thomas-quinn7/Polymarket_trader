@@ -15,6 +15,13 @@ from strategies.base import BaseStrategy
 from strategies.config_loader import load_strategy_config
 from utils.logger import logger
 
+# Price below this threshold is treated as a NO resolution (token worthless).
+# Polymarket YES-token prices can legitimately be very low before final
+# resolution, but once a market closes and the price is near zero it has
+# resolved NO.  2 cents is conservative enough to avoid false positives
+# while still catching genuine NO-resolved markets before they reach 0.00.
+_RESOLUTION_THRESHOLD = 0.02
+
 # Defaults used when no YAML config is present
 _DEFAULTS = dict(
     min_price_threshold=0.985,
@@ -93,7 +100,14 @@ class SettlementArbitrage(BaseStrategy):
         return False
 
     def get_exit_price(self, position, current_price: float) -> float:
-        """Settlement arb always expects YES to resolve at $1.00."""
+        """Return the expected settlement price for this position.
+
+        Returns 0.0 when the market has resolved NO (price collapsed below
+        _RESOLUTION_THRESHOLD).  The caller uses this signal to route to the
+        free token-redemption path instead of submitting a SELL order.
+        """
+        if current_price < _RESOLUTION_THRESHOLD:
+            return 0.0
         return 1.0
 
     # ------------------------------------------------------------------

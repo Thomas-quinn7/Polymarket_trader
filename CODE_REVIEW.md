@@ -1,21 +1,21 @@
 # Code Review — Polymarket Trading Framework
 
 **Reviewer:** Claude Sonnet 4.6  
-**Last updated:** 2026-04-11  
-**Sessions:** Session 1 (2026-04-10) · Session 2 (2026-04-11) · Session 3 (2026-04-11)
+**Last updated:** 2026-04-15  
+**Sessions:** Session 1 (2026-04-10) · Session 2 (2026-04-11) · Session 3 (2026-04-11) · Session 4 (2026-04-12) · Session 5 (2026-04-12) · Session 6 (2026-04-15)
 
 ---
 
 ## Status Summary
 
-48 issues found across three review sessions. 44 resolved; 4 open (#45, #46, #47, and the design note on `settlement_arbitrage.active_positions`).
+48 issues found across four review sessions. 48 resolved; 0 open (design notes remain for architectural tracking).
 
 | Severity | Found | Fixed |
 |---|---|---|
-| P0 — Critical correctness | 8 | 7 |
-| P1 — High correctness | 9 | 8 |
-| P2 — Moderate | 10 | 9 |
-| P3 — Minor | 17 | 16 |
+| P0 — Critical correctness | 8 | 8 ✓ |
+| P1 — High correctness | 9 | 9 ✓ |
+| P2 — Moderate | 10 | 10 ✓ |
+| P3 — Minor | 17 | 17 ✓ |
 | P4 — Polish | 4 | 4 ✓ |
 | Security | 5 | 5 ✓ |
 
@@ -33,7 +33,7 @@
 | 32 | `execution/order_executor.py` | `settle_position()` charged a taker exit fee on auto-settlement — Polymarket token redemption is free | `settle_position()` now accepts an explicit `exit_fee=0.0` parameter; normal settlement path passes nothing |
 | 38 | `dashboard/api.py` | Newline injection via `_write_env_key` — a value containing `\n` could inject extra keys into `.env` | Strip `\r`, `\n`, `\x00` from every value before writing |
 | 39 | `dashboard/api.py` | No authentication on any control endpoint — anyone who could reach the port could modify settings or stop the bot | Added optional `DASHBOARD_API_KEY` env var; all endpoints except `/api/health` require matching `X-API-Key` header |
-| 45 | `portfolio/position_tracker.py` + `main.py` | **Open positions are not restored on restart.** `PositionTracker.__init__` starts with `self.positions = {}`. DB rows survive but are invisible to the trading loop — capital is never freed and exits are never checked. | On startup, load open positions from `database.get_positions(status="open")` and re-populate `position_tracker.positions` and `currency_tracker`. |
+| 45 | `portfolio/position_tracker.py` + `main.py` | **Open positions are not restored on restart.** `PositionTracker.__init__` starts with `self.positions = {}`. DB rows survive but are invisible to the trading loop — capital is never freed and exits are never checked. | Added `PositionTracker.restore_position()` and `TradingBot._restore_open_positions()`. On startup (after DB connects), all OPEN rows are loaded, converted to `Position` objects, and re-inserted into the position tracker, pnl tracker, and currency tracker. |
 
 ---
 
@@ -49,7 +49,7 @@
 | 34 | `data/polymarket_client.py` | Pagination broke on `not page_markets` — exits early when a full page happens to contain only inactive markets | Only break on `len(events) < page_size` (last page sentinel) |
 | 35 | `data/market_provider.py` | `_convert_and_filter` never applied `criteria.categories` — entire market universe passed to strategy for unmapped categories | Added category gate (check 0) before all other filters |
 | 40 | `dashboard/api.py` | `detail=str(e)` in all 500 handlers — exposed stack traces, file paths, config values to HTTP clients | Replaced with `"Internal server error"`; added `exc_info=True` to server-side log |
-| 46 | `strategies/settlement_arbitrage/strategy.py` | `should_exit()` does not distinguish a market that resolved NO (price → 0) from a data error — calls `execute_sell()` on a resolved NO market and pays a taker fee instead of the free redemption path | Add a resolved-NO branch: if `current_price < RESOLUTION_THRESHOLD` and market is past `end_time`, call `settle_position()` with `settlement_price=0` rather than `execute_sell()` |
+| 46 | `strategies/settlement_arbitrage/strategy.py` | `should_exit()` does not distinguish a market that resolved NO (price → 0) from a data error — calls `execute_sell()` on a resolved NO market and pays a taker fee instead of the free redemption path | Added `_RESOLUTION_THRESHOLD = 0.02` constant. `get_exit_price()` now returns `0.0` when `current_price < _RESOLUTION_THRESHOLD`. `_check_strategy_exits()` in `main.py` routes `exit_price <= 0.0` to `settle_position(settlement_price=0.0)` (fee-free redemption) in all modes. |
 
 ---
 
@@ -87,7 +87,7 @@
 | 37 | `data/market_scanner.py` | Timeout warning logged `Thread-1` not the category name | Added `name=f"scanner-{cat}"` to `Thread()` constructor |
 | 42 | `dashboard/api.py` | `?status` param accepted any string silently — invalid values returned all positions with no error | Changed type to `Optional[Literal["open", "settled"]]` |
 | 43 | `pkg/` + `api/` directories | Both directories were dead code — imported nowhere in the live system | Deleted both directories (11 files) and the two test files that only tested them |
-| 47 | `dashboard/api.py` | `POST /api/settings` with `trading_mode=live` updates `config.TRADING_MODE` but does not set `config.PAPER_TRADING_ONLY = False` — the actual live-order gate never opens via the dashboard | Decide: either wire the dashboard toggle to flip `PAPER_TRADING_ONLY` (requires private-key pre-check), or document that live mode requires a restart with `PAPER_TRADING_ONLY=False` in `.env` |
+| 47 | `dashboard/api.py` | `POST /api/settings` with `trading_mode=live` updates `config.TRADING_MODE` but does not set `config.PAPER_TRADING_ONLY = False` — the actual live-order gate never opens via the dashboard | Resolved (was already present): endpoint rejects `trading_mode=live` with HTTP 422; only `"paper"` or `"simulation"` are accepted, and both set `PAPER_TRADING_ONLY = True`. Live mode requires `--live` CLI flag (with confirmation prompt + private-key pre-check). |
 
 ---
 
@@ -112,6 +112,83 @@
 | S3 | `dashboard/api.py` | Settings endpoint wrote `.env` with no auth — any caller could change `TRADING_MODE` or credentials | Fixed — see items 38 & 39 |
 | S4 | `data/polymarket_client.py` | `_relayer_headers` dict held `RELAYER_API_KEY` in plain text — could appear in exception tracebacks | Added `__repr__` to `PolymarketClient` that shows mode flags only; never exposes `_relayer_headers` |
 | S5 | `config/polymarket_config.py` | `__repr__` masks credentials correctly; ensure no `str()` / `print()` of the raw config object elsewhere | Operational awareness — no code change required; `__repr__` is the authoritative safe path |
+
+---
+
+---
+
+## Session 6 — Open Issues
+
+### A-4 — Analytics page KV lists stuck at "Loading…"
+
+**Symptom:** After navigating to the Analytics page, the Risk Metrics and Transaction Costs KV lists remain at their initial "Loading…" state. Charts are blank.
+
+**Root cause (suspected):** `loadAnalytics()` in `app.js` exits early when `apiFetch('/api/analytics')` returns `null`. This happens whenever the endpoint returns a non-200 status. Two known triggers:
+1. `/api/analytics` previously had no `try/except` — any computation error produced a silent 500.
+2. `_bot_instance` may be `None` at call time if the bot hasn't fully started — the endpoint returned valid JSON with `sample_size: 0`, but an unhandled edge case elsewhere in `_compute_analytics` could throw.
+
+**What was done in Session 6:**
+- Wrapped `/api/analytics` in `try/except`; extracted body to `_compute_analytics()` so errors are logged at ERROR level.
+- Added `console.warn` / `console.error` to `apiFetch` in `app.js` — failed calls now appear in the browser console (F12 → Console).
+- Extended `/api/health` (no-auth endpoint) to expose `bot_registered` and `session_trades_in_db` for quick sanity-checking.
+- Fixed `/api/trades` to merge `executor.order_history` with `session_store.get_all_trades()` so historical settled trades survive restarts.
+
+**Remaining fix needed:**
+
+> In `app.js`, `loadAnalytics()` should not leave KV divs at "Loading…" on failure. Replace the early-return block with:
+> ```js
+> if (!data) {
+>   const msg = '<div class="kv-empty">Unavailable</div>';
+>   ['risk-kv','costs-kv','an-edge-kv','slippage-kv'].forEach(id => {
+>     const el = document.getElementById(id);
+>     if (el) el.innerHTML = msg;
+>   });
+>   document.getElementById('analytics-warning').textContent =
+>     'Analytics unavailable — visit /api/health to check bot status.';
+>   document.getElementById('analytics-warning').classList.remove('hidden');
+>   return;
+> }
+> ```
+> Also verify via `/api/health` that `bot_registered: true` and `session_trades_in_db` matches expected count. If `bot_registered: false` the bot instance is not being passed to `set_bot_instance()` — check `start()` in `main.py`.
+
+---
+
+## Analytics Page — Deferred Enhancements
+
+Three analytics features from the Session 5 proposal require additional data plumbing before they can be implemented. Each entry below is sized as a self-contained prompt for a future session.
+
+---
+
+### A-1 — Slippage vs Position Size Scatter
+
+**What:** Scatter chart — X axis = order size ($), Y axis = slippage (%). Detects whether larger orders move the market.
+
+**Why deferred:** `slippage_pct` is stored in the in-memory `order_history` deque (max 500 orders, current session only) but **not** in `session_trades`. The chart only has current-session coverage, limiting usefulness.
+
+**Fix prompt:**
+> Add `slippage_pct REAL DEFAULT 0.0` to the `session_trades` SQLite schema in `data/session_store.py`. Populate it in `record_settled_trade()` by looking up the matching BUY order from `executor.order_history` (match on `position_id`). Add a `slippage_vs_size` array to the `/api/analytics` response (list of `{size, slippage, outcome}` dicts). In `app.js`, add a new scatter chart panel below the edge-realization scatter using the existing `state.an` chart pattern — X = `size`, Y = `slippage`, coloured by outcome. Add the `session_trades` schema migration (ALTER TABLE ADD COLUMN IF NOT EXISTS) in `SessionStore.connect()` so existing DBs are upgraded automatically.
+
+---
+
+### A-2 — Multi-Session Equity Curve Overlay
+
+**What:** All past sessions plotted as normalised equity curves on a single chart (each starts at 100%). Immediately shows whether consecutive sessions are improving or degrading.
+
+**Why deferred:** The equity curve is computed in `close_session()` and written to JSON but not stored in the DB. The `/api/sessions/{id}` endpoint returns the DB row (no equity curve). Fetching it requires reading the JSON files or a new DB column.
+
+**Fix prompt:**
+> Add an `equity_curve` TEXT column to `strategy_sessions` (stored as a JSON string). In `SessionStore.close_session()`, serialise the `equity_curve` list to JSON and write it to the new column alongside the existing UPDATE. Add `GET /api/sessions/{session_id}/equity` endpoint in `dashboard/api.py` that returns `{"session_id": ..., "curve": [...]}`. In `app.js`, add an overlay chart in the Analytics page: fetch all session IDs from `/api/sessions`, then fetch each curve in parallel (up to 10 most recent), normalise each to 100 at index 0, and render as a multi-line ECharts chart using the existing dark-theme pattern.
+
+---
+
+### A-3 — Maximum Adverse Excursion (MAE)
+
+**What:** For each closed position, how far below entry did the price go before settling? A fat left tail (large MAE on winning trades) means you're holding through large paper losses and relying on mean-reversion — riskier than the P&L alone suggests.
+
+**Why deferred:** MAE requires intra-hold price data (the low-water mark of the winning token price between entry and settlement). This data is not currently collected anywhere.
+
+**Fix prompt:**
+> This requires price polling during hold. Add a lightweight background task in `TradingBot.run()` that, once per scan interval, calls `client.get_price(pos.winning_token_id)` for each open position and records the minimum seen. Store `min_price_during_hold REAL` on the `Position` dataclass (default `None`, updated by the loop, persisted to the `positions` DB table via `upsert_position`). Add `mae_pct = (entry_price - min_price_during_hold) / entry_price * 100` to `session_trades` (populate in `record_settled_trade`). Expose in `/api/analytics` as `mae: {avg_pct, max_pct, distribution}` and add a histogram to the Analytics page.
 
 ---
 

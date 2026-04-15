@@ -475,3 +475,24 @@ select.field-input option { background: var(--bg-2); color: var(--text-0); }
 /* ── Pulse ──────────────────────────────────────────────────────────── */
 .pulse { animation: pulse-anim 2s infinite; }
 @keyframes pulse-anim { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ── Analytics page ─────────────────────────────────────────────────── */
+.analytics-warning {
+  background: rgba(245,166,35,0.07);
+  border: 1px solid rgba(245,166,35,0.2);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--yellow);
+  margin-bottom: 16px;
+}
+
+.card-sub {
+  font-size: 11px;
+  color: var(--text-2);
+  font-weight: 400;
+}
+
+@media (max-width: 900px) {
+  .stats-row { grid-template-columns: repeat(2, 1fr); }
+}

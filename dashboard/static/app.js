@@ -5,6 +5,13 @@ const state = {
   pnlHistory: [],
   chart: null,
   refreshInterval: null,
+  an: {
+    pnlDist:     null,
+    edgeDist:    null,
+    edgeScatter: null,
+    slipDist:    null,
+    holdDist:    null,
+  },
 };
 
 const MAX_HISTORY = 60;
@@ -83,9 +90,15 @@ function nav(page) {
 async function apiFetch(path) {
   try {
     const res = await fetch(path);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[apiFetch] ${path} → ${res.status} ${res.statusText}`);
+      return null;
+    }
     return await res.json();
-  } catch { return null; }
+  } catch (e) {
+    console.error(`[apiFetch] ${path} → network error:`, e);
+    return null;
+  }
 }
 
 // ── Page Loader ────────────────────────────────────────────────────────
@@ -97,6 +110,7 @@ function loadPage(page) {
     case 'status':    return loadStatusPage();
     case 'config':    return loadConfig();
     case 'settings':  return loadSettings();
+    case 'analytics': return loadAnalytics();
   }
 }
 
@@ -668,3 +682,427 @@ function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+// ── Analytics ──────────────────────────────────────────────────────────
+
+async function loadAnalytics() {
+  const data = await apiFetch('/api/analytics');
+  if (!data) {
+    const msg = '<div class="kv-empty">Unavailable</div>';
+    ['risk-kv', 'costs-kv', 'an-edge-kv', 'slippage-kv'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = msg;
+    });
+    document.getElementById('analytics-warning').textContent =
+      'Analytics unavailable — check /api/health to verify bot status.';
+    document.getElementById('analytics-warning').classList.remove('hidden');
+    return;
+  }
+
+  const warn = document.getElementById('analytics-warning');
+  if (data.insufficient_data) {
+    warn.textContent =
+      `Only ${data.sample_size} settled trade(s) available. ` +
+      'Most metrics need ≥ 5 trades; Sharpe/Sortino need ≥ 20 for reliability.';
+    warn.classList.remove('hidden');
+  } else {
+    warn.classList.add('hidden');
+  }
+
+  renderAnalyticsStatRow(data);
+  renderRiskKV(data.risk, data.sample_size);
+  renderCostsKV(data.costs);
+  renderEdgeKV(data.edge_realization);
+  renderSlippageKV(data.slippage);
+  initAnalyticsCharts();
+  renderPnlDistChart(data.distributions);
+  renderEdgeDistChart(data.distributions);
+  renderEdgeScatterChart(data.edge_realization);
+  renderSlipDistChart(data.slippage);
+  renderHoldDistChart(data.hold_times);
+}
+
+function renderAnalyticsStatRow(data) {
+  const r = data.risk || {};
+  const c = data.costs || {};
+
+  const sampleEl  = document.getElementById('an-sample');
+  const var95El   = document.getElementById('an-var95');
+  const sharpeEl  = document.getElementById('an-sharpe');
+  const feedragEl = document.getElementById('an-feedrag');
+
+  if (sampleEl) sampleEl.textContent = data.sample_size ?? '—';
+
+  if (var95El) {
+    const v = r.var_95;
+    var95El.textContent = v != null ? fmt(v) : '—';
+    var95El.className = 'stat-number ' + (v != null ? (v < 0 ? 'num-red' : 'num-green') : '');
+  }
+
+  if (sharpeEl) {
+    const s = r.sharpe;
+    sharpeEl.textContent = s != null ? s.toFixed(3) : '—';
+    sharpeEl.className = 'stat-number ' + (s != null ? (s >= 0 ? 'num-green' : 'num-red') : '');
+  }
+
+  if (feedragEl) {
+    const f = c.fee_drag_pct;
+    feedragEl.textContent = f != null ? fmtPct(f) : '—';
+  }
+}
+
+function renderRiskKV(r, sampleSize) {
+  const el = document.getElementById('risk-kv');
+  if (!el) return;
+  if (!r) { el.innerHTML = '<div class="kv-empty">No data</div>'; return; }
+
+  const subEl = document.getElementById('an-risk-sub');
+  if (subEl) subEl.textContent = `n = ${sampleSize}`;
+
+  const needMore = sampleSize < 20
+    ? `<span style="color:var(--yellow);font-size:11px;">⚠ ${sampleSize} trades — need ≥ 20 for reliability</span>`
+    : '';
+
+  el.innerHTML = [
+    ['VaR 95%',      r.var_95   != null ? `<span class="${r.var_95 < 0 ? 'pnl-neg':'pnl-pos'}">${fmt(r.var_95)}</span>` : '—'],
+    ['CVaR 95%',     r.cvar_95  != null ? `<span class="${r.cvar_95 < 0 ? 'pnl-neg':'pnl-pos'}">${fmt(r.cvar_95)}</span>` : '—'],
+    ['VaR 99%',      r.var_99   != null ? `<span class="${r.var_99 < 0 ? 'pnl-neg':'pnl-pos'}">${fmt(r.var_99)}</span>` : badge('need ≥ 100 trades', 'gray')],
+    ['Sharpe',       r.sharpe   != null ? r.sharpe.toFixed(3) : '—'],
+    ['Sortino',      r.sortino  != null ? r.sortino.toFixed(3) : '—'],
+    ['Max Drawdown', r.max_drawdown_pct != null ? fmtPct(r.max_drawdown_pct) : '—'],
+  ].map(([k, v]) => `
+    <div class="kv-row">
+      <span class="kv-key">${k}</span>
+      <span class="kv-val mono">${v}</span>
+    </div>
+  `).join('') + (needMore ? `<div style="padding:8px 0;">${needMore}</div>` : '');
+}
+
+function renderCostsKV(c) {
+  const el = document.getElementById('costs-kv');
+  if (!el) return;
+  if (!c) { el.innerHTML = '<div class="kv-empty">No data</div>'; return; }
+
+  const breakEvenLine = `${fmt(c.break_even_price, 4)} (min edge ${fmtPct(c.break_even_edge_pct)})`;
+
+  el.innerHTML = [
+    ['Gross P&amp;L',      pnlSpan(c.total_gross_pnl)],
+    ['Net P&amp;L',        pnlSpan(c.total_net_pnl)],
+    ['Total Fees',     `<span class="pnl-neg">${fmt(c.total_fees)}</span>`],
+    ['Entry Fees',     fmt(c.entry_fees)],
+    ['Exit Fees',      fmt(c.exit_fees)],
+    ['Fee Drag',       c.fee_drag_pct != null ? `<span class="pnl-neg">${fmtPct(c.fee_drag_pct)}</span>` : '—'],
+    ['Avg Fee / Trade',fmt(c.avg_fee_per_trade)],
+    ['Break-Even',     breakEvenLine],
+  ].map(([k, v]) => `
+    <div class="kv-row">
+      <span class="kv-key">${k}</span>
+      <span class="kv-val mono">${v}</span>
+    </div>
+  `).join('');
+}
+
+function renderEdgeKV(e) {
+  const el = document.getElementById('an-edge-kv');
+  if (!el) return;
+  if (!e) { el.innerHTML = ''; return; }
+
+  el.innerHTML = [
+    ['Avg Expected Edge', e.avg_expected_edge != null ? `${e.avg_expected_edge.toFixed(2)}%` : '—'],
+    ['Avg Realised Edge', e.avg_realized_edge != null
+      ? `<span class="${e.avg_realized_edge >= 0 ? 'pnl-pos' : 'pnl-neg'}">${e.avg_realized_edge.toFixed(2)}%</span>`
+      : '—'],
+    ['Avg Leakage',       e.avg_leakage != null
+      ? `<span class="${e.avg_leakage <= 0 ? 'pnl-pos' : 'pnl-neg'}">${e.avg_leakage > 0 ? '-' : '+'}${Math.abs(e.avg_leakage).toFixed(2)}%</span>`
+      : '—'],
+  ].map(([k, v]) => `
+    <div class="kv-row">
+      <span class="kv-key">${k}</span>
+      <span class="kv-val mono">${v}</span>
+    </div>
+  `).join('');
+}
+
+function renderSlippageKV(s) {
+  const el = document.getElementById('slippage-kv');
+  if (!el) return;
+  if (!s) { el.innerHTML = '<div class="kv-empty">No data</div>'; return; }
+
+  if (!s.count) {
+    el.innerHTML = '<div class="kv-empty">No orders with slippage data yet</div>';
+    return;
+  }
+
+  el.innerHTML = [
+    ['Orders',          s.count],
+    ['Avg Slippage',    s.avg_pct != null
+      ? `<span class="${s.avg_pct > 0 ? 'pnl-neg' : 'pnl-pos'}">${s.avg_pct > 0 ? '+' : ''}${s.avg_pct.toFixed(3)}%</span>`
+      : '—'],
+    ['Max Adverse',     s.max_adverse_pct != null ? `<span class="pnl-neg">+${s.max_adverse_pct.toFixed(3)}%</span>` : '—'],
+    ['Adverse Fills',   fmtPct(s.pct_adverse_trades)],
+  ].map(([k, v]) => `
+    <div class="kv-row">
+      <span class="kv-key">${k}</span>
+      <span class="kv-val mono">${v}</span>
+    </div>
+  `).join('');
+}
+
+// ── Analytics chart helpers ────────────────────────────────────────────
+
+const _CHART_DEFAULTS = {
+  backgroundColor: 'transparent',
+  textStyle: { fontFamily: 'JetBrains Mono, monospace', color: '#666' },
+  grid: { left: 52, right: 16, top: 12, bottom: 36 },
+};
+
+const _TOOLTIP = {
+  backgroundColor: '#111111',
+  borderColor: '#1e1e1e',
+  textStyle: { color: '#ededed', fontSize: 12, fontFamily: 'JetBrains Mono, monospace' },
+};
+
+const _AXIS_LABEL = { color: '#666', fontSize: 10 };
+const _SPLIT_LINE = { lineStyle: { color: '#1e1e1e', type: 'dashed' } };
+
+function initAnalyticsCharts() {
+  const ids = {
+    pnlDist:     'pnl-dist-chart',
+    edgeDist:    'edge-dist-chart',
+    edgeScatter: 'edge-scatter-chart',
+    slipDist:    'slippage-dist-chart',
+    holdDist:    'hold-dist-chart',
+  };
+  for (const [key, id] of Object.entries(ids)) {
+    if (!state.an[key]) {
+      const el = document.getElementById(id);
+      if (el && window.echarts) {
+        state.an[key] = echarts.init(el, null, { renderer: 'canvas' });
+      }
+    }
+  }
+  window.addEventListener('resize', () => {
+    Object.values(state.an).forEach(c => c && c.resize());
+  });
+}
+
+function renderPnlDistChart(dist) {
+  const chart = state.an.pnlDist;
+  if (!chart || !dist) return;
+
+  const buckets = dist.pnl_buckets || [];
+  const counts  = dist.pnl_counts  || [];
+
+  // Colour each bar by sign of its midpoint label
+  const itemStyle = buckets.map(label => {
+    const v = parseFloat(label.replace('$', ''));
+    return { value: counts[buckets.indexOf(label)] || 0, itemStyle: { color: v >= 0 ? '#3ecf8e' : '#ff4444' } };
+  });
+
+  chart.setOption({
+    ..._CHART_DEFAULTS,
+    tooltip: { ..._TOOLTIP, formatter: p => `${p.name}<br/>${p.value} trades` },
+    xAxis: {
+      type: 'category', data: buckets,
+      axisLabel: { ..._AXIS_LABEL, rotate: 30 },
+      axisLine: { lineStyle: { color: '#1e1e1e' } },
+      axisTick: { show: false },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: _AXIS_LABEL,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: _SPLIT_LINE,
+      minInterval: 1,
+    },
+    series: [{ type: 'bar', data: itemStyle, barMaxWidth: 40 }],
+  });
+}
+
+function renderEdgeDistChart(dist) {
+  const chart = state.an.edgeDist;
+  if (!chart || !dist) return;
+
+  const buckets = dist.edge_buckets || [];
+  const counts  = dist.edge_counts  || [];
+  const beEdge  = dist.edge_breakeven_pct;
+
+  const markLine = beEdge != null ? {
+    silent: true,
+    symbol: 'none',
+    lineStyle: { color: '#ff4444', type: 'dashed', width: 1 },
+    label: { formatter: `break-even\n${beEdge}%`, color: '#ff4444', fontSize: 10 },
+    data: [{ xAxis: `${beEdge.toFixed(2)}%` }],
+  } : undefined;
+
+  chart.setOption({
+    ..._CHART_DEFAULTS,
+    tooltip: { ..._TOOLTIP, formatter: p => `Edge ${p.name}<br/>${p.value} trades` },
+    xAxis: {
+      type: 'category', data: buckets,
+      axisLabel: { ..._AXIS_LABEL, rotate: 30 },
+      axisLine: { lineStyle: { color: '#1e1e1e' } },
+      axisTick: { show: false },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: _AXIS_LABEL,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: _SPLIT_LINE,
+      minInterval: 1,
+    },
+    series: [{
+      type: 'bar',
+      data: counts,
+      itemStyle: { color: '#d4a853' },
+      barMaxWidth: 40,
+      markLine: markLine,
+    }],
+  });
+}
+
+function renderEdgeScatterChart(er) {
+  const chart = state.an.edgeScatter;
+  if (!chart || !er) return;
+
+  const scatter = (er.scatter || []);
+  const wins   = scatter.filter(p => p.outcome === 'WIN').map(p => [p.expected, p.realized]);
+  const losses = scatter.filter(p => p.outcome === 'LOSS').map(p => [p.expected, p.realized]);
+  const other  = scatter.filter(p => p.outcome !== 'WIN' && p.outcome !== 'LOSS').map(p => [p.expected, p.realized]);
+
+  // Range for reference lines
+  const allX = scatter.map(p => p.expected);
+  const xMin = allX.length ? Math.min(...allX) - 0.2 : -1;
+  const xMax = allX.length ? Math.max(...allX) + 0.2 : 3;
+
+  chart.setOption({
+    ..._CHART_DEFAULTS,
+    grid: { left: 52, right: 16, top: 16, bottom: 36 },
+    tooltip: {
+      ..._TOOLTIP,
+      formatter: p => `Expected: ${p.data[0].toFixed(2)}%<br/>Realised: ${p.data[1].toFixed(2)}%`,
+    },
+    xAxis: {
+      type: 'value', name: 'Expected (%)',
+      nameTextStyle: { color: '#666', fontSize: 10 },
+      axisLabel: { ..._AXIS_LABEL, formatter: v => `${v}%` },
+      axisLine: { lineStyle: { color: '#1e1e1e' } },
+      splitLine: _SPLIT_LINE,
+    },
+    yAxis: {
+      type: 'value', name: 'Realised (%)',
+      nameTextStyle: { color: '#666', fontSize: 10 },
+      axisLabel: { ..._AXIS_LABEL, formatter: v => `${v}%` },
+      axisLine: { show: false },
+      splitLine: _SPLIT_LINE,
+    },
+    series: [
+      {
+        // Diagonal perfect-realization reference line
+        type: 'line', data: [[xMin, xMin], [xMax, xMax]],
+        lineStyle: { color: '#333', type: 'dashed', width: 1 },
+        symbol: 'none', tooltip: { show: false }, silent: true,
+      },
+      {
+        // Break-even horizontal at y=0
+        type: 'line', data: [[xMin, 0], [xMax, 0]],
+        lineStyle: { color: '#ff4444', type: 'dashed', width: 1 },
+        symbol: 'none', tooltip: { show: false }, silent: true,
+      },
+      {
+        name: 'WIN', type: 'scatter', data: wins,
+        symbolSize: 6, itemStyle: { color: '#3ecf8e', opacity: 0.75 },
+      },
+      {
+        name: 'LOSS', type: 'scatter', data: losses,
+        symbolSize: 6, itemStyle: { color: '#ff4444', opacity: 0.75 },
+      },
+      {
+        name: 'Other', type: 'scatter', data: other,
+        symbolSize: 5, itemStyle: { color: '#555', opacity: 0.6 },
+      },
+    ],
+    legend: {
+      data: ['WIN', 'LOSS', 'Other'],
+      textStyle: { color: '#666', fontSize: 10 },
+      right: 0, top: 0,
+      itemWidth: 10, itemHeight: 10,
+    },
+  });
+}
+
+function renderSlipDistChart(s) {
+  const chart = state.an.slipDist;
+  if (!chart || !s) return;
+
+  const buckets = s.buckets || [];
+  const counts  = s.counts  || [];
+
+  // Colour: buckets 0-1 (favourable/zero) green, 2-4 (adverse) red
+  const coloured = counts.map((v, i) => ({
+    value: v,
+    itemStyle: { color: i <= 1 ? '#3ecf8e' : '#ff4444' },
+  }));
+
+  chart.setOption({
+    backgroundColor: 'transparent',
+    grid: { left: 80, right: 16, top: 8, bottom: 8 },
+    tooltip: { ..._TOOLTIP, formatter: p => `${p.name}<br/>${p.value} orders` },
+    xAxis: {
+      type: 'value',
+      axisLabel: _AXIS_LABEL,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: _SPLIT_LINE,
+      minInterval: 1,
+    },
+    yAxis: {
+      type: 'category', data: buckets,
+      axisLabel: { ..._AXIS_LABEL, fontSize: 10 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { show: false },
+      inverse: true,
+    },
+    series: [{ type: 'bar', data: coloured, barMaxWidth: 22 }],
+  });
+}
+
+function renderHoldDistChart(ht) {
+  const chart = state.an.holdDist;
+  if (!chart || !ht) return;
+
+  const buckets = ht.buckets || [];
+  const counts  = ht.counts  || [];
+
+  chart.setOption({
+    backgroundColor: 'transparent',
+    grid: { left: 80, right: 16, top: 8, bottom: 8 },
+    tooltip: { ..._TOOLTIP, formatter: p => `${p.name}<br/>${p.value} positions` },
+    xAxis: {
+      type: 'value',
+      axisLabel: _AXIS_LABEL,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: _SPLIT_LINE,
+      minInterval: 1,
+    },
+    yAxis: {
+      type: 'category', data: buckets,
+      axisLabel: { ..._AXIS_LABEL, fontSize: 10 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { show: false },
+      inverse: true,
+    },
+    series: [{
+      type: 'bar', data: counts,
+      itemStyle: { color: '#d4a853' },
+      barMaxWidth: 22,
+    }],
+  });
+}

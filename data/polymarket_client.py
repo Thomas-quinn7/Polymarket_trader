@@ -386,7 +386,12 @@ class PolymarketClient:
                 return 0.0
             return raw
         except Exception as e:
-            logger.error(f"Error fetching price for {token_id}: {e}")
+            err_str = str(e)
+            # 404 / "No orderbook" means the market resolved or was delisted — not an error
+            if "No orderbook" in err_str or "404" in err_str:
+                logger.debug(f"No orderbook for {token_id} (market resolved/delisted): {e}")
+            else:
+                logger.error(f"Error fetching price for {token_id}: {e}")
             return 0.0
 
     def get_order_book(self, token_id: str, levels: int = 5) -> dict:
@@ -629,3 +634,61 @@ class PolymarketClient:
         except Exception as e:
             logger.error(f"Error fetching positions: {e}")
             return []
+
+    def get_user_positions(self) -> list:
+        """
+        Get actual ERC1155 token holdings for the authenticated wallet.
+
+        This is distinct from get_positions() which returns unfilled limit orders.
+        Uses /data/positions REST endpoint; falls back to SDK method if available.
+
+        Returns:
+            List of position dicts with token_id/asset_id and size fields.
+        """
+        if self._simulation or self.client is None:
+            return []
+        try:
+            # Try SDK method first (available in newer py-clob-client versions)
+            if hasattr(self.client, "get_positions"):
+                try:
+                    result = self.client.get_positions()
+                    if isinstance(result, list):
+                        return result
+                except Exception:
+                    pass
+
+            # Fallback: direct REST call to the CLOB data endpoint
+            response = _http_session.get(
+                f"{config.CLOB_API_URL}/data/positions",
+                params={"user": self.funder_address},
+                timeout=10,
+            )
+            if response.status_code == 200:
+                return response.json() or []
+            logger.debug(f"get_user_positions: API returned {response.status_code}")
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching user positions: {e}")
+            return []
+
+    def is_token_active(self, token_id: str) -> bool:
+        """
+        Return True if the token has an active orderbook (market is still live).
+
+        A False result means the market has resolved or been delisted — any DB
+        position for this token is stale and should be marked FAILED.
+        """
+        if self._simulation:
+            return token_id in self._sim_price_index
+        if self.client is None:
+            return True  # cannot validate without client — assume active
+        try:
+            self.client.get_price(token_id, side="BUY")
+            return True
+        except Exception as e:
+            err_str = str(e)
+            if "No orderbook" in err_str or "404" in err_str:
+                return False
+            # Unexpected error — assume active to avoid false negatives
+            logger.debug(f"is_token_active({token_id[:16]}…): unexpected error {e} — assuming active")
+            return True

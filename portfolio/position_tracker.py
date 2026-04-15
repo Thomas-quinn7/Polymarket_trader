@@ -279,6 +279,16 @@ class PositionTracker:
             "losses": losses,
         }
 
+    def restore_position(self, position: "Position") -> None:
+        """Re-insert a persisted open position into the tracker on restart.
+
+        Unlike create_position(), this does NOT call pnl_tracker.open_position()
+        — the caller (TradingBot._restore_open_positions) is responsible for
+        that step so all downstream close/settle paths work correctly.
+        """
+        with self._lock:
+            self.positions[position.position_id] = position
+
     def reset(self):
         """Reset tracker"""
         with self._lock:

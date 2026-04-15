@@ -38,7 +38,7 @@ from data.session_store import SessionStore
 from strategies.registry import load_strategy
 from strategies.base import BaseStrategy
 from portfolio.fake_currency_tracker import FakeCurrencyTracker
-from portfolio.position_tracker import PositionTracker
+from portfolio.position_tracker import Position, PositionTracker
 from execution.order_executor import OrderExecutor
 from utils.logger import logger
 from utils.pnl_tracker import PnLTracker
@@ -79,6 +79,12 @@ class TradingBot:
             if not self.db.connect():
                 logger.warning("SQLite DB unavailable — data will not be persisted")
                 self.db = None
+
+        # Restore any open positions that were live when the process last exited.
+        # Must happen after position_tracker, pnl_tracker, and currency_tracker
+        # are all constructed but before the trading loop starts.
+        if self.db is not None:
+            self._restore_open_positions()
 
         self.order_book_store: Optional[OrderBookStore] = None
         if config.SCYLLA_ENABLED:
@@ -124,6 +130,133 @@ class TradingBot:
         logger.info("=" * 70)
         logger.info("Ready — use the WebUI to configure mode and start trading")
         logger.info("=" * 70)
+
+    def _restore_open_positions(self) -> None:
+        """Re-populate PositionTracker, PnLTracker, and FakeCurrencyTracker from
+        the DB on restart so open positions survive a process restart.
+
+        Validation before restore:
+        - Tokens with no active orderbook (market resolved while offline) are
+          marked FAILED in the DB and skipped — stops 404 log spam and prevents
+          phantom positions from accumulating across restarts.
+        - In live mode the DB list is cross-referenced against actual account
+          holdings; positions the wallet no longer holds are also marked FAILED.
+        - Restore is capped at MAX_POSITIONS.
+        """
+        rows = self.db.get_positions(status="OPEN")
+        if not rows:
+            return
+
+        # In live mode, pre-fetch real account token holdings for cross-reference
+        live_token_ids = None
+        is_live = not config.PAPER_TRADING_ONLY and config.TRADING_MODE != "simulation"
+        if is_live:
+            try:
+                account_positions = self.client.get_user_positions()
+                if account_positions:
+                    live_token_ids = {
+                        p.get("asset_id") or p.get("token_id") or p.get("conditionId")
+                        for p in account_positions
+                        if p
+                    }
+                    live_token_ids.discard(None)
+                    logger.info(
+                        f"Live account has {len(live_token_ids)} token holdings "
+                        f"for cross-reference during restore"
+                    )
+            except Exception as e:
+                logger.warning(f"Could not fetch live account positions for restore: {e}")
+
+        restored = skipped = 0
+        for row in rows:
+            pid = row.get("position_id", "?")
+            token_id = row.get("winning_token_id") or row.get("token_id_yes") or ""
+            try:
+                # Validate: check if the token still has an active orderbook
+                if token_id and not self.client.is_token_active(token_id):
+                    logger.info(
+                        f"Skipping stale position {pid} — market resolved while offline "
+                        f"(token {token_id[:16]}…); marking FAILED"
+                    )
+                    self.db.update_position_status(pid, "FAILED")
+                    skipped += 1
+                    continue
+
+                # In live mode: skip positions the wallet no longer holds
+                if live_token_ids is not None and token_id and token_id not in live_token_ids:
+                    logger.info(
+                        f"Skipping position {pid} — token {token_id[:16]}… not found "
+                        f"in live account holdings; marking FAILED"
+                    )
+                    self.db.update_position_status(pid, "FAILED")
+                    skipped += 1
+                    continue
+
+                # Cap at MAX_POSITIONS
+                if restored >= config.MAX_POSITIONS:
+                    logger.warning(
+                        f"Reached MAX_POSITIONS ({config.MAX_POSITIONS}) during restore — "
+                        f"skipping remaining DB positions"
+                    )
+                    break
+
+                opened_at = (
+                    datetime.fromisoformat(row["opened_at"])
+                    if row.get("opened_at")
+                    else datetime.now()
+                )
+                position = Position(
+                    position_id=row["position_id"],
+                    market_id=row["market_id"],
+                    market_slug=row["market_slug"],
+                    question=row.get("question") or "",
+                    token_id_yes=row.get("token_id_yes") or "",
+                    token_id_no=row.get("token_id_no") or "",
+                    winning_token_id=row.get("winning_token_id") or "",
+                    shares=row["shares"],
+                    entry_price=row["entry_price"],
+                    allocated_capital=row["allocated_capital"],
+                    expected_profit=row["expected_profit"],
+                    edge_percent=row["edge_percent"],
+                    status="OPEN",
+                    opened_at=opened_at,
+                )
+
+                # Re-insert into PositionTracker (skips pnl_tracker call)
+                self.position_tracker.restore_position(position)
+
+                # Re-register in PnLTracker so settle_position / close_position work
+                self.pnl_tracker.open_position(
+                    position_id=position.position_id,
+                    market_id=position.market_id,
+                    quantity=position.shares,
+                    entry_price=position.entry_price,
+                )
+
+                # Re-allocate deployed capital in the currency tracker
+                ok = self.currency_tracker.allocate_to_position(
+                    position_id=position.position_id,
+                    market_id=position.market_id,
+                    amount=position.allocated_capital,
+                )
+                if not ok:
+                    logger.warning(
+                        f"Could not restore currency allocation for "
+                        f"{position.position_id} (${position.allocated_capital:.2f}) "
+                        f"— balance display may be inconsistent"
+                    )
+                restored += 1
+            except Exception as e:
+                logger.error(
+                    f"Error restoring position {pid}: {e}",
+                    exc_info=True,
+                )
+
+        logger.info(
+            f"Position restore complete: {restored} restored, {skipped} stale/invalid skipped "
+            f"(balance=${self.currency_tracker.get_balance():.2f}, "
+            f"deployed=${self.currency_tracker.get_deployed():.2f})"
+        )
 
     def _signal_handler(self, signum, frame):
         logger.info("\nShutdown signal received")
@@ -334,7 +467,12 @@ class TradingBot:
                 exit_price = self.strategy.get_exit_price(pos, current_price)
                 logger.info(f"Strategy exit signal: {pos.position_id} @ ${exit_price:.4f}")
 
-                if not config.PAPER_TRADING_ONLY:
+                if exit_price <= 0.0:
+                    # Market resolved NO: token is worthless.  Polymarket token
+                    # redemption at $0 is free — never submit a SELL order on a
+                    # worthless token (no buyers, and would pay a taker fee).
+                    self.executor.settle_position(pos.position_id, settlement_price=0.0)
+                elif not config.PAPER_TRADING_ONLY:
                     # Live mode: submit a real SELL to the exchange first.
                     # execute_sell() falls through to settle_position() internally
                     # once the exchange order is confirmed.

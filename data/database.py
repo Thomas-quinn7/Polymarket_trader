@@ -175,6 +175,22 @@ class TradeDatabase:
             logger.warning("DB upsert_trade failed: %s", e)
             return False
 
+    def update_position_status(self, position_id: str, status: str) -> bool:
+        """Lightweight status update — no full Position dataclass required."""
+        if self._conn is None:
+            return False
+        try:
+            with self._lock:
+                self._conn.execute(
+                    "UPDATE positions SET status = ? WHERE position_id = ?",
+                    (status, position_id),
+                )
+                self._conn.commit()
+            return True
+        except Exception as e:
+            logger.warning("DB update_position_status failed: %s", e)
+            return False
+
     def add_pnl_snapshot(self, balance: float, pnl: float) -> bool:
         """Append a balance/PnL data point to the history table."""
         if self._conn is None:
