@@ -690,5 +690,7 @@ class PolymarketClient:
             if "No orderbook" in err_str or "404" in err_str:
                 return False
             # Unexpected error — assume active to avoid false negatives
-            logger.debug(f"is_token_active({token_id[:16]}…): unexpected error {e} — assuming active")
+            logger.debug(
+                f"is_token_active({token_id[:16]}…): unexpected error {e} — assuming active"
+            )
             return True

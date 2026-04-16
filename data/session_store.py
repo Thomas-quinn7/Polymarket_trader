@@ -428,13 +428,13 @@ class SessionStore:
                     """
                     SELECT * FROM strategy_sessions
                     WHERE strategy_name = ?
-                    ORDER BY start_time DESC LIMIT ?
+                    ORDER BY start_time DESC, rowid DESC LIMIT ?
                     """,
                     (strategy, limit),
                 ).fetchall()
             else:
                 rows = self._conn.execute(
-                    "SELECT * FROM strategy_sessions ORDER BY start_time DESC LIMIT ?",
+                    "SELECT * FROM strategy_sessions ORDER BY start_time DESC, rowid DESC LIMIT ?",
                     (limit,),
                 ).fetchall()
             return [dict(r) for r in rows]
