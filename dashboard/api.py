@@ -420,27 +420,29 @@ async def get_trades(limit: int = Query(default=50, ge=1, le=500)):
         current_position_ids: set = set()
         for o in orders:
             current_position_ids.add(o.get("position_id", ""))
-            results.append(TradeResponse(
-                order_id=o["order_id"],
-                position_id=o["position_id"],
-                action=o["action"],
-                market_id=o["market_id"],
-                market_slug=o["market_slug"],
-                token_id=o["token_id"],
-                quantity=o["quantity"],
-                price=o["price"],
-                total=o["total"],
-                fee=o.get("fee", 0.0),
-                slippage_pct=o.get("slippage_pct", 0.0),
-                executed_at=(
-                    o["executed_at"].isoformat()
-                    if isinstance(o["executed_at"], datetime)
-                    else str(o["executed_at"])
-                ),
-                status=o["status"],
-                gross_pnl=o.get("gross_pnl"),
-                pnl=o.get("pnl"),
-            ))
+            results.append(
+                TradeResponse(
+                    order_id=o["order_id"],
+                    position_id=o["position_id"],
+                    action=o["action"],
+                    market_id=o["market_id"],
+                    market_slug=o["market_slug"],
+                    token_id=o["token_id"],
+                    quantity=o["quantity"],
+                    price=o["price"],
+                    total=o["total"],
+                    fee=o.get("fee", 0.0),
+                    slippage_pct=o.get("slippage_pct", 0.0),
+                    executed_at=(
+                        o["executed_at"].isoformat()
+                        if isinstance(o["executed_at"], datetime)
+                        else str(o["executed_at"])
+                    ),
+                    status=o["status"],
+                    gross_pnl=o.get("gross_pnl"),
+                    pnl=o.get("pnl"),
+                )
+            )
 
         # Historical: completed round-trip trades from session store (survives restarts)
         # Skip any position already in the current executor history to avoid duplicates.
@@ -449,23 +451,25 @@ async def get_trades(limit: int = Query(default=50, ge=1, le=500)):
             for t in session_trades:
                 if t.get("position_id") in current_position_ids:
                     continue
-                results.append(TradeResponse(
-                    order_id=t["trade_id"],
-                    position_id=t["position_id"],
-                    action="SETTLED",
-                    market_id=t["market_id"],
-                    market_slug=t.get("market_slug") or "",
-                    token_id=t.get("winning_token_id") or "",
-                    quantity=float(t.get("shares") or 0),
-                    price=float(t.get("entry_price") or 0),
-                    total=float(t.get("allocated_capital") or 0),
-                    fee=float((t.get("entry_fee") or 0) + (t.get("exit_fee") or 0)),
-                    slippage_pct=0.0,
-                    executed_at=t.get("exit_time") or t.get("entry_time") or "",
-                    status=t.get("outcome") or "SETTLED",
-                    gross_pnl=t.get("gross_pnl"),
-                    pnl=t.get("net_pnl"),
-                ))
+                results.append(
+                    TradeResponse(
+                        order_id=t["trade_id"],
+                        position_id=t["position_id"],
+                        action="SETTLED",
+                        market_id=t["market_id"],
+                        market_slug=t.get("market_slug") or "",
+                        token_id=t.get("winning_token_id") or "",
+                        quantity=float(t.get("shares") or 0),
+                        price=float(t.get("entry_price") or 0),
+                        total=float(t.get("allocated_capital") or 0),
+                        fee=float((t.get("entry_fee") or 0) + (t.get("exit_fee") or 0)),
+                        slippage_pct=0.0,
+                        executed_at=t.get("exit_time") or t.get("entry_time") or "",
+                        status=t.get("outcome") or "SETTLED",
+                        gross_pnl=t.get("gross_pnl"),
+                        pnl=t.get("net_pnl"),
+                    )
+                )
 
         # Sort newest first and cap at requested limit
         results.sort(key=lambda x: x.executed_at or "", reverse=True)
@@ -606,20 +610,28 @@ def _compute_analytics():
         exp_edge = t.get("edge_pct")
         pnl = t.get("net_pnl")
         if cap > 0 and exp_edge is not None and pnl is not None:
-            edge_scatter.append({
-                "expected": round(float(exp_edge), 4),
-                "realized": round(pnl / cap * 100.0, 4),
-                "outcome": t.get("outcome") or "",
-            })
+            edge_scatter.append(
+                {
+                    "expected": round(float(exp_edge), 4),
+                    "realized": round(pnl / cap * 100.0, 4),
+                    "outcome": t.get("outcome") or "",
+                }
+            )
     # Limit scatter payload to most recent 300 trades
     edge_scatter = edge_scatter[-300:]
 
-    avg_exp = round(sum(p["expected"] for p in edge_scatter) / len(edge_scatter), 4) if edge_scatter else None
-    avg_real = round(sum(p["realized"] for p in edge_scatter) / len(edge_scatter), 4) if edge_scatter else None
-    avg_leak = (
-        round(avg_exp - avg_real, 4)
-        if avg_exp is not None and avg_real is not None
+    avg_exp = (
+        round(sum(p["expected"] for p in edge_scatter) / len(edge_scatter), 4)
+        if edge_scatter
         else None
+    )
+    avg_real = (
+        round(sum(p["realized"] for p in edge_scatter) / len(edge_scatter), 4)
+        if edge_scatter
+        else None
+    )
+    avg_leak = (
+        round(avg_exp - avg_real, 4) if avg_exp is not None and avg_real is not None else None
     )
 
     # ── Slippage distribution ─────────────────────────────────────────
@@ -638,13 +650,12 @@ def _compute_analytics():
             slip_counts[4] += 1
     pct_adverse = (
         round(sum(1 for s in slip_values if s > 0) / len(slip_values) * 100.0, 1)
-        if slip_values else 0.0
+        if slip_values
+        else 0.0
     )
 
     # ── Hold time distribution ────────────────────────────────────────
-    hold_times = [
-        t.get("hold_seconds") for t in trades if t.get("hold_seconds") is not None
-    ]
+    hold_times = [t.get("hold_seconds") for t in trades if t.get("hold_seconds") is not None]
     hold_buckets = ["< 1 min", "1–5 min", "5–30 min", "30 min–1 h", "> 1 h"]
     hold_counts = [0, 0, 0, 0, 0]
     for h in hold_times:
@@ -682,13 +693,9 @@ def _compute_analytics():
             counts.append(c)
         return labels, counts
 
-    pnl_buckets, pnl_counts = _histogram(
-        net_pnls_raw, 12, lambda v: f"${v:.2f}"
-    )
+    pnl_buckets, pnl_counts = _histogram(net_pnls_raw, 12, lambda v: f"${v:.2f}")
     edge_vals = [t.get("edge_pct") for t in trades if t.get("edge_pct") is not None]
-    edge_hist_buckets, edge_hist_counts = _histogram(
-        edge_vals, 10, lambda v: f"{v:.2f}%"
-    )
+    edge_hist_buckets, edge_hist_counts = _histogram(edge_vals, 10, lambda v: f"{v:.2f}%")
 
     return {
         "sample_size": n,
@@ -723,9 +730,7 @@ def _compute_analytics():
             "count": len(slip_values),
             "note": "Current-session order history only",
             "avg_pct": round(sum(slip_values) / len(slip_values), 4) if slip_values else None,
-            "max_adverse_pct": round(
-                max((s for s in slip_values if s > 0), default=0.0), 4
-            ),
+            "max_adverse_pct": round(max((s for s in slip_values if s > 0), default=0.0), 4),
             "pct_adverse_trades": pct_adverse,
             "buckets": slip_buckets,
             "counts": slip_counts,

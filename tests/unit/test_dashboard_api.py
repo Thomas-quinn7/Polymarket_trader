@@ -60,6 +60,12 @@ def _make_bot(running=False, mode="paper"):
     # order executor
     bot.executor.get_order_history.return_value = []
 
+    # pnl tracker — set max_drawdown as a plain float so analytics can round() it
+    bot.pnl_tracker.max_drawdown = 0.0
+
+    # session store — no historical trades by default
+    bot.session_store.get_all_trades.return_value = []
+
     # loop controls
     bot.start_trading_loop.return_value = True
     bot.stop_trading_loop.return_value = True
@@ -262,8 +268,12 @@ class TestPositions:
 
 
 class TestTrades:
-    def test_trades_503_no_bot(self, client_no_bot):
-        assert client_no_bot.get("/api/trades").status_code == 503
+    def test_trades_200_empty_no_bot(self, client_no_bot):
+        # When no bot is registered the endpoint returns an empty list (200),
+        # not 503 — session-store historical trades are merged in when available.
+        resp = client_no_bot.get("/api/trades")
+        assert resp.status_code == 200
+        assert resp.json() == []
 
     def test_trades_empty(self, client_with_bot):
         client, _ = client_with_bot
@@ -293,6 +303,108 @@ class TestTrades:
         data = resp.json()
         assert len(data) == 1
         assert data[0]["action"] == "BUY"
+
+    def test_trades_session_store_deduplication(self, client_with_bot):
+        # A session-store trade whose position_id already appears in executor
+        # history must NOT be added again — it would create a duplicate row.
+        client, bot = client_with_bot
+        executor_order = {
+            "order_id": "p1_BUY",
+            "position_id": "p1",
+            "action": "BUY",
+            "market_id": "mkt-1",
+            "market_slug": "slug-1",
+            "token_id": "tok",
+            "quantity": 100.0,
+            "price": 0.5,
+            "total": 1000.0,
+            "executed_at": datetime(2026, 1, 2, 12, 0, 0),
+            "status": "FILLED",
+        }
+        session_trade = {
+            "trade_id": "p1_session",
+            "position_id": "p1",  # same position_id — must be deduplicated
+            "market_id": "mkt-1",
+            "market_slug": "slug-1",
+            "winning_token_id": "tok",
+            "shares": 100.0,
+            "entry_price": 0.5,
+            "allocated_capital": 1000.0,
+            "entry_fee": 10.0,
+            "exit_fee": 5.0,
+            "exit_time": "2026-01-02T13:00:00",
+            "outcome": "WIN",
+        }
+        bot.executor.get_order_history.return_value = [executor_order]
+        bot.session_store.get_all_trades.return_value = [session_trade]
+        data = client.get("/api/trades").json()
+        # Only the executor order should appear — session trade is a duplicate
+        assert len(data) == 1
+        assert data[0]["action"] == "BUY"
+
+    def test_trades_session_store_fills_history_gap(self, client_with_bot):
+        # A session-store trade for a different position_id (not in executor
+        # memory) must be included — this is the restart-survival use case.
+        client, bot = client_with_bot
+        session_trade = {
+            "trade_id": "p99_session",
+            "position_id": "p99",  # not in executor history
+            "market_id": "mkt-99",
+            "market_slug": "slug-99",
+            "winning_token_id": "tok99",
+            "shares": 50.0,
+            "entry_price": 0.3,
+            "allocated_capital": 500.0,
+            "entry_fee": 5.0,
+            "exit_fee": 0.0,
+            "exit_time": "2026-01-01T10:00:00",
+            "outcome": "LOSS",
+        }
+        bot.executor.get_order_history.return_value = []
+        bot.session_store.get_all_trades.return_value = [session_trade]
+        data = client.get("/api/trades").json()
+        assert len(data) == 1
+        assert data[0]["action"] == "SETTLED"
+        assert data[0]["status"] == "LOSS"
+
+    def test_trades_sorted_newest_first(self, client_with_bot):
+        # Results across executor and session-store sources must be merged and
+        # sorted newest-executed_at first.
+        client, bot = client_with_bot
+        executor_order = {
+            "order_id": "p2_BUY",
+            "position_id": "p2",
+            "action": "BUY",
+            "market_id": "mkt-2",
+            "market_slug": "slug-2",
+            "token_id": "tok2",
+            "quantity": 10.0,
+            "price": 0.9,
+            "total": 900.0,
+            "executed_at": datetime(2026, 6, 1, 12, 0, 0),  # newer
+            "status": "FILLED",
+        }
+        session_trade = {
+            "trade_id": "p1_session",
+            "position_id": "p1",
+            "market_id": "mkt-1",
+            "market_slug": "slug-1",
+            "winning_token_id": "tok1",
+            "shares": 20.0,
+            "entry_price": 0.5,
+            "allocated_capital": 1000.0,
+            "entry_fee": 10.0,
+            "exit_fee": 0.0,
+            "exit_time": "2026-01-01T08:00:00",  # older
+            "outcome": "WIN",
+        }
+        bot.executor.get_order_history.return_value = [executor_order]
+        bot.session_store.get_all_trades.return_value = [session_trade]
+        data = client.get("/api/trades").json()
+        assert len(data) == 2
+        # Newer item (executor BUY, June) must come before older (session, Jan)
+        assert data[0]["action"] == "BUY"
+        assert data[1]["action"] == "SETTLED"
 
 
 # ---------------------------------------------------------------------------
@@ -403,3 +515,146 @@ class TestBotControl:
         bot.running = False
         resp = client.post("/api/bot/stop")
         assert resp.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# /api/analytics
+# ---------------------------------------------------------------------------
+
+
+class TestAnalytics:
+    def test_analytics_200_no_bot(self, client_no_bot):
+        # Analytics endpoint should return 200 even when no bot is registered
+        # (returns empty/insufficient data, not 503).
+        resp = client_no_bot.get("/api/analytics")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["sample_size"] == 0
+        assert data["insufficient_data"] is True
+
+    def test_analytics_200_with_bot_no_trades(self, client_with_bot):
+        client, bot = client_with_bot
+        resp = client.get("/api/analytics")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["sample_size"] == 0
+        assert data["insufficient_data"] is True
+
+    def test_analytics_response_shape(self, client_with_bot):
+        client, _ = client_with_bot
+        data = client.get("/api/analytics").json()
+        for key in (
+            "sample_size",
+            "insufficient_data",
+            "risk",
+            "costs",
+            "edge_realization",
+            "slippage",
+            "hold_times",
+            "distributions",
+        ):
+            assert key in data, f"Missing key: {key}"
+
+    def test_analytics_risk_keys(self, client_with_bot):
+        client, _ = client_with_bot
+        risk = client.get("/api/analytics").json()["risk"]
+        for key in ("var_95", "var_99", "cvar_95", "sharpe", "sortino", "max_drawdown_pct"):
+            assert key in risk
+
+    def test_analytics_max_drawdown_is_numeric(self, client_with_bot):
+        # max_drawdown_pct must serialize as a number (or null), not as a dict/MagicMock
+        client, bot = client_with_bot
+        bot.pnl_tracker.max_drawdown = 3.5
+        data = client.get("/api/analytics").json()
+        val = data["risk"]["max_drawdown_pct"]
+        assert val is None or isinstance(val, (int, float))
+
+    def test_analytics_costs_keys(self, client_with_bot):
+        client, _ = client_with_bot
+        costs = client.get("/api/analytics").json()["costs"]
+        for key in ("total_fees", "entry_fees", "exit_fees", "break_even_price", "taker_fee_pct"):
+            assert key in costs
+
+    def test_analytics_with_trades(self, client_with_bot):
+        client, bot = client_with_bot
+        trade = {
+            "trade_id": "t1",
+            "allocated_capital": 1000.0,
+            "net_pnl": 50.0,
+            "gross_pnl": 70.0,
+            "entry_fee": 10.0,
+            "exit_fee": 10.0,
+            "edge_pct": 5.0,
+            "outcome": "WIN",
+            "hold_seconds": 120.0,
+        }
+        bot.session_store.get_all_trades.return_value = [trade] * 6
+        data = client.get("/api/analytics").json()
+        assert data["sample_size"] == 6
+        assert data["insufficient_data"] is False
+        assert data["costs"]["total_fees"] > 0
+
+    def test_analytics_negative_gross_pnl_no_crash(self, client_with_bot):
+        # When all trades are losses (gross_pnl < 0) the fee_drag formula must
+        # return null rather than a negative / misleading percentage, and the
+        # endpoint must still return 200 (not 500).
+        client, bot = client_with_bot
+        losing_trade = {
+            "allocated_capital": 1000.0,
+            "net_pnl": -50.0,
+            "gross_pnl": -30.0,
+            "entry_fee": 20.0,
+            "exit_fee": 0.0,
+            "edge_pct": 3.0,
+            "outcome": "LOSS",
+            "hold_seconds": 60.0,
+        }
+        bot.session_store.get_all_trades.return_value = [losing_trade] * 6
+        resp = client.get("/api/analytics")
+        assert resp.status_code == 200
+        data = resp.json()
+        # fee_drag is undefined when gross_pnl <= 0 — must be null, not a crash
+        assert data["costs"]["fee_drag_pct"] is None
+        assert data["costs"]["total_net_pnl"] < 0
+
+    def test_analytics_hold_time_distribution(self, client_with_bot):
+        # hold_times buckets must sum to sample_size.
+        client, bot = client_with_bot
+        trades = [
+            {
+                "allocated_capital": 500.0,
+                "net_pnl": 5.0,
+                "gross_pnl": 10.0,
+                "entry_fee": 5.0,
+                "exit_fee": 0.0,
+                "edge_pct": 2.0,
+                "outcome": "WIN",
+                "hold_seconds": secs,
+            }
+            for secs in (30, 120, 600, 2000, 4000, 7200)
+        ]
+        bot.session_store.get_all_trades.return_value = trades
+        data = client.get("/api/analytics").json()
+        ht = data["hold_times"]
+        assert ht["count"] == 6
+        assert sum(ht["counts"]) == 6
+
+    def test_analytics_edge_realization_populated(self, client_with_bot):
+        # When trades have valid edge_pct and allocated_capital, scatter and
+        # averages must be populated (not null).
+        client, bot = client_with_bot
+        trade = {
+            "allocated_capital": 1000.0,
+            "net_pnl": 30.0,
+            "gross_pnl": 50.0,
+            "entry_fee": 10.0,
+            "exit_fee": 10.0,
+            "edge_pct": 5.0,
+            "outcome": "WIN",
+            "hold_seconds": 90.0,
+        }
+        bot.session_store.get_all_trades.return_value = [trade] * 6
+        er = client.get("/api/analytics").json()["edge_realization"]
+        assert er["avg_expected_edge"] is not None
+        assert er["avg_realized_edge"] is not None
+        assert len(er["scatter"]) == 6
