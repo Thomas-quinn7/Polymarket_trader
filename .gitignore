@@ -280,5 +280,4 @@ strategies/*.py
 strategies/crypto_5min_mm/
 strategies/paper_demo/
 strategies/demo_buy/
-strategies/example_strategy/
 strategies/enhanced_market_scanner/

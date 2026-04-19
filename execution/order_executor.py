@@ -14,7 +14,7 @@ from utils.alerts import alert_manager
 from utils.slippage import estimate_slippage, liquidity_available_usd
 from utils.pnl_tracker import PnLTracker
 from portfolio.position_tracker import PositionTracker
-from portfolio.fake_currency_tracker import FakeCurrencyTracker
+from portfolio.paper_portfolio import PaperPortfolio
 from config.polymarket_config import config
 
 
@@ -67,7 +67,7 @@ class OrderExecutor:
         self,
         pnl_tracker: PnLTracker,
         position_tracker: PositionTracker,
-        currency_tracker: FakeCurrencyTracker,
+        currency_tracker: PaperPortfolio,
         polymarket_client=None,
     ):
         self.pnl_tracker = pnl_tracker

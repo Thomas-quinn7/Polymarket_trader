@@ -1,0 +1,116 @@
+# =============================================================================
+# Example Strategy — Configuration Reference
+# =============================================================================
+#
+# This file is the single source of truth for every tunable parameter in the
+# strategy.  The strategy reads it on start-up via load_strategy_config().
+#
+# HOW OVERRIDES WORK
+# ------------------
+# Priority (highest wins):
+#   1. Environment variable  — set in .env or shell  e.g. EXECUTE_BEFORE_CLOSE_SECONDS=1800
+#   2. This YAML file        — edit here for permanent changes
+#   3. _DEFAULTS in strategy.py — hard-coded fallback, never needs editing
+#
+# Only scalar keys (float / int / str / bool) that are listed in
+# strategies/config_loader.py's _TYPE_MAP can be overridden via env var.
+# List and nested keys (scan_categories, categories block) are YAML-only —
+# edit this file directly.
+#
+# =============================================================================
+
+# generated: pmf-7e3f-tq343
+strategy: example_strategy
+
+# -----------------------------------------------------------------------------
+# Market scope
+# -----------------------------------------------------------------------------
+# Which Polymarket categories this strategy will scan.
+# The main loop calls get_scan_categories() and fetches markets in this order.
+# Removing a category from the list excludes all its markets entirely.
+#
+# Valid values: crypto | fed | regulatory | other
+scan_categories:
+  - crypto
+  - fed
+  - regulatory
+  - other
+
+# -----------------------------------------------------------------------------
+# Price window
+# -----------------------------------------------------------------------------
+# Only markets whose YES token price falls within [min_price, max_price] are
+# considered as potential opportunities.
+#
+# Defaults are fully open (0.0–1.0).  Narrow the window to match the price
+# range where your signal generates positive edge.  Leave as 0.0/1.0 to
+# disable price filtering entirely.
+min_price: 0.0
+max_price: 1.0
+
+# -----------------------------------------------------------------------------
+# Timing gate
+# -----------------------------------------------------------------------------
+# Only enter when the market closes within this many seconds.
+# Set to a large number (e.g. 86400 = 24 h, or 0 to disable) if your strategy
+# does not depend on time-to-close.
+#
+# Env-var override: EXECUTE_BEFORE_CLOSE_SECONDS
+execute_before_close_seconds: 86400
+
+# How long (seconds) to hold the position before forcing an exit at the live
+# price.  0 = hold until market close (position expires at market end_time).
+# Set a positive value if your strategy targets a specific holding period.
+#
+# Env-var override: HOLD_SECONDS
+hold_seconds: 0
+
+# -----------------------------------------------------------------------------
+# Edge filter mode
+# -----------------------------------------------------------------------------
+# Controls how the net edge threshold is applied at entry.
+#
+#   net_edge          — entry allowed when net_edge > 0
+#   slippage_adjusted — entry allowed when net_edge > expected_slippage_buffer_pct
+#                       use this in live mode or on thin markets where fill
+#                       slippage could erase a small positive edge
+#
+# Env-var override: EDGE_FILTER_MODE
+edge_filter_mode: net_edge
+
+# Minimum net edge (%) required above the fee before entry (slippage_adjusted only).
+# Set to ~1.5x your observed average slippage from paper-mode runs.
+#
+# Env-var override: EXPECTED_SLIPPAGE_BUFFER_PCT
+expected_slippage_buffer_pct: 1.0
+
+# -----------------------------------------------------------------------------
+# Confidence gate
+# -----------------------------------------------------------------------------
+# Minimum confidence score (0.0–1.0) an opportunity must reach.
+# 0.0 = disabled (admit every opportunity that passes the edge filter).
+# Raise toward 0.5–0.8 once _calculate_confidence() is implemented for your
+# strategy and you have observed the score distribution in paper mode.
+#
+# Env-var override: STRATEGY_MIN_CONFIDENCE
+strategy_min_confidence: 0.0
+
+# -----------------------------------------------------------------------------
+# Position sizing
+# -----------------------------------------------------------------------------
+# Maximum number of simultaneous open positions for THIS strategy.
+# Independent of the global MAX_POSITIONS cap.
+# Set to null to rely solely on the global cap.
+#
+# Env-var override: STRATEGY_MAX_POSITIONS
+strategy_max_positions: 5
+
+# -----------------------------------------------------------------------------
+# Custom parameters (add your own below)
+# -----------------------------------------------------------------------------
+# Any key you add here will be available in self._cfg inside strategy.py.
+# Add the key to _TYPE_MAP in config_loader.py if you want env-var overrides.
+#
+# Example:
+#   my_custom_threshold: 0.75
+#   max_age_seconds: 3600
