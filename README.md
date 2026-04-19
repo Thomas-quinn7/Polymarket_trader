@@ -44,7 +44,7 @@ Built around the Polymarket CLOB (Central Limit Order Book) with support for bot
 - **Session recording** — every settled trade persisted to SQLite and JSON: price, hold time, edge %, fees, gross/net P&L, outcome, equity curve
 - **Ollama strategy review** — on shutdown a local LLM generates a natural-language session review; runs entirely on-device, no cloud API
 - **Hot-reload config** — most `.env` settings apply without restart via `/api/reload`
-- **790 unit tests** — execution, portfolio, data models, slippage estimation, config reload, backtest engine, metrics
+- **776 unit tests** — execution, portfolio, data models, slippage estimation, config reload, backtest engine, metrics
 
 ---
 
@@ -144,40 +144,343 @@ Then open `http://localhost:8080` in your browser to access the dashboard.
 
 ---
 
-## Configuration
+## API Authentication
 
-All settings live in `.env`. The most important ones:
+The framework supports three authentication modes for submitting orders. They are applied in priority order: **Relayer → Builder → Standard**.
+
+### Relayer API (recommended — unlimited)
+
+Relayer keys provide unlimited relay transactions with no tier approval required. Generate one at [polymarket.com/settings?tab=api-keys](https://polymarket.com/settings?tab=api-keys).
 
 ```env
-# Auth
-POLYMARKET_PRIVATE_KEY=your_key
-POLYMARKET_FUNDER_ADDRESS=your_address
-
-# Mode
-TRADING_MODE=paper          # paper | simulation | live
-PAPER_TRADING_ONLY=True
-FAKE_CURRENCY_BALANCE=10000.00
-
-# Strategy
-STRATEGY=example_strategy   # folder name under strategies/
-
-# Sizing
-MAX_POSITIONS=10
-MAX_POSITIONS_PER_CATEGORY=4
-CAPITAL_SPLIT_PERCENT=0.10
-KELLY_FRACTION=0.25
-
-# Scanning
-SCAN_INTERVAL_MS=5000
+RELAYER_ENABLED=True
+RELAYER_API_KEY=your_relayer_api_key
+RELAYER_API_KEY_ADDRESS=your_wallet_address
 ```
 
-### API Rate Limits
+When `RELAYER_ENABLED=True`, all signed orders are submitted to the Polymarket Relayer endpoint. Builder settings are ignored.
 
-| Auth Mode | Relay Transactions/Day | Minimum Safe Scan Interval |
-|-----------|------------------------|---------------------------|
-| Standard / Unverified Builder | 100 | ~57 min |
-| Builder Verified | 3,000 | ~2 min |
-| Builder Partner / Relayer | Unlimited | 5 s |
+### Builder API (tiered rate limits)
+
+Builder keys provide order attribution and higher rate limits. Apply for verification at [builder@polymarket.com](mailto:builder@polymarket.com).
+
+```env
+BUILDER_ENABLED=True
+BUILDER_TIER=unverified        # unverified | verified | partner
+BUILDER_API_KEY=your_api_key
+BUILDER_SECRET=your_secret
+BUILDER_PASSPHRASE=your_passphrase
+```
+
+### Rate limits
+
+| Mode | Relay Transactions / Day | Recommended `SCAN_INTERVAL_MS` |
+|------|--------------------------|-------------------------------|
+| Standard / Unverified Builder | 100 | 3,456,000 ms (~57 min) |
+| Builder Verified | 3,000 | 115,200 ms (~2 min) |
+| Builder Partner / Relayer | Unlimited | 5,000 ms (5 s) |
+
+Each full scan cycle makes approximately 4 API calls (one per market category). Adjust `SCAN_INTERVAL_MS` in `.env` based on your tier.
+
+---
+
+## Alerts
+
+The bot sends notifications on trade execution, position settlement, and system errors. Both channels are optional and independent.
+
+### Discord
+
+**1. Create a webhook in Discord:**
+- Open your server → channel settings → **Integrations** → **Webhooks** → **New Webhook**
+- Copy the webhook URL
+
+**2. Add to `.env`:**
+
+```env
+ENABLE_DISCORD_ALERTS=True
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN
+DISCORD_MENTION_USER=<@YOUR_DISCORD_USER_ID>   # optional — tags you in alerts
+```
+
+> To find your Discord user ID: enable Developer Mode in Discord settings, then right-click your username and select **Copy User ID**.
+
+**3. Test it:**
+
+```bash
+python tests/scripts/test_discord.py
+```
+
+### Email (SMTP)
+
+**1. For Gmail — create an App Password:**
+- Go to [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
+- Select **Mail** and your device, then generate the password
+- Use the generated password in `.env`, not your account password
+
+**2. Add to `.env`:**
+
+```env
+ENABLE_EMAIL_ALERTS=True
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your_email@gmail.com
+SMTP_PASSWORD=xxxx xxxx xxxx xxxx   # App Password (spaces are fine)
+ALERT_EMAIL_FROM=your_email@gmail.com
+ALERT_EMAIL_TO=your_email@gmail.com
+```
+
+For other providers replace `SMTP_SERVER` and `SMTP_PORT` accordingly (e.g. Outlook uses `smtp.office365.com:587`).
+
+**3. Test it:**
+
+```bash
+python tests/scripts/test_email.py
+```
+
+---
+
+## Database
+
+### SQLite (default — no setup required)
+
+SQLite is used by default and requires no external process. The database file is created automatically at `./storage/trading.db` on first run.
+
+```env
+DB_ENABLED=True
+DB_PATH=./storage/trading.db
+```
+
+The database stores positions, trades, and P&L history. It survives restarts — open positions are restored automatically on startup. The `storage/` directory is gitignored; back it up separately if you need to preserve trade history across machines.
+
+### ScyllaDB (optional — order book snapshots)
+
+ScyllaDB is used to store order book snapshots for market microstructure analysis. It is disabled by default and requires Docker.
+
+```env
+SCYLLA_ENABLED=True
+SCYLLA_HOST=127.0.0.1
+SCYLLA_PORT=9042
+SCYLLA_KEYSPACE=polymarket
+```
+
+Start ScyllaDB with Docker:
+
+```bash
+docker run -d --name polymarket-scylla \
+  -p 9042:9042 \
+  scylladb/scylla:5.4 \
+  --smp 1 --memory 750M --overprovisioned 1 --developer-mode 1
+```
+
+Or use Docker Compose (see below) which starts ScyllaDB alongside the bot automatically.
+
+---
+
+## Docker Compose (full stack)
+
+Docker Compose starts three services together: the trading bot, ScyllaDB (order book storage), and Ollama (local LLM for post-session strategy reviews).
+
+### Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/macOS) or Docker Engine (Linux)
+
+### Start the full stack
+
+```bash
+docker compose up -d
+```
+
+On first run this builds the bot image and pulls the ScyllaDB and Ollama images (~2 GB for Ollama). Subsequent starts are fast.
+
+```bash
+# Follow live logs
+docker compose logs -f trading-bot
+
+# Stop everything (data volumes are preserved)
+docker compose down
+
+# Stop and remove all data volumes (full reset)
+docker compose down -v
+```
+
+### Services
+
+| Service | Container | Port | Purpose |
+|---------|-----------|------|---------|
+| `trading-bot` | `polymarket-trading-bot` | `8080` | Bot + FastAPI dashboard |
+| `scylla` | `polymarket-scylla` | `9042` | Order book snapshot storage |
+| `ollama` | `polymarket-ollama` | `11434` | Local LLM for session reviews |
+
+### Data persistence
+
+Two host directories are mounted into the bot container:
+
+| Host path | Container path | Contents |
+|-----------|---------------|----------|
+| `./logs` | `/app/logs` | Log files, session JSON exports, trade history |
+| `./storage` | `/app/storage` | SQLite database (`trading.db`) |
+
+Both directories are gitignored. Back them up manually if needed.
+
+ScyllaDB and Ollama data are stored in Docker named volumes (`scylla_data`, `ollama_data`) and persist across container restarts automatically.
+
+### GPU acceleration for Ollama (optional)
+
+If you have an NVIDIA GPU and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) installed, uncomment the `deploy` block in `docker-compose.yml`:
+
+```yaml
+# ollama service — uncomment to enable GPU
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: all
+          capabilities: [gpu]
+```
+
+---
+
+## Ollama Strategy Review
+
+After each session, the bot can generate a natural-language review of the strategy's performance using a local LLM. No data leaves your machine.
+
+### Setup
+
+**Without Docker** — install Ollama directly:
+
+```bash
+# macOS / Linux
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Windows
+# Download the installer from https://ollama.com/download
+```
+
+Pull the model (one-time, ~2 GB):
+
+```bash
+ollama pull llama3.2:3b
+```
+
+Enable in `.env`:
+
+```env
+OLLAMA_ENABLED=True
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=llama3.2:3b
+```
+
+**With Docker Compose** — Ollama starts automatically and pulls the model on first use. No extra steps needed.
+
+### What the review covers
+
+When the bot shuts down it sends the session summary (win rate, P&L, average hold time, market list) to Ollama and saves the generated review to both SQLite and the session JSON export. Reviews are accessible via:
+
+```
+GET /api/sessions/{session_id}        → full session including review text
+POST /api/sessions/{session_id}/review → re-generate the review for a past session
+```
+
+---
+
+## Dashboard
+
+The FastAPI dashboard runs at `http://localhost:8080` and provides real-time monitoring.
+
+### Authentication (optional)
+
+By default the dashboard is open on localhost. To secure it when exposed on a network:
+
+```env
+DASHBOARD_API_KEY=your_secret_key_here
+```
+
+When set, all endpoints except `/api/health` require the header:
+
+```
+X-API-Key: your_secret_key_here
+```
+
+### Remote access
+
+The default host is `127.0.0.1` (localhost only). To allow remote access:
+
+```env
+DASHBOARD_HOST=0.0.0.0
+DASHBOARD_PORT=8080
+```
+
+> Only expose the dashboard publicly if it is behind a reverse proxy (nginx/Caddy) with HTTPS and authentication. Set `DASHBOARD_API_KEY` at minimum.
+
+### Key endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/status` | Bot status, balance, open positions |
+| `GET` | `/api/positions` | All open positions |
+| `GET` | `/api/trades` | Trade history |
+| `GET` | `/api/sessions` | All recorded sessions |
+| `GET` | `/api/sessions/{id}` | Full session detail + Ollama review |
+| `POST` | `/api/start` | Start the trading loop |
+| `POST` | `/api/stop` | Stop the trading loop |
+| `POST` | `/api/reload` | Hot-reload config from `.env` |
+| `GET` | `/api/health` | Health check (no auth required) |
+
+---
+
+## Configuration Reference
+
+All settings live in `.env`. Copy `.env.example` as a starting point.
+
+```env
+# ── Polymarket credentials ─────────────────────────────────────────────
+POLYMARKET_PRIVATE_KEY=
+POLYMARKET_FUNDER_ADDRESS=
+
+# ── Trading mode ───────────────────────────────────────────────────────
+TRADING_MODE=paper              # paper | simulation | live
+PAPER_TRADING_ONLY=True         # hard block on real orders
+FAKE_CURRENCY_BALANCE=10000.00  # starting balance in paper mode
+
+# ── Strategy ───────────────────────────────────────────────────────────
+STRATEGY=example_strategy
+
+# ── Position sizing ────────────────────────────────────────────────────
+MAX_POSITIONS=10
+MAX_POSITIONS_PER_CATEGORY=4
+CAPITAL_SPLIT_PERCENT=0.10      # fraction of balance per trade
+KELLY_FRACTION=0.25             # Kelly multiplier (0.25 = quarter Kelly)
+STOP_LOSS_PERCENT=0             # 0 = disabled
+
+# ── Scanning ───────────────────────────────────────────────────────────
+SCAN_INTERVAL_MS=5000
+SCAN_CATEGORIES=crypto,fed,regulatory,other
+
+# ── Execution ──────────────────────────────────────────────────────────
+SLIPPAGE_TOLERANCE_PERCENT=5.0
+TAKER_FEE_PERCENT=2.0
+
+# ── Database ───────────────────────────────────────────────────────────
+DB_ENABLED=True
+DB_PATH=./storage/trading.db
+
+# ── Dashboard ──────────────────────────────────────────────────────────
+DASHBOARD_ENABLED=True
+DASHBOARD_PORT=8080
+DASHBOARD_HOST=127.0.0.1
+DASHBOARD_API_KEY=              # leave empty to disable auth
+
+# ── Alerts ─────────────────────────────────────────────────────────────
+ENABLE_DISCORD_ALERTS=False
+DISCORD_WEBHOOK_URL=
+ENABLE_EMAIL_ALERTS=False
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=
+SMTP_PASSWORD=
+ALERT_EMAIL_TO=
+```
 
 ---
 
@@ -187,17 +490,18 @@ SCAN_INTERVAL_MS=5000
 # Start the bot (waits for WebUI start command)
 python main.py
 
-# Auto-start immediately
+# Auto-start the trading loop immediately
 python main.py --auto-start
 
-# Force paper mode
+# Force paper mode regardless of .env
 python main.py --paper --strategy example_strategy
 
-# Live mode (confirmation prompt required)
+# Live mode (interactive confirmation prompt required)
 python main.py --live
-```
 
-Open the dashboard at `http://localhost:8080` to monitor positions, P&L, and trade history.
+# Headless run — no dashboard, auto-start
+python main.py --auto-start --no-dashboard
+```
 
 ---
 
@@ -285,7 +589,7 @@ Polymarket_Trading/
 │   └── runner.py                     # High-level run() entry point
 ├── execution/
 │   └── order_executor.py             # Slippage gate, Kelly sizing, order lifecycle
-├── portfolio/
+���── portfolio/
 │   ├── position_tracker.py           # Open position management
 │   ├── paper_portfolio.py            # Simulated capital allocation/return
 │   └── fake_currency_tracker.py      # Backward-compatibility alias
@@ -297,7 +601,7 @@ Polymarket_Trading/
 ├── dashboard/
 │   └── api.py                        # FastAPI dashboard (positions, P&L, sessions)
 ├── tests/
-│   └── unit/                         # 790 pytest unit tests
+│   └── unit/                         # 776 pytest unit tests
 ├── main.py                           # Bot entry point and trading loop
 └── docker-compose.yml                # ScyllaDB + Ollama containers
 ```
@@ -320,7 +624,7 @@ Paper mode is enabled by default (`PAPER_TRADING_ONLY=True`). It uses real Polym
 python -m pytest tests/unit/
 ```
 
-790 tests covering order execution, portfolio management, P&L calculation, slippage estimation, data models, config reload, backtesting engine, and metrics.
+776 tests covering order execution, portfolio management, P&L calculation, slippage estimation, data models, config reload, backtesting engine, and metrics.
 
 ---
 
