@@ -1,9 +1,9 @@
 """
 Unit tests for strategy infrastructure:
-  - strategies/base.py                          (BaseStrategy ABC, default hooks)
-  - strategies/registry.py                      (auto-discovery, load_strategy)
-  - strategies/config_loader.py                 (YAML loading, env-var overrides)
-  - strategies/demo_buy/strategy.py
+  - strategies/base.py          (BaseStrategy ABC, default hooks)
+  - strategies/registry.py      (auto-discovery, load_strategy)
+  - strategies/config_loader.py (YAML loading, env-var overrides)
+  - strategies/example_strategy (template strategy)
 """
 
 import os
@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 from strategies.base import BaseStrategy, TradingStrategy
 from strategies.registry import load_strategy, available_strategies
 from strategies.config_loader import load_strategy_config
-from strategies.demo_buy import DemoBuy
+from strategies.example_strategy import ExampleStrategy
 from data.market_schema import PolymarketMarket
 
 # ---------------------------------------------------------------------------
@@ -38,29 +38,6 @@ def _make_position(entry_price=0.985, expires_at=None):
         shares=100.0,
         expires_at=expires_at,
     )
-
-
-def _make_raw_market(
-    slug="test-market",
-    yes_price=0.60,
-    volume=10_000.0,
-    seconds_to_close=3600,
-    category="crypto",
-):
-    """Build a raw market dict matching the shape PolymarketMarket.from_api() expects."""
-    now = datetime.now(timezone.utc)
-    end_date = (now + timedelta(seconds=seconds_to_close)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    no_price = round(1.0 - yes_price, 4)
-    return {
-        "id": f"id-{slug}",
-        "slug": slug,
-        "question": f"Will {slug} happen?",
-        "clobTokenIds": [f"{slug}_yes", f"{slug}_no"],
-        "outcomePrices": [str(yes_price), str(no_price)],
-        "tags": [{"label": category}],
-        "volume": volume,
-        "endDate": end_date,
-    }
 
 
 def _make_market(
@@ -212,13 +189,11 @@ class TestStrategyConfigLoader:
 
 
 class TestStrategyRegistry:
-    def test_available_strategies_lists_known(self):
-        strategies = available_strategies()
-        assert "demo_buy" in strategies
-        assert "example_strategy" in strategies
+    def test_available_strategies_includes_example(self):
+        assert "example_strategy" in available_strategies()
 
-    def test_load_demo_buy(self):
-        assert isinstance(load_strategy("demo_buy", _make_client()), DemoBuy)
+    def test_load_example_strategy(self):
+        assert isinstance(load_strategy("example_strategy", _make_client()), ExampleStrategy)
 
     def test_load_unknown_raises_value_error(self):
         with pytest.raises(ValueError, match="Unknown strategy"):
@@ -226,9 +201,8 @@ class TestStrategyRegistry:
 
     def test_error_message_lists_available(self):
         with pytest.raises(ValueError) as exc_info:
-            load_strategy("bad", _make_client())
-        msg = str(exc_info.value)
-        assert "demo_buy" in msg
+            load_strategy("bad_strategy", _make_client())
+        assert "example_strategy" in str(exc_info.value)
 
     def test_non_strategy_folders_not_registered(self):
         """examples/ and configs/ must not appear in the registry."""
@@ -236,96 +210,94 @@ class TestStrategyRegistry:
         assert "examples" not in strategies
         assert "configs" not in strategies
 
-    def test_auto_discovery_finds_all_strategy_folders(self):
-        """Every subfolder with an __init__.py and a BaseStrategy class is registered."""
-        import os
+    def test_public_strategies_are_registered(self):
+        """All committed (public) strategy folders must appear in the registry."""
+        # Only check strategies that are tracked by git — private/local-only
+        # folders (gitignored) are intentionally absent from the registry on CI.
+        import subprocess
 
-        strategies_dir = os.path.join(os.path.dirname(__file__), "..", "..", "strategies")
+        result = subprocess.run(
+            ["git", "ls-files", "strategies/"],
+            capture_output=True,
+            text=True,
+        )
+        tracked = {
+            p.split("/")[1]
+            for p in result.stdout.splitlines()
+            if p.startswith("strategies/") and "/" in p[len("strategies/") :]
+        }
+        # Remove non-strategy entries (base files, not subfolders with strategies)
         skip = {"__pycache__", "examples", "configs"}
-        found_folders = [
-            e.name
-            for e in os.scandir(strategies_dir)
-            if e.is_dir()
-            and e.name not in skip
-            and not e.name.startswith("_")
-            and os.path.exists(os.path.join(e.path, "__init__.py"))
-        ]
         registered = available_strategies()
-        # Folders that intentionally don't export a BaseStrategy subclass.
-        non_strategy_folders = {"enhanced_market_scanner"}
-        for folder in found_folders:
-            if folder not in non_strategy_folders:
-                assert folder in registered, (
-                    f"Strategy folder '{folder}' has an __init__.py but is not in the registry. "
-                    f"Either add a BaseStrategy subclass or add it to non_strategy_folders."
-                )
+        for folder in tracked - skip:
+            if folder and not folder.startswith("_"):
+                assert (
+                    folder in registered
+                ), f"Tracked strategy folder '{folder}' is not in the registry."
 
 
 # ---------------------------------------------------------------------------
-# DemoBuy strategy
+# ExampleStrategy — template strategy
 # ---------------------------------------------------------------------------
 
 
-class TestDemoBuy:
-    def test_get_scan_categories(self):
-        s = DemoBuy(_make_client())
-        assert s.get_scan_categories() == ["crypto"]
+class TestExampleStrategy:
+    def test_initialises_without_error(self):
+        ExampleStrategy(_make_client())
 
     def test_scan_empty_markets_returns_empty(self):
-        assert DemoBuy(_make_client()).scan_for_opportunities([]) == []
+        assert ExampleStrategy(_make_client()).scan_for_opportunities([]) == []
 
-    def test_scan_returns_opportunity_per_market(self):
+    def test_scan_returns_no_opportunities_with_zero_gross_edge(self):
+        # The template has gross_edge = 0.0 (stub). With a 2% taker fee,
+        # net_edge = -2.0, which fails the edge filter — no entries fired.
         markets = [_make_market(f"mkt-{i}") for i in range(3)]
-        assert len(DemoBuy(_make_client()).scan_for_opportunities(markets)) == 3
-
-    def test_opportunity_side_is_yes(self):
-        opps = DemoBuy(_make_client()).scan_for_opportunities([_make_market()])
-        assert opps[0].side == "YES"
-
-    def test_opportunity_uses_resolved_price(self):
-        opps = DemoBuy(_make_client()).scan_for_opportunities([_make_market(resolved_price=0.65)])
-        assert opps[0].current_price == pytest.approx(0.65, abs=0.001)
-
-    def test_zero_resolved_price_falls_back_to_0_5(self):
-        opps = DemoBuy(_make_client()).scan_for_opportunities([_make_market(resolved_price=0.0)])
-        assert opps[0].current_price == 0.50
+        opps = ExampleStrategy(_make_client()).scan_for_opportunities(markets)
+        assert opps == []
 
     def test_get_best_opportunities_limits(self):
-        opps = [MagicMock() for _ in range(10)]
-        assert len(DemoBuy(_make_client()).get_best_opportunities(opps, limit=3)) == 3
+        from data.polymarket_models import TradeOpportunity, TradeStatus
+
+        opps = [
+            TradeOpportunity(
+                market_id=f"mkt-{i}",
+                market_slug=f"slug-{i}",
+                question="Q?",
+                category="crypto",
+                token_id_yes="yes",
+                token_id_no="no",
+                winning_token_id="yes",
+                current_price=0.60,
+                edge_percent=float(i),
+                confidence=0.8,
+                detected_at=datetime.now(timezone.utc),
+                status=TradeStatus.DETECTED,
+            )
+            for i in range(10)
+        ]
+        result = ExampleStrategy(_make_client()).get_best_opportunities(opps, limit=3)
+        assert len(result) == 3
 
     def test_should_exit_false_before_expiry(self):
-        s = DemoBuy(_make_client())
+        s = ExampleStrategy(_make_client())
         pos = _make_position(expires_at=datetime.now(timezone.utc) + timedelta(hours=1))
         assert s.should_exit(pos, 0.99) is False
 
     def test_should_exit_true_after_expiry(self):
-        s = DemoBuy(_make_client())
+        s = ExampleStrategy(_make_client())
         pos = _make_position(expires_at=datetime.now(timezone.utc) - timedelta(seconds=1))
         assert s.should_exit(pos, 0.99) is True
 
     def test_should_exit_false_when_no_expiry(self):
-        assert DemoBuy(_make_client()).should_exit(_make_position(expires_at=None), 0.99) is False
+        s = ExampleStrategy(_make_client())
+        assert s.should_exit(_make_position(expires_at=None), 0.99) is False
 
     def test_get_exit_price_returns_current(self):
-        assert DemoBuy(_make_client()).get_exit_price(_make_position(), 0.97) == pytest.approx(0.97)
+        s = ExampleStrategy(_make_client())
+        assert s.get_exit_price(_make_position(), 0.97) == pytest.approx(0.97)
 
-    def test_scan_produces_valid_opportunity_fields(self):
-        market = _make_market(slug="sol-100k", resolved_price=0.72)
-        opps = DemoBuy(_make_client()).scan_for_opportunities([market])
-        assert len(opps) == 1
-        opp = opps[0]
-        assert opp.market_slug == "sol-100k"
-        assert opp.current_price == pytest.approx(0.72)
-
-    def test_hold_seconds_loaded_from_yaml(self):
-        s = DemoBuy(_make_client())
-        assert s._hold_seconds == 60
-
-    def test_yaml_override_hold_seconds(self):
-        with patch(
-            "strategies.demo_buy.strategy.load_strategy_config",
-            return_value={"hold_seconds": 120, "scan_categories": ["crypto"]},
-        ):
-            s = DemoBuy(_make_client())
-        assert s._hold_seconds == 120
+    def test_get_scan_categories_from_config(self):
+        s = ExampleStrategy(_make_client())
+        cats = s.get_scan_categories()
+        assert isinstance(cats, list)
+        assert len(cats) > 0
