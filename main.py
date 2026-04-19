@@ -57,7 +57,7 @@ class TradingBot:
         logger.info("Initializing Polymarket Trading Bot")
         logger.info("=" * 70)
 
-        self.start_time = datetime.now()
+        self.start_time = datetime.now(timezone.utc)
 
         self.client: PolymarketClient = PolymarketClient()
         self.strategy: BaseStrategy = load_strategy(config.STRATEGY, self.client)
@@ -102,14 +102,14 @@ class TradingBot:
         # Session store — records settled trades per strategy run for later review
         self.session_store: Optional[SessionStore] = None
         self._session_id: Optional[str] = None
-        _session_db_path = config.DB_PATH  # share the same SQLite file
-        self.session_store = SessionStore(
-            db_path=_session_db_path,
-            sessions_dir=config.SESSIONS_DIR,
-        )
-        if not self.session_store.connect():
-            logger.warning("SessionStore unavailable — session data will not be persisted")
-            self.session_store = None
+        if config.DB_ENABLED:
+            self.session_store = SessionStore(
+                db_path=config.DB_PATH,
+                sessions_dir=config.SESSIONS_DIR,
+            )
+            if not self.session_store.connect():
+                logger.warning("SessionStore unavailable — session data will not be persisted")
+                self.session_store = None
 
         # Ollama reviewer — generates natural language review at end of each session
         self.session_reviewer: Optional[SessionReviewer] = None
@@ -218,6 +218,10 @@ class TradingBot:
                     allocated_capital=row["allocated_capital"],
                     expected_profit=row["expected_profit"],
                     edge_percent=row["edge_percent"],
+                    neg_risk=bool(row.get("neg_risk", False)),
+                    category=row.get("category") or "",
+                    slippage_pct=float(row.get("slippage_pct") or 0.0),
+                    entry_fee=float(row.get("entry_fee") or 0.0),
                     status="OPEN",
                     opened_at=opened_at,
                 )
@@ -310,8 +314,6 @@ class TradingBot:
                 _DASHBOARD_STARTUP_WAIT_S = 2
                 time.sleep(_DASHBOARD_STARTUP_WAIT_S)
 
-        alert_manager.send_system_start_alert()
-
         try:
             while True:
                 time.sleep(1)
@@ -361,6 +363,7 @@ class TradingBot:
         self.strategy = load_strategy(config.STRATEGY, self.client)
         self.executor.polymarket_client = self.client
         self.market_provider = MarketProvider(self.client)
+        self.position_tracker._strategy_name = config.STRATEGY
 
         # Open a new session record for this run
         if self.session_store is not None:
@@ -380,6 +383,7 @@ class TradingBot:
             else "PAPER (real prices, simulated execution)"
         )
         logger.info(f"Trading loop started — {mode_label}")
+        alert_manager.send_system_start_alert()
         return True
 
     def stop_trading_loop(self) -> bool:
@@ -461,16 +465,24 @@ class TradingBot:
                     price_cache[pos.winning_token_id] = self.client.get_price(pos.winning_token_id)
                 current_price = price_cache[pos.winning_token_id]
 
+                if current_price is None:
+                    logger.warning(
+                        f"get_price returned None for {pos.winning_token_id} "
+                        f"(position {pos.position_id}) — skipping exit check this tick"
+                    )
+                    continue
+
                 if not self.strategy.should_exit(pos, current_price):
                     continue
 
                 exit_price = self.strategy.get_exit_price(pos, current_price)
                 logger.info(f"Strategy exit signal: {pos.position_id} @ ${exit_price:.4f}")
 
-                if exit_price <= 0.0:
-                    # Market resolved NO: token is worthless.  Polymarket token
-                    # redemption at $0 is free — never submit a SELL order on a
-                    # worthless token (no buyers, and would pay a taker fee).
+                if exit_price < 0.01:
+                    # Token is effectively worthless (price below $0.01).
+                    # Polymarket token redemption at $0 is free — never submit
+                    # a SELL order on a near-zero token (no buyers, taker fee
+                    # would exceed any recoverable value).
                     self.executor.settle_position(pos.position_id, settlement_price=0.0)
                 elif not config.PAPER_TRADING_ONLY:
                     # Live mode: submit a real SELL to the exchange first.
@@ -486,7 +498,7 @@ class TradingBot:
                     self.db.upsert_position(settled)
                     for trade in self.pnl_tracker.trades:
                         if trade.position_id == pos.position_id and trade.exit_time:
-                            self.db.upsert_trade(trade)
+                            self.db.upsert_trade(trade, strategy_name=config.STRATEGY)
                             break
                 if (
                     self.session_store is not None
@@ -580,6 +592,12 @@ class TradingBot:
             # Build set from the already-fetched snapshot — no extra lock acquisition.
             open_market_ids = {p.market_id for p in open_positions}
 
+            # Per-category count for concentration limit (updated as positions open).
+            category_counts: dict = {}
+            for p in open_positions:
+                cat = p.category or "other"
+                category_counts[cat] = category_counts.get(cat, 0) + 1
+
             for opp in best:
                 if opp.market_id in open_market_ids:
                     logger.debug(f"Already have open position for: {opp.market_id}")
@@ -589,11 +607,24 @@ class TradingBot:
                     logger.info("Max positions reached — skipping remaining opportunities")
                     break
 
+                # Category concentration gate.
+                if config.MAX_POSITIONS_PER_CATEGORY > 0:
+                    opp_cat = getattr(opp, "category", None) or "other"
+                    if category_counts.get(opp_cat, 0) >= config.MAX_POSITIONS_PER_CATEGORY:
+                        logger.info(
+                            f"Category concentration limit reached for '{opp_cat}' "
+                            f"({category_counts[opp_cat]}/{config.MAX_POSITIONS_PER_CATEGORY}) "
+                            f"— skipping {opp.market_slug}"
+                        )
+                        continue
+
                 position_id = f"{opp.market_id}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
                 success = self.executor.execute_buy(opp, position_id)
 
                 if success:
                     open_market_ids.add(opp.market_id)
+                    opp_cat = getattr(opp, "category", None) or "other"
+                    category_counts[opp_cat] = category_counts.get(opp_cat, 0) + 1
                     logger.info(f"Position opened: {position_id}")
                     if self.db:
                         pos = self.position_tracker.get_position(position_id)
@@ -601,7 +632,7 @@ class TradingBot:
                             self.db.upsert_position(pos)
                         trade = self.pnl_tracker.open_positions.get(position_id)
                         if trade:
-                            self.db.upsert_trade(trade)
+                            self.db.upsert_trade(trade, strategy_name=config.STRATEGY)
 
                     alert_manager.send_opportunity_detected_alert(
                         market_id=opp.market_slug,
@@ -828,7 +859,7 @@ def main():
     parser.add_argument(
         "--strategy",
         metavar="NAME",
-        help="Strategy to load (e.g. settlement_arbitrage). Overrides STRATEGY in .env",
+        help="Strategy to load by folder name. Overrides STRATEGY in .env",
     )
     parser.add_argument(
         "--scan-interval",

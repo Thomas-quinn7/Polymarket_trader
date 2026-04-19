@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Polymarket Bot — Backtesting</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1.5rem; margin-bottom: 1rem; }
+    .form-group { display: flex; flex-direction: column; gap: 0.25rem; }
+    .form-group label { font-size: 0.75rem; color: var(--text-muted, #888); text-transform: uppercase; letter-spacing: 0.05em; }
+    .form-group input, .form-group select { background: var(--bg-input, #1a1a2e); border: 1px solid var(--border, #2a2a4a); color: var(--text, #e0e0e0); padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.875rem; width: 100%; }
+    details summary { cursor: pointer; color: var(--text-muted, #888); font-size: 0.8rem; margin-bottom: 0.5rem; user-select: none; }
+    details[open] summary { color: var(--text, #e0e0e0); }
+    .run-status-card { display: none; }
+    .run-status-card.visible { display: block; }
+    .status-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+    .status-msg { font-size: 0.8rem; color: var(--text-muted, #888); }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }
+    .runs-table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border, #2a2a4a); color: var(--text-muted, #888); font-weight: 500; white-space: nowrap; }
+    td { padding: 0.45rem 0.75rem; border-bottom: 1px solid var(--border, #2a2a4a); white-space: nowrap; }
+    tr.clickable:hover { background: var(--bg-hover, #16162a); cursor: pointer; }
+    .equity-controls { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; font-size: 0.8rem; }
+    #run-detail { display: none; }
+    #run-detail.visible { display: block; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-name">POLYMARKET</span>
+      <span class="brand-sub">Arbitrage Bot</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-label">Monitor</div>
+        <a class="nav-item" href="/">Overview</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Backtesting</div>
+        <button class="nav-item active" data-section="run-form">Run Backtest</button>
+        <button class="nav-item" data-section="history">History</button>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <span class="badge badge-gray">Backtest</span>
+    </div>
+  </aside>
+
+  <!-- ── Main Content ──────────────────────────────────────────────── -->
+  <main class="main-content">
+
+    <!-- Run Form Section -->
+    <section id="section-run-form" class="page">
+      <h1 class="page-title">New Backtest Run</h1>
+
+      <div class="card" style="max-width: 700px;">
+        <div class="card-header"><span>Configuration</span></div>
+        <div class="card-body" style="padding: 1rem;">
+          <div class="form-grid">
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label>Strategy</label>
+              <select id="strategy-select"><option value="">Loading…</option></select>
+            </div>
+            <div class="form-group">
+              <label>Start Date</label>
+              <input type="date" id="start-date" value="2025-01-01">
+            </div>
+            <div class="form-group">
+              <label>End Date</label>
+              <input type="date" id="end-date" value="2025-04-01">
+            </div>
+            <div class="form-group">
+              <label>Initial Balance (USDC)</label>
+              <input type="number" id="initial-balance" value="1000" min="1" step="100">
+            </div>
+            <div class="form-group">
+              <label>Max Simultaneous Positions</label>
+              <input type="number" id="max-positions" value="5" min="1" max="50">
+            </div>
+            <div class="form-group">
+              <label>Capital per Trade (%)</label>
+              <input type="number" id="capital-pct" value="20" min="1" max="100" step="1">
+            </div>
+            <div class="form-group">
+              <label>Taker Fee (%)</label>
+              <input type="number" id="taker-fee" value="2.0" min="0" step="0.1">
+            </div>
+            <div class="form-group">
+              <label>Min Market Volume (USDC)</label>
+              <input type="number" id="min-volume" value="500" min="0" step="100">
+            </div>
+          </div>
+
+          <details>
+            <summary>Advanced Options</summary>
+            <div class="form-grid" style="margin-top: 0.5rem;">
+              <div class="form-group">
+                <label>Max Market Duration (seconds)</label>
+                <input type="number" id="max-duration" value="1800" min="0">
+              </div>
+              <div class="form-group">
+                <label>Price Interval</label>
+                <select id="price-interval">
+                  <option value="5m" selected>5m</option>
+                  <option value="15m">15m</option>
+                  <option value="1m">1m</option>
+                  <option value="1h">1h</option>
+                  <option value="4h">4h</option>
+                  <option value="1d">1d</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Category</label>
+                <select id="category">
+                  <option value="crypto" selected>crypto</option>
+                  <option value="fed">fed</option>
+                  <option value="regulatory">regulatory</option>
+                  <option value="other">other</option>
+                </select>
+              </div>
+            </div>
+          </details>
+
+          <div style="margin-top: 1rem;">
+            <button class="btn btn-primary" id="run-btn">Run Backtest</button>
+            <span id="run-error" style="color:#ff6b6b; font-size:0.8rem; margin-left:1rem;"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Run status card -->
+      <div class="card run-status-card" id="run-status-card" style="max-width: 700px; margin-top: 1rem;">
+        <div class="card-header"><span>Run Status</span></div>
+        <div class="card-body" style="padding: 1rem;">
+          <div class="status-row">
+            <span class="badge" id="status-badge">pending</span>
+            <span class="status-msg" id="status-msg">Starting…</span>
+          </div>
+          <div id="view-results-wrap" style="display:none; margin-top:0.75rem;">
+            <button class="btn btn-outline btn-sm" id="view-results-btn">View Results</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- History Section -->
+    <section id="section-history" class="page" style="display:none;">
+      <h1 class="page-title">Backtest History</h1>
+
+      <div class="card">
+        <div class="card-header">
+          <span>Runs</span>
+          <button class="btn btn-outline btn-sm" id="refresh-runs-btn">Refresh</button>
+        </div>
+        <div class="runs-table-wrap">
+          <table id="runs-table">
+            <thead>
+              <tr>
+                <th>Strategy</th>
+                <th>Date Range</th>
+                <th>Markets</th>
+                <th>Trades</th>
+                <th>Return</th>
+                <th>Sharpe</th>
+                <th>Max DD</th>
+                <th>Win Rate</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="runs-tbody">
+              <tr><td colspan="9" style="text-align:center; color:#888;">No runs yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Run detail -->
+      <div id="run-detail">
+        <div class="card" style="margin-top: 1rem;">
+          <div class="card-header"><span id="detail-title">Run Detail</span></div>
+          <div class="card-body" style="padding: 1rem;">
+            <div class="metric-grid" id="metrics-grid"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 1rem;">
+          <div class="card-header"><span>Equity Curve</span></div>
+          <div class="card-body" style="padding: 1rem;">
+            <div id="equity-chart" style="height: 280px;"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 1rem;">
+          <div class="card-header">
+            <span>Trades</span>
+            <span class="badge badge-gray" id="trades-count">0</span>
+          </div>
+          <div class="runs-table-wrap">
+            <table id="trades-table">
+              <thead>
+                <tr>
+                  <th>Market</th>
+                  <th>Entry</th>
+                  <th>Exit</th>
+                  <th>Entry Price</th>
+                  <th>Exit Price</th>
+                  <th>Net PnL</th>
+                  <th>Fees</th>
+                  <th>Outcome</th>
+                  <th>Hold Time</th>
+                </tr>
+              </thead>
+              <tbody id="trades-tbody">
+                <tr><td colspan="9" style="text-align:center; color:#888;">Select a run above.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="padding: 0.75rem; display:flex; gap:0.5rem; align-items:center;">
+            <button class="btn btn-outline btn-sm" id="trades-prev-btn" disabled>Prev</button>
+            <span id="trades-page-label" style="font-size:0.8rem; color:#888;">Page 1</span>
+            <button class="btn btn-outline btn-sm" id="trades-next-btn" disabled>Next</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="/static/backtest.js"></script>
+</body>
+</html>

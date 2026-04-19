@@ -339,7 +339,7 @@ def validate_project_structure():
         ("main.py", "Main bot file"),
         ("config/polymarket_config.py", "Configuration file"),
         ("data/polymarket_client.py", "Polymarket client"),
-        ("strategies/settlement_arbitrage/strategy.py", "Strategy file"),
+        ("strategies/example_strategy/strategy.py", "Strategy file"),
         ("portfolio/fake_currency_tracker.py", "Portfolio tracker"),
         ("execution/order_executor.py", "Order executor"),
         ("utils/logger.py", "Logger"),

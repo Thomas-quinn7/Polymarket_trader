@@ -89,9 +89,14 @@ class SessionStore:
         exit_reason       TEXT,
         balance_after     REAL,
         winning_token_id  TEXT NOT NULL,
+        slippage_pct      REAL DEFAULT 0.0,
         FOREIGN KEY (session_id) REFERENCES strategy_sessions(session_id)
     )
     """
+
+    _MIGRATIONS = [
+        "ALTER TABLE session_trades ADD COLUMN slippage_pct REAL DEFAULT 0.0",
+    ]
 
     def __init__(self, db_path: str, sessions_dir: str):
         self._db_path = db_path
@@ -108,6 +113,7 @@ class SessionStore:
             with self._lock:
                 self._conn.execute(self._CREATE_SESSIONS_TABLE)
                 self._conn.execute(self._CREATE_TRADES_TABLE)
+                self._migrate()
                 self._conn.commit()
             logger.info(
                 "SessionStore connected (db=%s, export_dir=%s)",
@@ -119,6 +125,14 @@ class SessionStore:
             logger.warning("SessionStore failed to connect: %s", exc)
             self._conn = None
             return False
+
+    def _migrate(self) -> None:
+        """Apply additive schema migrations. Must be called while self._lock is held."""
+        for stmt in self._MIGRATIONS:
+            try:
+                self._conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
     # ── Session lifecycle ──────────────────────────────────────────────
 
@@ -171,6 +185,15 @@ class SessionStore:
         if self._conn is None:
             return
         try:
+            # Resolve strategy_name from the session row rather than the global config
+            # so historical records remain correct even if the config is later changed.
+            with self._lock:
+                session_row = self._conn.execute(
+                    "SELECT strategy_name FROM strategy_sessions WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+            strategy_name = session_row["strategy_name"] if session_row else config.STRATEGY
+
             entry_time = position.opened_at.isoformat() if position.opened_at else None
             exit_time = position.settled_at.isoformat() if position.settled_at else None
 
@@ -199,13 +222,17 @@ class SessionStore:
                         entry_time, exit_time, hold_seconds,
                         entry_price, exit_price, edge_pct, shares, allocated_capital,
                         entry_fee, exit_fee, gross_pnl, net_pnl,
-                        outcome, exit_reason, balance_after, winning_token_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        outcome, exit_reason, balance_after, winning_token_id,
+                        slippage_pct
+                    ) VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    )
                     """,
                     (
                         trade_id,
                         session_id,
-                        config.STRATEGY,
+                        strategy_name,
                         position.position_id,
                         position.market_id,
                         position.market_slug,
@@ -226,6 +253,7 @@ class SessionStore:
                         exit_reason,
                         balance_after,
                         position.winning_token_id,
+                        getattr(position, "slippage_pct", 0.0),
                     ),
                 )
                 self._conn.commit()
@@ -442,8 +470,16 @@ class SessionStore:
             logger.warning("SessionStore.get_sessions failed: %s", exc)
             return []
 
-    def get_all_trades(self, limit: Optional[int] = None) -> List[Dict]:
+    def get_all_trades(
+        self,
+        limit: Optional[int] = None,
+        strategy: Optional[str] = None,
+    ) -> List[Dict]:
         """Return all settled trades across every session, newest first.
+
+        Args:
+            limit:    Cap the number of rows returned.
+            strategy: If given, return only trades for that strategy name.
 
         Used by the analytics endpoint to compute cross-session metrics
         (VaR, Sharpe, fee drag, edge realization, hold-time distribution).
@@ -451,11 +487,17 @@ class SessionStore:
         if self._conn is None:
             return []
         try:
-            q = "SELECT * FROM session_trades ORDER BY entry_time DESC"
+            params: list = []
+            if strategy:
+                where = "WHERE strategy_name = ?"
+                params.append(strategy)
+            else:
+                where = ""
+            q = f"SELECT * FROM session_trades {where} ORDER BY entry_time DESC"
             if limit:
                 q += f" LIMIT {int(limit)}"
             with self._lock:
-                rows = self._conn.execute(q).fetchall()
+                rows = self._conn.execute(q, params).fetchall()
             return [dict(r) for r in rows]
         except Exception as exc:
             logger.warning("SessionStore.get_all_trades failed: %s", exc)

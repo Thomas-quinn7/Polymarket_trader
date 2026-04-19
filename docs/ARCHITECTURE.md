@@ -118,113 +118,62 @@ If the preferred source returns 0 or fails, the provider falls back down the lis
 
 ---
 
-## 3. Settlement Arbitrage Strategy
+## 3. Strategy Interface
 
-### Premise
-
-Prediction markets settle at exactly $1.00 (YES wins) or $0.00 (NO wins) when the outcome is resolved. If a market's YES token is trading at $0.985 — and you are highly confident YES will win — you can buy at $0.985 and collect $1.00 at settlement, netting a $0.015 gross profit per dollar of YES tokens held.
-
-Polymarket charges a 2% taker fee on order execution, applied as a percentage of the trade value. With a 2% fee on a $0.985 entry:
-
-```
-Gross edge = (1.00 - 0.985) × 100  = 1.5%
-Fee cost   = 2.0%
-Net edge   = 1.5% - 2.0%           = -0.5%   ← negative, do not trade
-```
-
-At this fee level the strategy requires a price threshold of approximately **≤ 0.98** for positive net edge. The default `MIN_PRICE_THRESHOLD=0.985` produces opportunities where the fee occasionally consumes all edge — the `edge_filter_mode` setting controls how strictly this is enforced (see [Edge Filtering Modes](#5-edge-filtering-modes)).
+Strategies are classes that subclass `BaseStrategy` and live in `strategies/<name>/`. The framework calls three methods on every scan cycle:
 
 ### Scan Logic
 
-For each market in the pre-filtered list:
+`scan_for_opportunities(markets)` receives the pre-filtered market list from `MarketProvider` and returns a list of `TradeOpportunity` objects. Inside this method a strategy:
 
 ```
-1. Read resolved_price (set by MarketProvider)
-2. Skip if price == 0 or outside [min_price_threshold, max_price_threshold]
-3. Compute:
-       gross_edge = (1.00 - price) × 100
-       net_edge   = gross_edge - TAKER_FEE_PERCENT
-4. Apply edge filter (net_edge mode or slippage-adjusted mode)
-5. Compute time_to_close = market.end_time - now
-6. Compute confidence score (see §4)
-7. If confidence >= MIN_CONFIDENCE → create TradeOpportunity
+1. Reads market.resolved_price (set by MarketProvider — no extra API call)
+2. Applies its own signal conditions (price range, timing gate, edge threshold, etc.)
+3. Computes a confidence score if needed
+4. Returns TradeOpportunity objects for markets that pass all conditions
 ```
 
 ### Ranking
 
-`get_best_opportunities()` sorts by **risk-adjusted score**: `edge_percent × confidence`. This rewards opportunities with both large edge and high certainty over ones that have edge but low confidence (or vice versa).
+`get_best_opportunities(opportunities, limit)` ranks the returned opportunities and slices to `limit`. Typical ranking: `edge_percent × confidence` (risk-adjusted score).
 
 ### Exit Logic
 
-`should_exit()` returns `True` when `datetime.now(utc) >= position.expires_at` — i.e., when the market's scheduled close time has passed. The exit price is always `$1.00` (the expected YES settlement price).
+`should_exit(position, current_price)` is called every scan cycle for each open position. Return `True` to trigger an exit. The exit price comes from `get_exit_price(position, current_price)`.
+
+The default implementation in `BaseStrategy` exits when `datetime.now(utc) >= position.expires_at`.
 
 ---
 
 ## 4. Confidence Scoring
 
-The confidence score is a number in `[0, 1]` that summarises how attractive an opportunity is. Three factors contribute:
+Strategies may compute a confidence score (`0.0–1.0`) to gate and rank opportunities. The framework calls `scan_for_opportunities()` and passes back anything the strategy returns; strategies are free to implement their own scoring model.
 
-### Factor 1: Price Proximity (40% weight)
+A common pattern uses three normalised factors:
 
-```
-price_factor = (yes_price - min_price_threshold) / (max_price_threshold - min_price_threshold)
-```
+- **Price proximity** — how far the current price is from the strategy's target within its configured window.
+- **Time to close** — whether the market is in the execution sweet spot (not too soon to fill, not so late the order can't clear).
+- **Edge size** — net profit after fees normalised against a maximum expected edge.
 
-A price of `0.999` is near the top of the window → `price_factor ≈ 1.0`.
-A price of `0.985` (the floor) → `price_factor = 0.0`.
-
-Rationale: a higher price signals the market has already priced in a high YES probability. The closer to $1.00, the less residual uncertainty about the outcome.
-
-### Factor 2: Time to Close (40% weight)
-
-| Time to close | `time_factor` | Reasoning |
-|---------------|--------------|-----------|
-| ≤ 0 s (expired) | 0.0 | Cannot fill |
-| < `execute_before_close_seconds` | 0.2 | Inside execution window but may not fill in time |
-| ≤ 300 s (5 min) | 1.0 | Sweet spot: close is imminent, still time to fill |
-| ≤ 3600 s (1 hr) | 0.6 | Approaching close, outcome reasonably certain |
-| > 3600 s | 0.3 | Far from close, outcome uncertainty is higher |
-
-### Factor 3: Edge Size (20% weight)
-
-```
-edge_factor = min(net_edge / 5.0, 1.0)
-```
-
-Normalised against a 5% maximum expected edge. Larger edge provides more buffer against actual slippage and fee variation; minor contribution compared to price and time.
-
-### Final Score
-
-```
-confidence = 0.4 × price_factor + 0.4 × time_factor + 0.2 × edge_factor
-```
-
-A trade that scores below `MIN_CONFIDENCE` (default `0.5`) is silently skipped. This gate prevents entries on markets that are technically in the price window but have very low certainty (e.g., a market at `0.985` with 4 hours to close scores `≈ 0.4` and is filtered out by default).
+The global `MIN_CONFIDENCE` setting (default `0.5`) filters out any opportunity whose score falls below the threshold.
 
 ---
 
 ## 5. Edge Filtering Modes
 
-Controlled by `edge_filter_mode` in `strategies/configs/settlement_arbitrage.yaml` (or the `_DEFAULTS` dict if no YAML is present).
+Controlled by `edge_filter_mode` in a strategy's `config.yaml` (or the `_DEFAULTS` dict if no YAML is present).
 
 ### `net_edge` (default)
 
 Allow entry whenever `net_edge = gross_edge - taker_fee > 0`.
 
-Any positive net edge after fee deduction is sufficient. This is the least conservative mode — it allows entering markets where edge is positive but may be fully consumed by real slippage.
+Any positive net edge after fee deduction is sufficient.
 
 ### `slippage_adjusted`
 
-Allow entry only when `net_edge > expected_slippage_buffer_pct` (default 1.0%).
+Allow entry only when `net_edge > expected_slippage_buffer_pct`.
 
-The slippage buffer is a static estimate of typical market-impact cost, added on top of the taker fee. With a 2% fee and 1% slippage buffer:
-
-```
-Required gross edge  = 2.0% (fee) + 1.0% (buffer) = 3.0%
-Minimum price        = 1.00 - 0.03 = 0.97
-```
-
-At this level the strategy only enters markets within the last 3 cents of YES resolution — a much tighter window. Combine with the actual pre-trade slippage gate (`SLIPPAGE_TOLERANCE_PERCENT`) for full protection.
+Adds a static slippage buffer on top of the taker fee. With a 2% fee and 1% buffer, a trade must have at least 3% gross edge to be accepted. Combine with the pre-trade slippage gate (`SLIPPAGE_TOLERANCE_PERCENT`) for full protection.
 
 ---
 

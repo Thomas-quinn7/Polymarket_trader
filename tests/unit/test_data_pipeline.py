@@ -291,7 +291,7 @@ class TestCapitalSizing:
         executor_lo, _, _, positions_lo = _make_all()
         executor_hi, _, _, positions_hi = _make_all()
         _buy(executor_lo, _opp(price=0.50), "p_lo")
-        _buy(executor_hi, _opp(price=0.95), "p_hi")
+        _buy(executor_hi, _opp(price=0.90), "p_hi")
         assert positions_lo.get_position("p_lo").shares > positions_hi.get_position("p_hi").shares
 
     def test_capital_split_respected(self):

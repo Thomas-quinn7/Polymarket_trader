@@ -1,8 +1,8 @@
 # Code Review — Polymarket Trading Framework
 
 **Reviewer:** Claude Sonnet 4.6  
-**Last updated:** 2026-04-15  
-**Sessions:** Session 1 (2026-04-10) · Session 2 (2026-04-11) · Session 3 (2026-04-11) · Session 4 (2026-04-12) · Session 5 (2026-04-12) · Session 6 (2026-04-15)
+**Last updated:** 2026-04-19 (Session 8)  
+**Sessions:** Session 1 (2026-04-10) · Session 2 (2026-04-11) · Session 3 (2026-04-11) · Session 4 (2026-04-12) · Session 5 (2026-04-12) · Session 6 (2026-04-15) · Session 7 (2026-04-19)
 
 ---
 
@@ -29,7 +29,7 @@
 |---|---|---|---|
 | 1 | `portfolio/fake_currency_tracker.py` | No lock — race condition on `balance` and `deployed` | Added `threading.Lock()`; all mutations and reads protected |
 | 2 | `strategies/enhanced_market_scanner/scanner.py` | `"regulation"` typo — keyword filters silently never applied | Replaced with `"regulatory"` in all five locations |
-| 31 | `strategies/settlement_arbitrage/strategy.py` | Edge formula `(1 - price) × 100` measured profit as fraction of settlement value, not investment cost | Changed to `(1/price - 1) × 100` (return-on-investment basis) |
+| 31 | `strategies/example_strategy/strategy.py` | Edge formula `(1 - price) × 100` measured profit as fraction of settlement value, not investment cost | Changed to `(1/price - 1) × 100` (return-on-investment basis) |
 | 32 | `execution/order_executor.py` | `settle_position()` charged a taker exit fee on auto-settlement — Polymarket token redemption is free | `settle_position()` now accepts an explicit `exit_fee=0.0` parameter; normal settlement path passes nothing |
 | 38 | `dashboard/api.py` | Newline injection via `_write_env_key` — a value containing `\n` could inject extra keys into `.env` | Strip `\r`, `\n`, `\x00` from every value before writing |
 | 39 | `dashboard/api.py` | No authentication on any control endpoint — anyone who could reach the port could modify settings or stop the bot | Added optional `DASHBOARD_API_KEY` env var; all endpoints except `/api/health` require matching `X-API-Key` header |
@@ -49,7 +49,7 @@
 | 34 | `data/polymarket_client.py` | Pagination broke on `not page_markets` — exits early when a full page happens to contain only inactive markets | Only break on `len(events) < page_size` (last page sentinel) |
 | 35 | `data/market_provider.py` | `_convert_and_filter` never applied `criteria.categories` — entire market universe passed to strategy for unmapped categories | Added category gate (check 0) before all other filters |
 | 40 | `dashboard/api.py` | `detail=str(e)` in all 500 handlers — exposed stack traces, file paths, config values to HTTP clients | Replaced with `"Internal server error"`; added `exc_info=True` to server-side log |
-| 46 | `strategies/settlement_arbitrage/strategy.py` | `should_exit()` does not distinguish a market that resolved NO (price → 0) from a data error — calls `execute_sell()` on a resolved NO market and pays a taker fee instead of the free redemption path | Added `_RESOLUTION_THRESHOLD = 0.02` constant. `get_exit_price()` now returns `0.0` when `current_price < _RESOLUTION_THRESHOLD`. `_check_strategy_exits()` in `main.py` routes `exit_price <= 0.0` to `settle_position(settlement_price=0.0)` (fee-free redemption) in all modes. |
+| 46 | `main.py` | `should_exit()` does not distinguish a market that resolved NO (price → 0) from a data error — calls `execute_sell()` on a resolved NO market and pays a taker fee instead of the free redemption path | `_check_strategy_exits()` in `main.py` routes `exit_price <= 0.0` to `settle_position(settlement_price=0.0)` (fee-free redemption) in all modes. |
 
 ---
 
@@ -74,7 +74,7 @@
 | # | File | Issue | Fix |
 |---|---|---|---|
 | 12 | `dashboard/api.py` | `start_dashboard()` defaulted to `host="0.0.0.0"` | Default changed to `host=config.DASHBOARD_HOST` |
-| 14 | `strategies/settlement_arbitrage/strategy.py` | `execute_opportunity()` dead code — position sizing handled by `OrderExecutor` | Removed method and unused `Optional` import |
+| 14 | `strategies/example_strategy/strategy.py` | `execute_opportunity()` dead code — position sizing handled by `OrderExecutor` | Removed method and unused `Optional` import |
 | 15 | `config/polymarket_config.py` | `reload()` did not re-create `PolymarketClient` — auth changes had no effect until restart | Added restart-required field list to `reload()` docstring |
 | 16 | `portfolio/fake_currency_tracker.py` | `get_available()` was identical to `get_balance()` — misleading duplicate | Removed `get_available()`; updated two callers to use `get_balance()` |
 | 17 | `utils/alerts.py` | `ThreadPoolExecutor` never shut down on exit | Added `atexit.register(self._executor.shutdown, wait=False)` |
@@ -218,10 +218,164 @@ This is documented in the `reload()` docstring.
 
 `data/database.py` persists every position and trade on create/settle. But no code path reads positions back into runtime state. On restart, `PositionTracker` and `FakeCurrencyTracker` start empty. The DB is effectively an audit log. Issue #45 addresses the immediate P0 (positions lost on restart); longer-term, consider whether the DB should be the authoritative source of truth for `balance` and `deployed` as well (today those are recomputed from scratch on each boot).
 
-### `settlement_arbitrage` active_positions in-memory list
+### Strategy in-memory deduplication state
 
-`strategy.active_positions: List = []` (line 52 of `settlement_arbitrage/strategy.py`) is a parallel position register maintained entirely in memory. It is not persisted and is reset on every bot restart. This is separate from `PositionTracker` and means the strategy's internal view of open positions diverges from the DB after a restart, even if issue #45 is fixed. The strategy list and `PositionTracker` must both be restored consistently.
+Strategies that maintain an in-memory set of active market IDs to prevent re-entry do not persist this state across restarts. After a restart the deduplication set starts empty, so the strategy may attempt to re-enter markets already held. The strategy's deduplication set should be seeded from `PositionTracker.positions` on startup.
 
 ### `safe_scan_interval_ms` call-count assumption
 
 The divisor of 4 assumes one API call per market category. Actual call count varies with enabled categories and pagination depth. Tune `SCAN_INTERVAL_MS` manually if the rate limit is being hit — see the `safe_scan_interval_ms` docstring for details.
+
+---
+
+## Session 7 — Interview Pitfall Audit (2026-04-19)
+
+A full architectural review against quant-trading interview standards. Issues are ranked by how severely they would damage credibility in a technical interview. None are currently blocking live operation, but all are open.
+
+---
+
+### I-1 (Critical) — No real strategy signal exists
+
+**File:** `strategies/example_strategy/strategy.py`  
+**Status:** Framework made explicitly strategy-agnostic (2026-04-19). Signal stub must be implemented per strategy.
+
+The template previously hard-coded a specific strategy's edge formula. Changes made:
+- Signal block replaced with a clearly marked `TODO` stub (`gross_edge = 0.0; net_edge = gross_edge - taker_fee`). Defaults to negative edge so no trades fire until a real signal is implemented.
+- `_calculate_confidence` refactored: `price_factor` replaced with a `0.0` stub (annotated `TODO`), `time_factor` replaced with a generic gate-linear decay (annotated `ADAPT`), `edge_factor` kept as a generic ceiling-normalised metric.
+- `config.yaml` reset to open defaults (`min_price: 0.0`, `max_price: 1.0`, `execute_before_close_seconds: 86400`, `edge_filter_mode: net_edge`, `strategy_min_confidence: 0.0`).
+
+**Remaining action required:** Implement `gross_edge`, `net_edge`, and `price_factor` in a concrete strategy file. Copy `strategies/example_strategy/` to a new folder and replace the three `TODO` blocks.
+
+---
+
+### ~~I-2 (Critical) — Risk management is position count + a flat stop-loss, nothing more~~ RESOLVED (2026-04-19)
+
+**Files:** `portfolio/position_tracker.py`, `execution/order_executor.py`, `main.py`, `config/polymarket_config.py`  
+**Fix applied:** Two independent risk controls added.
+
+**1. Fractional Kelly position sizing** (`execution/order_executor.py`)  
+- `_kelly_position_size()` computes full Kelly fraction: `f* = (p·b − (1−p)) / b` where `p = opportunity.confidence`, `b = (1−price)/price`
+- Scaled by `KELLY_FRACTION` (default 0.25 — quarter Kelly) and capped at `CAPITAL_SPLIT_PERCENT`
+- Falls back to flat `CAPITAL_SPLIT_PERCENT` when confidence is zero (no signal)
+- Config: `KELLY_FRACTION` in `.env`
+
+**2. Category concentration limit** (`main.py`, `portfolio/position_tracker.py`)  
+- `Position` now carries a `category` field, populated from `opportunity.category` at entry
+- `_scan_and_execute` counts open positions per category before each execution decision
+- Skips an opportunity if its category already has `MAX_POSITIONS_PER_CATEGORY` open positions (default 2)
+- Count is updated as positions are opened within the same scan iteration
+- Config: `MAX_POSITIONS_PER_CATEGORY` in `.env`
+
+---
+
+### I-3 (High) — Backtesting only takes the long YES side
+
+**File:** `backtesting/engine.py` line 43 (`side: str = "YES"` hardcoded in `SimTrade`)  
+**Issue:** The replay engine never buys NO tokens. Strategies that identify NO-side mispricing (low-probability outcomes that the market overestimates) cannot be tested. The backtest results are structurally one-sided.  
+**Interview impact:** Medium-high. Shows the backtest was built for one specific trade type and was not designed for generality.  
+**Fix:** Parameterise `side` on `SimPosition`/`SimTrade`. Let `scan_for_opportunities` return an opportunity with `winning_token_id = token_id_no` and propagate that into `_enter`/`_settle`.
+
+---
+
+### I-4 (High) — Unknown market resolution defaults to 0.5
+
+**File:** `backtesting/engine.py` line 140  
+**Issue:** When a market row has no `resolution` value, `resolutions[cid] = 0.5` silently assigns a break-even outcome. Markets that resolved NO (price → 0) and YES (price → 1) are treated identically. This can inflate win rate and flatten the equity curve on backtests that include unresolved or stale market data.  
+**Interview impact:** Medium-high. Silent default values in financial simulations are a red flag for data quality discipline.  
+**Fix:** Exclude markets with no recorded resolution from the backtest rather than defaulting. Log a warning with the count of skipped markets.
+
+---
+
+### I-5 (High) — No spread or market impact model in backtesting
+
+**Files:** `backtesting/engine.py`, `backtesting/config.py`  
+**Issue:** Transaction costs are modelled as taker fee only. There is no bid/ask spread and no market impact model. Polymarket prediction market spreads can be 1–5% on illiquid markets. The backtest will systematically overstate profitability on any strategy that relies on entering near fair value.  
+**Interview impact:** Medium. Any quant will ask "how did you model transaction costs?" Saying "taker fee only" is incomplete.  
+**Fix:** Add a `half_spread_pct` field to `BacktestConfig` (default 0). Apply it symmetrically: effective entry price = `price * (1 + half_spread_pct/100)`, effective exit price = `price * (1 - half_spread_pct/100)`.
+
+---
+
+### I-6 (Medium) — Sharpe ratio computed on per-trade returns, not a time-series
+
+**File:** `backtesting/metrics.py` lines 129–148  
+**Issue:** `returns` is a list of `net_pnl / allocated_capital` per trade. Annualisation uses `sqrt(trades_per_year)` which assumes each trade is an independent period. Standard Sharpe is computed on a daily (or periodic) time-series of returns. A strategy with 3 trades/day and 5 minute durations will produce a very different Sharpe depending on whether you use trade-level or calendar-day returns.  
+**Interview impact:** Medium. Will be questioned by anyone who has computed Sharpe professionally. The current approach is not wrong for a specific interpretation, but it should be documented and defended.  
+**Fix (documentation):** Add an explicit comment noting this is trade-frequency Sharpe, not calendar Sharpe. Optionally add a second calculation that bins PnL into daily buckets.
+
+---
+
+### I-7 (Medium) — `market_id` uses `slug` as a fallback primary key
+
+**File:** `data/market_schema.py` lines 74–77  
+**Issue:** `from_api()` resolves `market_id` as `id` → `conditionId` → `marketSlug` → `slug`. A `slug` is a human-readable URL segment that is not guaranteed globally unique across the Gamma API. Using it as a primary key risks silent collision between two markets with the same slug in different time periods.  
+**Interview impact:** Low-medium. Shows up as a data integrity question.  
+**Fix:** Return `None` (and skip the market) when neither `id` nor `conditionId` is present, rather than falling back to the slug.
+
+---
+
+### I-8 (Medium) — No integration or end-to-end tests; test suite mocks the strategy
+
+**Files:** `tests/unit/test_backtest_engine.py` and others  
+**Issue:** All tests are unit tests that mock the strategy with `MagicMock`. There are no integration tests against a mock HTTP server (e.g., `responses` or `httpretty`). No test exercises a full scan → opportunity → execute → settle cycle with a real (stub) strategy. Strategy signal logic itself has no test coverage.  
+**Interview impact:** Medium. A quant dev interview will ask about how you verified the strategy is correct. "Unit tests with mocked strategy" does not answer that.  
+**Fix:** Add at least one integration test that instantiates `ExampleStrategy` (or the real strategy) with a mock client, runs a full `scan_for_opportunities` → `execute_buy` → `settle_position` cycle, and asserts the final balance is correct.
+
+---
+
+### I-9 (Low) — Risk-free rate is implicitly zero with no documentation
+
+**File:** `backtesting/metrics.py` line 148  
+**Issue:** Sharpe and Sortino are computed with `mean_r / stdev_r` — no risk-free rate subtracted from the numerator. For prediction markets this is arguably correct (deployed capital earns no interest while locked), but it should be stated explicitly.  
+**Fix:** Add a `risk_free_rate_annual: float = 0.0` field to `BacktestConfig` and apply it: `excess_return = mean_r - risk_free_rate_per_trade`.
+
+---
+
+### I-10 (Low) — `FakeCurrencyTracker` name is unprofessional in a portfolio context
+
+**File:** `portfolio/fake_currency_tracker.py`  
+**Issue:** The class name telegraphs that live-mode capital tracking was never a priority. In an interview demo or code walkthrough, this creates a negative first impression.  
+**Fix:** Rename to `PaperPortfolio` or `SimulatedBook`.
+
+---
+
+### I-11 (Low) — `datetime.now()` without timezone in `main.py`
+
+**File:** `main.py` line 60  
+**Issue:** `self.start_time = datetime.now()` produces a timezone-naive datetime while every other timestamp in the codebase uses `datetime.now(timezone.utc)`. Inconsistent timezone handling is a common source of off-by-one-hour bugs at DST transitions.  
+**Fix:** `self.start_time = datetime.now(timezone.utc)`.
+
+---
+
+### I-12 (Low) — Global config singleton makes unit testing awkward
+
+**File:** `config/polymarket_config.py`  
+**Issue:** `config = PolymarketConfig()` is a module-level singleton. Tests that need different config values must monkey-patch the singleton, which is fragile and order-dependent. `reload()` partially addresses this but not for all fields.  
+**Fix (long-term):** Accept a `config` parameter in `TradingBot.__init__` and inject it. Short-term, add a `PolymarketConfig.from_dict(overrides)` factory for test construction.
+
+---
+
+### I-13 (Low) — `_raw: dict` stored on every `PolymarketMarket`
+
+**File:** `data/market_schema.py` line 64  
+**Issue:** Every `PolymarketMarket` instance holds the full raw API response dict. At scan time this can be thousands of markets simultaneously. The `_raw` field is only used for debugging and is never read by any production code path.  
+**Fix:** Remove `_raw` from the dataclass. If a debugging escape hatch is needed, add it only in `from_api()` under a flag.
+
+---
+
+### Summary Table — Open Interview Pitfalls
+
+| ID | Severity | Issue | File |
+|---|---|---|---|
+| ~~I-1~~ | ~~Critical~~ | ~~No real strategy signal — `net_edge = 0.0` hardcoded~~ | ~~`strategies/example_strategy/strategy.py`~~ |
+| ~~I-2~~ | ~~Critical~~ | ~~Risk model is only position count + flat stop-loss~~ | ~~`portfolio/`, `main.py`~~ |
+| ~~I-3~~ | ~~High~~ | ~~Backtest only takes long YES side~~ | ~~`backtesting/engine.py`~~ |
+| ~~I-4~~ | ~~High~~ | ~~Unknown resolution silently defaults to 0.5~~ | ~~`backtesting/engine.py`~~ |
+| ~~I-5~~ | ~~High~~ | ~~No spread or market impact in backtest~~ | ~~`backtesting/engine.py`, `config.py`~~ |
+| ~~I-6~~ | ~~Medium~~ | ~~Sharpe is trade-frequency, not calendar — undocumented~~ | ~~`backtesting/metrics.py`~~ |
+| ~~I-7~~ | ~~Medium~~ | ~~`market_id` falls back to `slug` (not a stable PK)~~ | ~~`data/market_schema.py`~~ |
+| I-8 | Medium | No integration tests; strategy logic untested | `tests/unit/` |
+| I-9 | Low | Risk-free rate implicitly zero, not documented | `backtesting/metrics.py` |
+| I-10 | Low | `FakeCurrencyTracker` name unprofessional | `portfolio/fake_currency_tracker.py` |
+| ~~I-11~~ | ~~Low~~ | ~~`datetime.now()` timezone-naive in `main.py`~~ | ~~`main.py:60`~~ |
+| I-12 | Low | Global config singleton — hard to test | `config/polymarket_config.py` |
+| ~~I-13~~ | ~~Low~~ | ~~`_raw` dict on every `PolymarketMarket` wastes memory~~ | ~~`data/market_schema.py`~~ |

@@ -65,11 +65,10 @@ class TestFromApiRequired:
         assert m is not None
         assert m.market_id == "cond-99"
 
-    def test_market_id_fallback_slug_when_no_id(self):
+    def test_returns_none_when_only_slug_present(self):
+        # slug is not a stable primary key — markets without id/conditionId are skipped
         raw = {"slug": "my-slug", "clobTokenIds": ["t1"]}
-        m = PolymarketMarket.from_api(raw)
-        assert m is not None
-        assert m.market_id == "my-slug"
+        assert PolymarketMarket.from_api(raw) is None
 
     def test_token_ids_populated(self):
         m = PolymarketMarket.from_api(_raw(token_ids=["yes", "no"]))
@@ -139,10 +138,9 @@ class TestFromApiOptionalFields:
         m = PolymarketMarket.from_api(raw)
         assert m.end_time is not None
 
-    def test_raw_preserved(self):
-        raw = _raw()
-        m = PolymarketMarket.from_api(raw)
-        assert m._raw is raw
+    def test_no_raw_field_on_market(self):
+        m = PolymarketMarket.from_api(_raw())
+        assert not hasattr(m, "_raw")
 
 
 # ---------------------------------------------------------------------------

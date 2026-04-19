@@ -144,8 +144,8 @@ To start in live mode from the command line, use `--live` (see [CLI Reference](#
 
 ```env
 # Strategy to load from strategies/registry.py
-# Built-in options: settlement_arbitrage | paper_demo | demo_buy | enhanced_market_scanner
-STRATEGY=settlement_arbitrage
+# Built-in options: example_strategy | paper_demo | demo_buy | enhanced_market_scanner
+STRATEGY=example_strategy
 ```
 
 ### Position Sizing
@@ -319,7 +319,7 @@ polymarket [OPTIONS]
 | `--simulation` | Force simulation mode (fully offline, synthetic data) |
 | `--live` | Start in live trading mode. Requires `POLYMARKET_PRIVATE_KEY`. Shows a confirmation prompt before orders are submitted. |
 | `--auto-start` | Start the trading loop immediately without waiting for the WebUI |
-| `--strategy NAME` | Strategy to load (e.g. `settlement_arbitrage`) |
+| `--strategy NAME` | Strategy to load by folder name |
 | `--scan-interval MS` | Scan interval in milliseconds |
 | `--categories LIST` | Comma-separated market categories (e.g. `crypto,fed`) |
 | `--max-positions N` | Maximum concurrent open positions |
@@ -395,7 +395,6 @@ Polymarket_Trading/
 │   ├── base.py                    # Abstract BaseStrategy class
 │   ├── registry.py                # Strategy loader (STRATEGY env var selects strategy)
 │   ├── config_loader.py           # YAML config loader for per-strategy tuning
-│   ├── settlement_arbitrage/      # Near-settled market arbitrage strategy
 │   ├── paper_demo/                # Paper trading demo with configurable hold time
 │   ├── demo_buy/                  # Single-buy demo strategy
 │   ├── enhanced_market_scanner/   # Enhanced multi-signal scanner
@@ -479,7 +478,6 @@ Strategies inherit from `BaseStrategy` in `strategies/base.py`. The active strat
 
 | Strategy | Description |
 |----------|-------------|
-| `settlement_arbitrage` | Scans for near-settled markets (price ≥ 0.985) with positive net edge after fees. Ranks by edge × confidence. |
 | `paper_demo` | Buys a configurable market category, holds for `PAPER_DEMO_HOLD_SECONDS`, then exits |
 | `demo_buy` | Single demonstration buy — useful for validating execution end-to-end |
 | `enhanced_market_scanner` | Multi-signal scanner with additional market filters |

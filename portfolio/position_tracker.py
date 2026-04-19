@@ -6,7 +6,7 @@ Tracks individual positions and settlements
 import threading
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from config.polymarket_config import config
 from utils.logger import logger
@@ -29,13 +29,16 @@ class Position:
     allocated_capital: float
     expected_profit: float
     edge_percent: float
+    strategy_name: str = ""  # strategy that opened this position (from config.STRATEGY)
+    category: str = ""  # market category (crypto, fed, regulatory, other)
+    slippage_pct: float = 0.0  # entry slippage as a percentage of expected price
     entry_fee: float = 0.0  # fee paid at entry (simulated or actual)
     # Whether this market uses neg-risk (inverse) settlement.
     # Must be passed to create_market_order on the SELL side to produce the
     # correct order hash.  Defaults False (standard markets).
     neg_risk: bool = False
     status: str = "OPEN"  # OPEN, SETTLED, FAILED
-    opened_at: datetime = field(default_factory=datetime.now)
+    opened_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: Optional[datetime] = None  # absolute time this position should settle
     settled_at: Optional[datetime] = None
     settlement_price: Optional[float] = None
@@ -46,6 +49,7 @@ class Position:
     def to_dict(self):
         return {
             "position_id": self.position_id,
+            "strategy_name": self.strategy_name,
             "market_id": self.market_id,
             "market_slug": self.market_slug,
             "question": self.question,
@@ -57,6 +61,9 @@ class Position:
             "allocated_capital": self.allocated_capital,
             "expected_profit": self.expected_profit,
             "edge_percent": self.edge_percent,
+            "category": self.category,
+            "slippage_pct": self.slippage_pct,
+            "neg_risk": self.neg_risk,
             "status": self.status,
             "opened_at": self.opened_at.isoformat() if self.opened_at else None,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
@@ -84,6 +91,7 @@ class PositionTracker:
         self.pnl_tracker = pnl_tracker
         self.positions: Dict[str, Position] = {}
         self.max_positions = config.MAX_POSITIONS
+        self._strategy_name: str = config.STRATEGY
         self._lock = threading.Lock()
 
         logger.info("Position tracker initialized")
@@ -112,7 +120,9 @@ class PositionTracker:
             Position ID
         """
         if position_id is None:
-            position_id = f"{opportunity.market_id}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+            position_id = (
+                f"{opportunity.market_id}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+            )
 
         expires_at = getattr(opportunity, "expires_at", None)
         neg_risk = getattr(opportunity, "neg_risk", False)
@@ -133,6 +143,9 @@ class PositionTracker:
             expires_at=expires_at,
             entry_fee=entry_fee,
             neg_risk=neg_risk,
+            strategy_name=self._strategy_name,
+            category=getattr(opportunity, "category", "") or "",
+            slippage_pct=slippage_pct,
         )
 
         with self._lock:
@@ -206,7 +219,7 @@ class PositionTracker:
         # Write the final settled state atomically.
         with self._lock:
             position.settlement_price = settlement_price
-            position.settled_at = datetime.now()
+            position.settled_at = datetime.now(timezone.utc)
             position.exit_fee = exit_fee
             position.gross_pnl = gross_pnl
             position.realized_pnl = net_pnl

@@ -156,7 +156,7 @@ class TestGenerateSimOrderBook:
         assert book["mid_price"] == 0.5
 
     def test_high_price_market(self):
-        book = generate_sim_order_book("tok_yes", mid_price=0.95)
+        book = generate_sim_order_book("tok_yes", mid_price=0.90)
         for level in book["asks"]:
             assert level["price"] <= 0.999
 

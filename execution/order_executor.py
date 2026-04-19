@@ -18,6 +18,39 @@ from portfolio.fake_currency_tracker import FakeCurrencyTracker
 from config.polymarket_config import config
 
 
+def _kelly_position_size(
+    balance: float,
+    entry_price: float,
+    confidence: float,
+    max_fraction: float,
+    kelly_fraction: float,
+) -> float:
+    """
+    Fractional Kelly position sizing for a binary-outcome bet.
+
+    Assumes the position is binary with a winning payoff of $1.00 per share:
+      b  = net odds per unit staked = (1 - price) / price
+      f* = (p*b - (1-p)) / b    (full Kelly fraction of bankroll)
+
+    kelly_fraction scales full Kelly down (e.g. 0.25 = quarter Kelly) to
+    limit volatility. Result is capped at max_fraction of balance.
+
+    Falls back to max_fraction when confidence is zero (no model signal).
+    """
+    if confidence <= 0 or entry_price <= 0 or entry_price >= 1.0:
+        return balance * max_fraction
+
+    b = (1.0 - entry_price) / entry_price
+    kelly_full = (confidence * b - (1.0 - confidence)) / b
+    kelly_full = max(0.0, kelly_full)
+    fraction = min(kelly_full * kelly_fraction, max_fraction)
+
+    if fraction <= 0:
+        return 0.0
+
+    return balance * fraction
+
+
 class OrderExecutor:
     """
     Executes trades in paper trading mode
@@ -68,10 +101,25 @@ class OrderExecutor:
             True if successful
         """
         try:
-            # Size each position as a fixed fraction of currently available cash so
-            # that position sizes scale down naturally after drawdowns instead of
-            # attempting to allocate a fixed dollar amount that may exceed the balance.
-            capital_to_allocate = self.currency_tracker.get_balance() * config.CAPITAL_SPLIT_PERCENT
+            # Fixed-size override: strategies that manage their own order sizing
+            # (e.g. limit-order market makers) attach an override_capital attribute
+            # to the opportunity.  When present it is used directly, bypassing Kelly.
+            _override = getattr(opportunity, "override_capital", None)
+            is_limit_fill = _override is not None and float(_override) > 0
+            if is_limit_fill:
+                capital_to_allocate = float(_override)
+            else:
+                # Fractional Kelly sizing: scale position by edge and win probability
+                # so that high-conviction opportunities receive proportionally more
+                # capital, capped at CAPITAL_SPLIT_PERCENT.
+                balance = self.currency_tracker.get_balance()
+                capital_to_allocate = _kelly_position_size(
+                    balance=balance,
+                    entry_price=opportunity.current_price,
+                    confidence=getattr(opportunity, "confidence", None) or 0.0,
+                    max_fraction=config.CAPITAL_SPLIT_PERCENT,
+                    kelly_fraction=config.KELLY_FRACTION,
+                )
 
             # Guard: invalid price means we cannot safely size the position
             if not opportunity.current_price or opportunity.current_price <= 0:
@@ -83,12 +131,12 @@ class OrderExecutor:
             # ── Pre-trade slippage estimate from real order book ───────────
             # Fetch the live order book and walk the ask side to estimate how
             # much price impact our order will have given current liquidity.
-            # In paper mode this becomes the recorded simulated slippage.
-            # In live mode it acts as a pre-trade gate AND we still compare the
-            # actual filled price post-trade as a second safety check.
+            # Skipped for limit-order fills (override_capital set): the fill price
+            # is already confirmed at the limit price, so market-order slippage
+            # estimation is meaningless and the gate must not block these fills.
             slippage_pct = 0.0
             order_book: dict = {}
-            if self.polymarket_client is not None:
+            if not is_limit_fill and self.polymarket_client is not None:
                 try:
                     order_book = self.polymarket_client.get_order_book(
                         opportunity.winning_token_id, levels=10

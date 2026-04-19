@@ -275,3 +275,10 @@ strategies/*.py
 !strategies/registry.py
 !strategies/config_loader.py
 !strategies/examples/
+
+# Private strategies — not for public release
+strategies/crypto_5min_mm/
+strategies/paper_demo/
+strategies/demo_buy/
+strategies/example_strategy/
+strategies/enhanced_market_scanner/

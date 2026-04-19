@@ -113,7 +113,7 @@ class PolymarketConfig:
     # Strategy Selection
     # Name of the strategy to load from strategies/registry.py.
     # Set STRATEGY=<name> in .env to switch strategies without code changes.
-    STRATEGY = os.getenv("STRATEGY", "settlement_arbitrage")
+    STRATEGY = os.getenv("STRATEGY", "example_strategy")
 
     FAKE_CURRENCY_BALANCE = float(os.getenv("FAKE_CURRENCY_BALANCE", "10000.00"))
 
@@ -136,6 +136,16 @@ class PolymarketConfig:
     # ── Strategy execution ─────────────────────────────────────────────
     MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "5"))
     CAPITAL_SPLIT_PERCENT = float(os.getenv("CAPITAL_SPLIT_PERCENT", "0.20"))
+
+    # Fractional Kelly multiplier (0.0–1.0).
+    # Full Kelly (1.0) maximises long-run growth but produces extreme volatility.
+    # 0.25 (quarter Kelly) is a common conservative starting point.
+    # Kelly sizing is applied in OrderExecutor and capped at CAPITAL_SPLIT_PERCENT.
+    KELLY_FRACTION = float(os.getenv("KELLY_FRACTION", "0.25"))
+
+    # Maximum open positions allowed within a single market category (crypto, fed, etc.).
+    # Prevents over-concentration in correlated markets.  Set to 0 to disable.
+    MAX_POSITIONS_PER_CATEGORY = int(os.getenv("MAX_POSITIONS_PER_CATEGORY", "2"))
 
     # Stop-loss: close a position when price drops this % below entry (0 = disabled).
     STOP_LOSS_PERCENT = float(os.getenv("STOP_LOSS_PERCENT", "0.0"))
@@ -247,13 +257,17 @@ class PolymarketConfig:
         # Trading mode
         self.TRADING_MODE = env.get("TRADING_MODE", "paper").lower()
         self.PAPER_TRADING_ONLY = env.get("PAPER_TRADING_ONLY", "True").lower() == "true"
-        self.STRATEGY = env.get("STRATEGY", "settlement_arbitrage")
+        self.STRATEGY = env.get("STRATEGY", "example_strategy")
         self.FAKE_CURRENCY_BALANCE = float(env.get("FAKE_CURRENCY_BALANCE", "10000.00"))
 
         # Strategy execution
         self.MAX_POSITIONS = int(env.get("MAX_POSITIONS", "5"))
+        self.MAX_POSITIONS_PER_CATEGORY = int(env.get("MAX_POSITIONS_PER_CATEGORY", "2"))
         self.CAPITAL_SPLIT_PERCENT = float(env.get("CAPITAL_SPLIT_PERCENT", "0.20"))
+        self.KELLY_FRACTION = float(env.get("KELLY_FRACTION", "0.25"))
         self.STOP_LOSS_PERCENT = float(env.get("STOP_LOSS_PERCENT", "0.0"))
+        self.SLIPPAGE_TOLERANCE_PERCENT = float(env.get("SLIPPAGE_TOLERANCE_PERCENT", "5.0"))
+        self.TAKER_FEE_PERCENT = float(env.get("TAKER_FEE_PERCENT", "2.0"))
         self.MIN_CONFIDENCE = float(env.get("MIN_CONFIDENCE", "0.5"))
         self.MIN_VOLUME_USD = float(env.get("MIN_VOLUME_USD", "1000.0"))
 

@@ -20,8 +20,8 @@ STARTING_BALANCE = 10_000.0
 CAPITAL_SPLIT = 0.20
 ALLOCATED = STARTING_BALANCE * CAPITAL_SPLIT  # $2 000
 FEE_PCT = 2.0
-# price=0.95 → gross edge 5%, total fees ~4% → net positive
-PRICE_WITH_EDGE = 0.95
+# price=0.97 → gross PnL ~3% of allocated, entry fee 2% of allocated → net positive
+PRICE_WITH_EDGE = 0.97
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +130,7 @@ class TestFeeTracking:
         assert net_pnl < pos.gross_pnl
 
     def test_net_pnl_positive_when_edge_covers_fees(self):
-        """price=0.95 → gross edge 5% > total ~4% fees → net positive."""
+        """price=0.97 → gross PnL exceeds 2% entry fee → net positive."""
         executor, currency, pnl, positions = _make_all()
         _buy(executor, _make_opp(PRICE_WITH_EDGE), "p1", fee_pct=FEE_PCT)
         net_pnl = _settle(executor, "p1", settlement_price=1.0, fee_pct=FEE_PCT)
