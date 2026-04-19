@@ -335,8 +335,6 @@ async function loadConfig() {
     ['Execute Before Close', `${data.execute_before_close_seconds}s`],
     ['Max Positions',        data.max_positions],
     ['Capital Split',        fmtPct((data.capital_split_percent ?? 0) * 100)],
-    ['Min Price Threshold',  fmt(data.min_price_threshold, 3)],
-    ['Max Price Threshold',  fmt(data.max_price_threshold, 3)],
     ['Scan Interval',        `${data.scan_interval_ms}ms`],
     ['Starting Balance',     fmt(data.fake_currency_balance)],
   ].map(([k, v]) => `
@@ -527,8 +525,6 @@ const SETTINGS_SECTIONS = {
     { key: 'scan_interval_ms',             label: 'Scan Interval (ms)',        type: 'number', min: 100, max: 60000, step: 100 },
     { key: 'max_positions',                label: 'Max Positions',             type: 'number', min: 1,   max: 20 },
     { key: 'capital_split_percent',        label: 'Capital Split (0–1)',       type: 'number', min: 0.01, max: 1, step: 0.01 },
-    { key: 'min_price_threshold',          label: 'Min Price Threshold',       type: 'number', min: 0,   max: 1, step: 0.001 },
-    { key: 'max_price_threshold',          label: 'Max Price Threshold',       type: 'number', min: 0,   max: 1, step: 0.001 },
   ],
   alerts: [
     { key: 'enable_email_alerts',   label: 'Email Alerts',           type: 'boolean' },

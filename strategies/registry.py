@@ -25,7 +25,7 @@ import inspect
 import os
 from typing import Dict, Optional, Type
 
-from strategies.base import BaseStrategy, TradingStrategy
+from strategies.base import BaseStrategy
 from utils.logger import logger
 
 # Subfolders that are part of the framework itself, not strategies.
@@ -65,11 +65,7 @@ def _build_registry() -> Dict[str, Type[BaseStrategy]]:
         # Find the first BaseStrategy subclass exported by the package
         strategy_class: Optional[Type[BaseStrategy]] = None
         for _name, obj in inspect.getmembers(module, inspect.isclass):
-            if (
-                issubclass(obj, BaseStrategy)
-                and obj is not BaseStrategy
-                and obj is not TradingStrategy
-            ):
+            if issubclass(obj, BaseStrategy) and obj is not BaseStrategy:
                 strategy_class = obj
                 break
 
@@ -95,7 +91,7 @@ def load_strategy(name: str, client) -> BaseStrategy:
     Instantiate a strategy by its folder name.
 
     Args:
-        name:   Strategy folder name, e.g. ``"settlement_arbitrage"``.
+        name:   Strategy folder name, e.g. ``"example_strategy"``.
         client: PolymarketClient instance passed to the strategy constructor.
 
     Returns:

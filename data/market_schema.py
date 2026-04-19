@@ -60,9 +60,6 @@ class PolymarketMarket:
     # None means the provider has not yet resolved the price for this market.
     resolved_price: Optional[float] = field(default=None, repr=False, compare=False)
 
-    # Keep raw dict for any fields not explicitly mapped
-    _raw: dict = field(default_factory=dict, repr=False, compare=False)
-
     @classmethod
     def from_api(cls, raw: dict) -> Optional["PolymarketMarket"]:
         """
@@ -71,9 +68,9 @@ class PolymarketMarket:
         Returns None if required fields (market_id, token_ids) are missing.
         """
         # --- market_id ---
-        market_id = (
-            raw.get("id") or raw.get("conditionId") or raw.get("marketSlug") or raw.get("slug")
-        )
+        # Only stable IDs are accepted; human-readable slugs are not globally
+        # unique across time periods and must not be used as primary keys.
+        market_id = raw.get("id") or raw.get("conditionId")
         if not market_id:
             return None
 
@@ -109,7 +106,6 @@ class PolymarketMarket:
             volume=volume,
             end_time=end_time,
             outcome_prices=outcome_prices,
-            _raw=raw,
         )
 
     def seconds_to_close(self) -> Optional[float]:
@@ -188,3 +184,6 @@ def _classify_category(tags: list) -> str:
             return _TAG_CATEGORY_MAP[label]
 
     return "other"
+
+
+classify_category = _classify_category

@@ -574,6 +574,81 @@ class PolymarketClient:
         )
         return result
 
+    def create_limit_order(
+        self,
+        token_id: str,
+        price: float,
+        size: float,
+        side: str = "BUY",
+        neg_risk: bool = False,
+    ) -> dict:
+        """
+        Submit a GTC (Good-Till-Cancelled) limit order to the Polymarket CLOB.
+
+        The order rests on the book until filled or manually cancelled via
+        cancel_order().  Not available in paper/simulation mode — callers must
+        guard with config.PAPER_TRADING_ONLY before calling.
+
+        Args:
+            token_id:  YES or NO token ID.
+            price:     Limit price (0.0–1.0).
+            size:      Number of shares.
+            side:      "BUY" (default) or "SELL".
+            neg_risk:  True for neg-risk (inverse) markets.
+
+        Returns:
+            Exchange response dict.  Key fields:
+              orderID / id  — order identifier for polling / cancellation
+              status        — initial order status
+        """
+        if config.PAPER_TRADING_ONLY:
+            logger.error(
+                "SAFETY: create_limit_order called while PAPER_TRADING_ONLY=True "
+                "— refusing to submit. This is a bug in the calling code."
+            )
+            return {}
+
+        if self.client is None:
+            logger.warning("ClobClient not initialized — limit order not submitted")
+            return {}
+
+        # ── Phase 1: sign the order locally ──────────────────────────────────
+        try:
+            from py_clob_client.clob_types import LimitOrderArgs
+            from py_clob_client.order_builder.constants import BUY as _BUY, SELL as _SELL
+
+            order_side = _BUY if side.upper() == "BUY" else _SELL
+            order_args = LimitOrderArgs(
+                token_id=token_id,
+                price=price,
+                size=size,
+                side=order_side,
+            )
+            signed_order = self.client.create_order(order_args)
+        except ImportError:
+            logger.error(
+                "create_limit_order: LimitOrderArgs not available in the installed "
+                "py_clob_client version — upgrade the SDK"
+            )
+            return {}
+        except Exception as exc:
+            logger.error(f"Limit order signing failed for {token_id}: {exc}")
+            return {}
+
+        # ── Phase 2: submit with GTC order type ──────────────────────────────
+        try:
+            response = _with_retry(lambda: self.client.post_order(signed_order, OrderType.GTC))
+        except Exception as exc:
+            logger.error(f"Limit order submission failed for {token_id} after all retries: {exc}")
+            return {}
+
+        result = response if isinstance(response, dict) else {}
+        logger.info(
+            f"Limit order placed: {side} {token_id[:16]}… "
+            f"price={price} size={size} status={result.get('status')}"
+        )
+        return result
+
     def get_order(self, order_id: str) -> dict:
         """
         Get order status

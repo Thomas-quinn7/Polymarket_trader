@@ -205,13 +205,13 @@ def _make_session_data(*, trades=None):
                 "balance_after": 10_014.70,
                 "outcome": "WIN",
                 "exit_reason": "settlement",
-                "strategy_name": "settlement_arbitrage",
+                "strategy_name": "example_strategy",
             }
         ]
     return {
         "session": {
             "session_id": "session-uuid-1234",
-            "strategy": "settlement_arbitrage",
+            "strategy": "example_strategy",
             "start_time": "2026-04-11T10:00:00",
             "end_time": "2026-04-11T11:00:00",
             "trading_mode": "paper",
@@ -394,7 +394,7 @@ class TestGenerateReview:
             patch("utils.session_reviewer.requests.post", side_effect=capture),
         ):
             r.generate_review(_make_session_data())
-        assert "settlement_arbitrage" in captured_prompt[0]
+        assert "example_strategy" in captured_prompt[0]
 
     def test_prompt_contains_win_rate(self):
         r = _make_reviewer()

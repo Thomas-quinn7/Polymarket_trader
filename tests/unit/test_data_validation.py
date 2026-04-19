@@ -244,15 +244,15 @@ class TestMarketIdFallback:
         m = PolymarketMarket.from_api(raw)
         assert m.market_id == "cond-99"
 
-    def test_marketSlug_fallback(self):
+    def test_marketSlug_only_returns_none(self):
+        # marketSlug is not a stable primary key — skip without id/conditionId
         raw = {"marketSlug": "mslug", "clobTokenIds": []}
-        m = PolymarketMarket.from_api(raw)
-        assert m.market_id == "mslug"
+        assert PolymarketMarket.from_api(raw) is None
 
-    def test_slug_fallback(self):
+    def test_slug_only_returns_none(self):
+        # slug is not a stable primary key — skip without id/conditionId
         raw = {"slug": "fallback-slug", "clobTokenIds": []}
-        m = PolymarketMarket.from_api(raw)
-        assert m.market_id == "fallback-slug"
+        assert PolymarketMarket.from_api(raw) is None
 
     def test_all_missing_returns_none(self):
         raw = {"clobTokenIds": ["t1"]}

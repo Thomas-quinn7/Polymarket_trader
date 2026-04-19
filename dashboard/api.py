@@ -7,7 +7,7 @@ import os
 import statistics as _stats
 import threading
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Literal, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
@@ -32,6 +32,21 @@ _RESTART_REQUIRED = {"fake_currency_balance"}
 # safe under CPython's GIL for simple attribute/float access.
 _bot_lock = threading.Lock()
 _bot_instance = None
+
+# Backtest DB — lazy singleton, created on first use.
+_backtest_db = None
+_backtest_db_lock = threading.Lock()
+
+
+def _get_backtest_db():
+    global _backtest_db
+    if _backtest_db is None:
+        with _backtest_db_lock:
+            if _backtest_db is None:
+                from backtesting.db import BacktestDB
+
+                _backtest_db = BacktestDB("storage/backtest.db")
+    return _backtest_db
 
 
 def set_bot_instance(bot) -> None:
@@ -76,8 +91,8 @@ if os.path.exists(static_dir):
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"^http://(localhost|127\.0\.0\.1):\d+$",
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
 
 
@@ -255,11 +270,17 @@ async def get_status():
     try:
         bot = get_bot()
 
-        # Calculate uptime
+        # Calculate uptime — handle both timezone-aware and naive start_time
         uptime = "Unknown"
-        if hasattr(bot, "start_time"):
-            uptime_seconds = (datetime.now() - bot.start_time).total_seconds()
-            uptime = f"{uptime_seconds:.0f}s"
+        if hasattr(bot, "start_time") and bot.start_time is not None:
+            try:
+                st = bot.start_time
+                if st.tzinfo is None:
+                    st = st.replace(tzinfo=timezone.utc)
+                uptime_seconds = (datetime.now(timezone.utc) - st).total_seconds()
+                uptime = f"{uptime_seconds:.0f}s"
+            except Exception:
+                pass
 
         pnl_summary = bot.pnl_tracker.get_summary()
 
@@ -988,7 +1009,7 @@ async def get_sessions(
 ):
     """
     List past strategy sessions, newest first.
-    Pass ?strategy=settlement_arbitrage to filter to one strategy.
+    Pass ?strategy=<name> to filter to one strategy.
     """
     bot = _get_bot_instance()
     if bot is None or bot.session_store is None:
@@ -1060,6 +1081,115 @@ async def regenerate_review(session_id: str):
 
     bot.session_store.save_review(session_id, review, config.OLLAMA_MODEL)
     return {"session_id": session_id, "review": review}
+
+
+# ── Backtest Models ───────────────────────────────────────────────────────────
+
+
+class BacktestRunRequest(BaseModel):
+    strategy_name: str
+    start_date: str = "2025-01-01"
+    end_date: str = "2025-04-01"
+    initial_balance: float = 1000.0
+    max_positions: int = 5
+    capital_per_trade_pct: float = 20.0
+    taker_fee_pct: float = 2.0
+    min_volume_usd: float = 500.0
+    max_duration_seconds: int = 1800
+    price_interval: str = "5m"
+    category: str = "crypto"
+
+
+class BacktestRunSummary(BaseModel):
+    run_id: str
+    strategy_name: str
+    started_at: str
+    finished_at: Optional[str]
+    status: str
+    market_count: Optional[int]
+    trade_count: Optional[int]
+    total_return_pct: Optional[float]
+    annualized_return: Optional[float]
+    max_drawdown: Optional[float]
+    sharpe_ratio: Optional[float]
+    win_rate: Optional[float]
+    profit_factor: Optional[float]
+    consec_wins_max: Optional[int]
+    consec_losses_max: Optional[int]
+
+
+class BacktestRunDetail(BacktestRunSummary):
+    config_json: Optional[str]
+    metrics_json: Optional[str]
+    equity_curve_json: Optional[str]
+    error_message: Optional[str]
+
+
+# ── Backtest Routes ───────────────────────────────────────────────────────────
+
+
+@app.get("/backtest", dependencies=[_auth])
+async def backtest_page():
+    import os
+    from fastapi.responses import FileResponse
+
+    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "backtest.html"))
+
+
+@app.get("/api/backtest/strategies", dependencies=[_auth])
+async def list_strategies():
+    from strategies.registry import available_strategies
+
+    return {"strategies": available_strategies()}
+
+
+@app.post("/api/backtest/run", dependencies=[_auth])
+async def start_backtest(req: BacktestRunRequest):
+    import uuid
+
+    from backtesting.config import BacktestConfig
+    from backtesting.runner import BacktestRunner
+
+    run_id = str(uuid.uuid4())
+    config_obj = BacktestConfig(**req.model_dump())
+    try:
+        config_obj.validate()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    db = _get_backtest_db()
+    db.create_run(run_id, config_obj.strategy_name, config_obj.to_json())
+
+    def _run():
+        runner = BacktestRunner()
+        runner.execute(config_obj, run_id=run_id)
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return {"run_id": run_id, "status": "pending"}
+
+
+@app.get("/api/backtest/runs", dependencies=[_auth])
+async def list_backtest_runs(limit: int = 20, strategy_name: Optional[str] = None):
+    db = _get_backtest_db()
+    rows = db.get_runs(limit=limit, strategy_name=strategy_name)
+    return {"runs": [dict(r) for r in rows]}
+
+
+@app.get("/api/backtest/runs/{run_id}", dependencies=[_auth])
+async def get_backtest_run(run_id: str):
+    db = _get_backtest_db()
+    row = db.get_run(run_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return dict(row)
+
+
+@app.get("/api/backtest/runs/{run_id}/trades", dependencies=[_auth])
+async def get_backtest_trades(run_id: str, offset: int = 0, limit: int = 100):
+    db = _get_backtest_db()
+    trades = db.get_run_trades(run_id, offset=offset, limit=limit)
+    total = db.count_run_trades(run_id)
+    return {"trades": [dict(t) for t in trades], "total_count": total}
 
 
 def start_dashboard(port: int = 8080, host: str = config.DASHBOARD_HOST):

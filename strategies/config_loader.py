@@ -14,8 +14,8 @@ Usage
 -----
     from strategies.config_loader import load_strategy_config
 
-    cfg = load_strategy_config("settlement_arbitrage")
-    min_price = cfg.get("min_price_threshold", 0.985)
+    cfg = load_strategy_config("example_strategy")
+    min_price = cfg.get("min_price", 0.0)
 """
 
 import os
@@ -35,19 +35,17 @@ _FRAMEWORK_ID: str = "pmf-7e3f-tq343"
 # Only keys present here are eligible for env-var override; all others are
 # YAML-only (avoids ambiguous list parsing and cross-strategy contamination).
 _TYPE_MAP: Dict[str, type] = {
-    # settlement_arbitrage
-    "min_price_threshold": float,
-    "max_price_threshold": float,
+    # strategy timing / edge params
     "execute_before_close_seconds": int,
     "expected_slippage_buffer_pct": float,
     "edge_filter_mode": str,
+    "strategy_min_confidence": float,
+    "strategy_max_positions": int,
     # demo_buy / paper_demo
     "hold_seconds": int,
     "min_volume": float,
     "primary_scan_category": str,
     # enhanced_market_scanner (flat top-level scalar keys only)
-    "min_price": float,
-    "max_price": float,
     "min_edge": float,
     "max_edge": float,
     "min_time_to_close": int,
@@ -55,6 +53,15 @@ _TYPE_MAP: Dict[str, type] = {
     "max_markets_to_track": int,
     "track_new_markets_only": bool,
     "ignore_seen_markets": bool,
+    # crypto_5min_mm
+    "limit_price": float,
+    "shares": float,
+    "min_ttc_to_enter": int,
+    "max_ttc_to_enter": int,
+    "target_slug_prefix": str,
+    "direct_poll_interval_ms": int,
+    "scheduled_poll_lead_s": float,
+    "prefetch_lookahead_s": int,
 }
 
 _VALID_EDGE_FILTER_MODES = {"net_edge", "slippage_adjusted"}
@@ -97,7 +104,7 @@ def load_strategy_config(strategy_name: str) -> Dict[str, Any]:
     Parameters
     ----------
     strategy_name:
-        Strategy folder/name, e.g. ``"settlement_arbitrage"``.
+        Strategy folder/name, e.g. ``"example_strategy"``.
 
     Returns
     -------
@@ -115,7 +122,12 @@ def load_strategy_config(strategy_name: str) -> Dict[str, Any]:
     with open(config_path, "r") as fh:
         raw: Dict[str, Any] = yaml.safe_load(fh) or {}
 
-    # Remove metadata key if present
+    # Validate and remove the metadata key.
+    # The YAML 'strategy:' field is the canonical display name — warn if it
+    # doesn't match the folder name so copy-paste errors surface immediately.
+    # The 'strategy:' key is documentation only — the folder name is the
+    # authoritative identifier used by the registry. Strip it silently; no
+    # runtime behaviour depends on it matching.
     raw.pop("strategy", None)
 
     # Apply env-var overrides only for keys explicitly listed in _TYPE_MAP

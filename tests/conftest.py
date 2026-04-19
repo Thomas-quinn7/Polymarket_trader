@@ -10,8 +10,6 @@ def mock_settings():
     """Create mock settings for testing."""
 
     class MockSettings:
-        min_price_threshold = 0.985
-        max_price_threshold = 1.0
         max_positions = 5
         scan_interval_ms = 500
         execute_before_close_seconds = 2

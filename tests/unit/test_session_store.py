@@ -126,7 +126,7 @@ class TestConnect:
 class TestCreateSession:
     def test_returns_uuid_string(self, tmp_path):
         store = _make_store(tmp_path)
-        sid = store.create_session("settlement_arbitrage", "paper", 10_000.0)
+        sid = store.create_session("example_strategy", "paper", 10_000.0)
         assert isinstance(sid, str) and len(sid) == 36  # UUID4 format
         store.close()
 
@@ -152,7 +152,7 @@ class TestCreateSession:
 class TestRecordSettledTrade:
     def _setup(self, tmp_path):
         store = _make_store(tmp_path)
-        sid = store.create_session("settlement_arbitrage", "paper", 10_000.0)
+        sid = store.create_session("example_strategy", "paper", 10_000.0)
         return store, sid
 
     def test_win_outcome(self, tmp_path):
@@ -221,7 +221,7 @@ class TestCloseSession:
     def _populated_store(self, tmp_path):
         """Store with one session containing two trades (win + loss)."""
         store = _make_store(tmp_path)
-        sid = store.create_session("settlement_arbitrage", "paper", 10_000.0)
+        sid = store.create_session("example_strategy", "paper", 10_000.0)
         pos_win = _make_position(position_id="pos-win", realized_pnl=14.70, gross_pnl=14.70)
         pos_loss = _make_position(position_id="pos-loss", realized_pnl=-8.50, gross_pnl=-8.50)
         store.record_settled_trade(sid, pos_win, balance_after=10_014.70, exit_reason="settlement")
