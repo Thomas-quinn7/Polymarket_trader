@@ -346,6 +346,32 @@ class PolymarketConfig:
         self.OLLAMA_HOST = env.get("OLLAMA_HOST", "http://localhost:11434")
         self.OLLAMA_MODEL = env.get("OLLAMA_MODEL", "llama3.2:3b")
 
+    @classmethod
+    def from_dict(cls, overrides: dict) -> "PolymarketConfig":
+        """
+        Create a PolymarketConfig with specific values overridden.
+
+        Starts from the live singleton's current state, then applies
+        `overrides` on top.  Intended for unit and integration tests that
+        need deterministic config values without monkey-patching the
+        global singleton.
+
+        Example::
+
+            cfg = PolymarketConfig.from_dict({
+                "PAPER_TRADING_ONLY": True,
+                "MAX_POSITIONS": 2,
+                "FAKE_CURRENCY_BALANCE": 500.0,
+            })
+        """
+        instance = cls.__new__(cls)
+        # Copy every attribute from the live singleton as the baseline.
+        instance.__dict__.update(config.__dict__)
+        # Apply caller-supplied overrides.
+        for key, value in overrides.items():
+            setattr(instance, key, value)
+        return instance
+
 
 # Global config instance
 config = PolymarketConfig()
