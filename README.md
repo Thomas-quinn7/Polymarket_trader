@@ -51,20 +51,96 @@ Built around the Polymarket CLOB (Central Limit Order Book) with support for bot
 ## Installation
 
 ### Prerequisites
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) (fast package manager)
+
+- Python 3.11 or higher
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) — fast Python package manager
+
+**Install uv:**
+
+```bash
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Setup
+
+**1. Clone the repository**
 
 ```bash
 git clone https://github.com/Thomas-quinn7/Polymarket_trader.git
 cd Polymarket_trader
-
-uv venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-
-uv pip install -e .
-cp .env.example .env
-# edit .env with your credentials
 ```
+
+**2. Create a virtual environment**
+
+```bash
+uv venv
+```
+
+**3. Activate the virtual environment**
+
+```bash
+# Windows (Command Prompt)
+.venv\Scripts\activate.bat
+
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
+
+# macOS / Linux
+source .venv/bin/activate
+```
+
+You should see `(.venv)` at the start of your terminal prompt.
+
+**4. Install the project and all dependencies**
+
+```bash
+uv pip install -e ".[dev]"
+```
+
+This installs the framework in editable mode along with all development dependencies (pytest, black, flake8, etc.).
+
+**5. Configure your environment**
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and fill in the required values:
+
+```env
+# Your Polymarket wallet credentials
+POLYMARKET_PRIVATE_KEY=your_private_key_here
+POLYMARKET_FUNDER_ADDRESS=your_wallet_address_here
+
+# Set a strategy to run
+STRATEGY=example_strategy
+
+# Paper trading is enabled by default — no real money
+TRADING_MODE=paper
+PAPER_TRADING_ONLY=True
+```
+
+> **Getting your Polymarket credentials:** log in to [polymarket.com](https://polymarket.com), go to **Settings → Profile → Export Private Key**. Your funder address is the wallet address shown on the same page.
+
+**6. Validate your setup**
+
+```bash
+python tests/scripts/validate_setup.py
+```
+
+This checks credentials, dependencies, and configuration before you run the bot.
+
+**7. Run the bot**
+
+```bash
+python main.py
+```
+
+Then open `http://localhost:8080` in your browser to access the dashboard.
 
 ---
 
