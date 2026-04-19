@@ -1,5 +1,8 @@
 [flake8]
 max-line-length = 100
+# E203: whitespace before ':' — Black intentionally formats slice notation this
+# way (e.g. a[1 :]) and the two tools are known to conflict on this rule.
+extend-ignore = E203
 exclude =
     .venv,
     __pycache__,
