@@ -37,7 +37,7 @@ from data.order_book_store import OrderBookStore, OrderBookSnapshot, OrderBookLe
 from data.session_store import SessionStore
 from strategies.registry import load_strategy
 from strategies.base import BaseStrategy
-from portfolio.fake_currency_tracker import FakeCurrencyTracker
+from portfolio.paper_portfolio import PaperPortfolio
 from portfolio.position_tracker import Position, PositionTracker
 from execution.order_executor import OrderExecutor
 from utils.logger import logger
@@ -62,7 +62,7 @@ class TradingBot:
         self.client: PolymarketClient = PolymarketClient()
         self.strategy: BaseStrategy = load_strategy(config.STRATEGY, self.client)
 
-        self.currency_tracker = FakeCurrencyTracker()
+        self.currency_tracker = PaperPortfolio()
         self.pnl_tracker = PnLTracker(initial_balance=self.currency_tracker.starting_balance)
         self.position_tracker = PositionTracker(self.pnl_tracker)
 
@@ -132,7 +132,7 @@ class TradingBot:
         logger.info("=" * 70)
 
     def _restore_open_positions(self) -> None:
-        """Re-populate PositionTracker, PnLTracker, and FakeCurrencyTracker from
+        """Re-populate PositionTracker, PnLTracker, and PaperPortfolio from
         the DB on restart so open positions survive a process restart.
 
         Validation before restore:
