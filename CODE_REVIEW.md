@@ -1,14 +1,24 @@
 # Code Review — Polymarket Trading Framework
 
 **Reviewer:** Claude Sonnet 4.6  
-**Last updated:** 2026-04-19 (Session 8)  
-**Sessions:** Session 1 (2026-04-10) · Session 2 (2026-04-11) · Session 3 (2026-04-11) · Session 4 (2026-04-12) · Session 5 (2026-04-12) · Session 6 (2026-04-15) · Session 7 (2026-04-19)
+**Last updated:** 2026-04-19 (Session 9)  
+**Sessions:** Session 1 (2026-04-10) · Session 2 (2026-04-11) · Session 3 (2026-04-11) · Session 4 (2026-04-12) · Session 5 (2026-04-12) · Session 6 (2026-04-15) · Session 7–9 (2026-04-19)
 
 ---
 
 ## Status Summary
 
-48 issues found across four review sessions. 48 resolved; 0 open (design notes remain for architectural tracking).
+61 issues found and resolved across nine review sessions. 0 open.
+
+| Severity | Found | Fixed |
+|---|---|---|
+| P0 — Critical correctness | 8 | 8 ✓ |
+| P1 — High correctness | 9 | 9 ✓ |
+| P2 — Moderate | 10 | 10 ✓ |
+| P3 — Minor | 17 | 17 ✓ |
+| P4 — Polish | 4 | 4 ✓ |
+| Security | 5 | 5 ✓ |
+| Interview / architecture (I-series) | 13 | 13 ✓ |
 
 | Severity | Found | Fixed |
 |---|---|---|
@@ -373,9 +383,9 @@ The template previously hard-coded a specific strategy's edge formula. Changes m
 | ~~I-5~~ | ~~High~~ | ~~No spread or market impact in backtest~~ | ~~`backtesting/engine.py`, `config.py`~~ |
 | ~~I-6~~ | ~~Medium~~ | ~~Sharpe is trade-frequency, not calendar — undocumented~~ | ~~`backtesting/metrics.py`~~ |
 | ~~I-7~~ | ~~Medium~~ | ~~`market_id` falls back to `slug` (not a stable PK)~~ | ~~`data/market_schema.py`~~ |
-| I-8 | Medium | No integration tests; strategy logic untested | `tests/unit/` |
-| I-9 | Low | Risk-free rate implicitly zero, not documented | `backtesting/metrics.py` |
-| I-10 | Low | `FakeCurrencyTracker` name unprofessional | `portfolio/fake_currency_tracker.py` |
-| ~~I-11~~ | ~~Low~~ | ~~`datetime.now()` timezone-naive in `main.py`~~ | ~~`main.py:60`~~ |
-| I-12 | Low | Global config singleton — hard to test | `config/polymarket_config.py` |
+| ~~I-8~~ | ~~Medium~~ | ~~No integration tests; strategy logic untested~~ | ~~`tests/unit/test_integration.py`~~ |
+| ~~I-9~~ | ~~Low~~ | ~~Risk-free rate implicitly zero, not documented~~ | ~~`backtesting/config.py`, `metrics.py`~~ |
+| ~~I-10~~ | ~~Low~~ | ~~`FakeCurrencyTracker` name unprofessional~~ | ~~Renamed to `PaperPortfolio`~~ |
+| ~~I-11~~ | ~~Low~~ | ~~`datetime.now()` timezone-naive in `main.py`~~ | ~~All three instances fixed~~ |
+| ~~I-12~~ | ~~Low~~ | ~~Global config singleton — hard to test~~ | ~~Added `PolymarketConfig.from_dict(overrides)` factory~~ |
 | ~~I-13~~ | ~~Low~~ | ~~`_raw` dict on every `PolymarketMarket` wastes memory~~ | ~~`data/market_schema.py`~~ |

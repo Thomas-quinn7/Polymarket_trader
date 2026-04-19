@@ -203,7 +203,7 @@ class TradingBot:
                 opened_at = (
                     datetime.fromisoformat(row["opened_at"])
                     if row.get("opened_at")
-                    else datetime.now()
+                    else datetime.now(timezone.utc)
                 )
                 position = Position(
                     position_id=row["position_id"],
@@ -416,7 +416,7 @@ class TradingBot:
             # takes effect without a restart.
             scan_interval = config.SCAN_INTERVAL_MS / 1000
             logger.debug(
-                f"Loop #{iteration} — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
+                f"Loop #{iteration} — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} "
                 f"| strategy={config.STRATEGY} mode={config.TRADING_MODE}"
             )
 
@@ -618,7 +618,9 @@ class TradingBot:
                         )
                         continue
 
-                position_id = f"{opp.market_id}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+                position_id = (
+                    f"{opp.market_id}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+                )
                 success = self.executor.execute_buy(opp, position_id)
 
                 if success:

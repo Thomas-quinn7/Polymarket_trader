@@ -34,6 +34,12 @@ class BacktestConfig:
     # ── Price data ────────────────────────────────────────────────────────────
     price_interval: str = "5m"  # "1m" | "5m" | "15m" | "1h"
 
+    # ── Risk-free rate ────────────────────────────────────────────────────────
+    # Annual risk-free rate used to compute excess returns for Sharpe/Sortino.
+    # Default 0.0 is appropriate for prediction markets: capital locked in a
+    # position earns no interest.  Set to e.g. 0.05 to compare against T-bills.
+    risk_free_rate_annual: float = 0.0
+
     # ── API behaviour ─────────────────────────────────────────────────────────
     rate_limit_rps: float = 3.0  # Gamma API requests per second
 

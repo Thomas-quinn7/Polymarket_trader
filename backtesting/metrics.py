@@ -149,13 +149,18 @@ class MetricsCalculator:
             trades_per_year = m.total_trades / effective_years
             ann_factor = math.sqrt(trades_per_year)
 
+            # Convert annual risk-free rate to per-trade equivalent so excess
+            # returns are on the same frequency basis as the return series.
+            rf_per_trade = getattr(config, "risk_free_rate_annual", 0.0) / max(trades_per_year, 1)
+            excess_mean_r = mean_r - rf_per_trade
+
             if stdev_r > 0:
-                m.sharpe_ratio = round(mean_r / stdev_r * ann_factor, 4)
+                m.sharpe_ratio = round(excess_mean_r / stdev_r * ann_factor, 4)
 
             if len(downside) >= 2:
                 stdev_down = statistics.stdev(downside)
                 if stdev_down > 0:
-                    m.sortino_ratio = round(mean_r / stdev_down * ann_factor, 4)
+                    m.sortino_ratio = round(excess_mean_r / stdev_down * ann_factor, 4)
 
         if m.max_drawdown > 0 and m.annualized_return is not None:
             m.calmar_ratio = round(m.annualized_return / m.max_drawdown, 4)
