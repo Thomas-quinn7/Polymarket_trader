@@ -226,6 +226,9 @@ OWNERSHIP.md
 # Internal development notes
 TODO.md
 
+# Internal code review and known-issues tracking
+CODE_REVIEW.md
+
 # ── Private development documentation ───────────────────────
 # docs/ARCHITECTURE.md is intentionally public (kept in repo).
 # The files below contain internal schema detail, known bugs,

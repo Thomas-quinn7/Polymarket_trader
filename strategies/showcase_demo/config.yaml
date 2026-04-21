@@ -1,0 +1,24 @@
+strategy: showcase_demo
+
+# ── Trade lifecycle ──────────────────────────────────────────────────────────
+# How long each position is held before exiting.
+# Shorter ranges produce more trades per session and fill charts faster.
+hold_seconds_min: 90     # 1.5 min — fastest exit
+hold_seconds_max: 600    # 10 min  — slowest exit
+
+# ── Outcome bias ─────────────────────────────────────────────────────────────
+# Pre-determined fraction of positions that resolve as wins.
+# 0.68 → 68% wins produces a smooth upward equity curve with realistic dips.
+win_rate: 0.68
+
+# ── Synthetic signal parameters ──────────────────────────────────────────────
+edge_min: 2.5
+edge_max: 11.0
+confidence_min: 0.40
+confidence_max: 0.92
+
+# ── Entry filter ─────────────────────────────────────────────────────────────
+# Only enter synthetic markets whose YES price is in [min_price, max_price].
+# Wide window maximises the number of eligible markets.
+min_price: 0.18
+max_price: 0.82

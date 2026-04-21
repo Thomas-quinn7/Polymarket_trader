@@ -1,8 +1,12 @@
 # Polymarket Trading Framework
 
-A production-quality Python framework for algorithmic trading on [Polymarket](https://polymarket.com) prediction markets. Handles market data, order execution, portfolio management, backtesting, and real-time monitoring — so strategy development is the only focus.
+A production-quality Python trading infrastructure for [Polymarket](https://polymarket.com) prediction markets. Handles everything below the strategy layer — market data, order execution, portfolio management, backtesting, and real-time monitoring — so implementing and testing a new edge is the only focus.
 
-Built around the Polymarket CLOB (Central Limit Order Book) with support for both market orders and limit orders, fractional Kelly position sizing, per-trade session recording, and a live web dashboard.
+Built around the Polymarket CLOB (Central Limit Order Book) with 776 unit tests, a wall-clock backtesting engine, fractional Kelly sizing, live order-book slippage estimation, per-session trade recording, and a FastAPI dashboard.
+
+> **What this is:** Trading infrastructure — a clean interface between a strategy signal and the exchange. The included `example_strategy` is a documented template with a stubbed signal that fires no trades by design. Copy it, implement your own edge formula, and the full stack runs it. Real strategies are kept private.
+
+> **What this is not:** A plug-and-play profitable trading bot. No alpha signal is included.
 
 ---
 
