@@ -70,7 +70,10 @@ def _build_registry() -> Dict[str, Type[BaseStrategy]]:
                 break
 
         if strategy_class is None:
-            logger.debug(f"Registry: {module_name!r} has no BaseStrategy subclass — skipping")
+            logger.warning(
+                f"Registry: {module_name!r} has no BaseStrategy subclass — skipping. "
+                "Ensure the package's __init__.py exports a class that inherits BaseStrategy."
+            )
             continue
 
         registry[entry.name] = strategy_class

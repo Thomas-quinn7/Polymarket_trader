@@ -363,7 +363,6 @@ class TradingBot:
         self.strategy = load_strategy(config.STRATEGY, self.client)
         self.executor.polymarket_client = self.client
         self.market_provider = MarketProvider(self.client)
-        self.position_tracker._strategy_name = config.STRATEGY
 
         # Open a new session record for this run
         if self.session_store is not None:
@@ -751,7 +750,7 @@ _BANNER = (
     "║      Polymarket Trading Framework  ·  pmf-7e3f-tq343                 ║\n"
     "║                                                                      ║\n"
     "║  Authors : Thomas Quinn  (github.com/Thomas-quinn7)                  ║\n"
-    "║            Ciaran McDonnell  (github.com/CiaranMcDonnell)           ║\n"
+    "║            Ciaran McDonnell  (github.com/CiaranMcDonnell)            ║\n"
     "║                                                                      ║\n"
     "║  Repo    : github.com/Thomas-quinn7/Polymarket_trader                ║\n"
     "║  License : GNU Affero General Public License v3  (AGPL-3.0-only)     ║\n"

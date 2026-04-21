@@ -91,7 +91,6 @@ class PositionTracker:
         self.pnl_tracker = pnl_tracker
         self.positions: Dict[str, Position] = {}
         self.max_positions = config.MAX_POSITIONS
-        self._strategy_name: str = config.STRATEGY
         self._lock = threading.Lock()
 
         logger.info("Position tracker initialized")
@@ -143,7 +142,7 @@ class PositionTracker:
             expires_at=expires_at,
             entry_fee=entry_fee,
             neg_risk=neg_risk,
-            strategy_name=self._strategy_name,
+            strategy_name=config.STRATEGY,
             category=getattr(opportunity, "category", "") or "",
             slippage_pct=slippage_pct,
         )
