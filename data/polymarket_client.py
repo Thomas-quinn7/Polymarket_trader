@@ -21,6 +21,17 @@ from utils.logger import logger
 _http_session = _requests.Session()
 _http_session.headers.update({"Accept": "application/json"})
 
+# The py-clob-client SDK uses its own module-level httpx.Client with a 5-second
+# timeout. Under concurrent polling that timeout fires frequently as "Request exception!"
+# warnings. Replacing it with a 15-second timeout eliminates most of these.
+try:
+    import py_clob_client.http_helpers.helpers as _clob_http
+    import httpx as _httpx
+    _clob_http._http_client = _httpx.Client(timeout=15.0)
+    logger.debug("SDK httpx timeout extended to 15s")
+except Exception:
+    pass
+
 
 def _with_retry(fn, retries: int = None, delays: tuple = None):
     """Call fn(); on exception retry up to `retries` times with jittered backoff.
@@ -419,30 +430,48 @@ class PolymarketClient:
             raw_bids = book.get("bids", []) if isinstance(book, dict) else getattr(book, "bids", [])
             raw_asks = book.get("asks", []) if isinstance(book, dict) else getattr(book, "asks", [])
 
+            def _to_float(v) -> float:
+                # Some SDK versions return price/size as nested dicts e.g. {"value": "0.50"}
+                if isinstance(v, dict):
+                    v = v.get("value") or v.get("price") or next(iter(v.values()), 0)
+                try:
+                    return float(v) if v else 0.0
+                except (TypeError, ValueError):
+                    return 0.0
+
             def _normalise(levels_raw):
                 out = []
                 for lvl in levels_raw:
                     if isinstance(lvl, dict):
                         out.append(
-                            {"price": float(lvl.get("price", 0)), "size": float(lvl.get("size", 0))}
+                            {"price": _to_float(lvl.get("price", 0)), "size": _to_float(lvl.get("size", 0))}
                         )
                     else:
                         out.append(
                             {
-                                "price": float(getattr(lvl, "price", 0)),
-                                "size": float(getattr(lvl, "size", 0)),
+                                "price": _to_float(getattr(lvl, "price", 0)),
+                                "size": _to_float(getattr(lvl, "size", 0)),
                             }
                         )
                 return out
 
-            mid_price = float(self.client.get_midpoint(token_id))
+            mid_price = _to_float(self.client.get_midpoint(token_id))
             return {
                 "bids": _normalise(raw_bids)[:levels],
                 "asks": _normalise(raw_asks)[:levels],
                 "mid_price": mid_price,
             }
         except Exception as e:
-            logger.error(f"Error fetching order book for {token_id}: {e}")
+            err_str = str(e)
+            if "No orderbook" in err_str or "404" in err_str:
+                logger.debug(f"No orderbook for {token_id[:20]}… (resolved or not yet active)")
+                raise  # re-raise so callers can detect and exit cleanly
+            if "400" in err_str:
+                logger.warning(f"Order book 400 for {token_id[:20]}…")
+            elif "status_code=None" in err_str or "Request exception" in err_str:
+                logger.warning(f"Network error fetching order book for {token_id[:20]}… (transient)")
+            else:
+                logger.error(f"Error fetching order book for {token_id}: {e}")
             return {"bids": [], "asks": [], "mid_price": 0.0}
 
     def create_market_order(

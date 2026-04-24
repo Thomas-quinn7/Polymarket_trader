@@ -284,3 +284,13 @@ strategies/crypto_5min_mm/
 strategies/paper_demo/
 strategies/demo_buy/
 strategies/enhanced_market_scanner/
+
+# ============================================================
+# PRIVATE RESEARCH TOOLING & DATA EXPORTS (not for public release)
+# ============================================================
+# Proprietary research tools (price-target tracking, tick recording, etc.)
+# and the CSV exports they produce. These feed private trading research
+# and must stay out of the public origin remote.
+tools/
+crossings.csv
+my_export.csv
