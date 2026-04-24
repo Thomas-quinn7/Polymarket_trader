@@ -94,5 +94,32 @@ echo "Cleaning up sync branch..."
 git checkout "$CURRENT_BRANCH"
 git branch -D "$SYNC_BRANCH"
 
+# Switching back to $CURRENT_BRANCH deletes gitignored paths that were tracked
+# on the sync branch. Restore them from the freshly pushed private/main so the
+# working tree keeps the strategies, tools, storage and CSVs between syncs.
+echo ""
+echo "Restoring private files to working tree..."
+RESTORE_PATHS=(strategies/crypto_5min_mm strategies/paper_demo strategies/demo_buy strategies/enhanced_market_scanner tools storage)
+EXISTING_PATHS=()
+for p in "${RESTORE_PATHS[@]}"; do
+    if git cat-file -e "$PRIVATE_REMOTE/main:$p" 2>/dev/null; then
+        EXISTING_PATHS+=("$p")
+    fi
+done
+# Root-level CSVs pushed by the sync — restore each one that exists on the remote.
+while IFS= read -r csv; do
+    [ -n "$csv" ] && EXISTING_PATHS+=("$csv")
+done < <(git ls-tree --name-only "$PRIVATE_REMOTE/main" | grep -E '^[^/]+\.csv$' || true)
+
+if [ ${#EXISTING_PATHS[@]} -gt 0 ]; then
+    git checkout "$PRIVATE_REMOTE/main" -- "${EXISTING_PATHS[@]}"
+    # These paths are gitignored on $CURRENT_BRANCH; unstage so they return to
+    # the "untracked, ignored" state they had before the sync ran.
+    git reset HEAD -- "${EXISTING_PATHS[@]}" > /dev/null
+    for p in "${EXISTING_PATHS[@]}"; do
+        echo "  ✓ $p"
+    done
+fi
+
 echo ""
 echo "✓ Private repo updated: https://github.com/Thomas-quinn7/Polymarket_private"
