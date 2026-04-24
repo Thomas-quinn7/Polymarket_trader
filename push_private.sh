@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # push_private.sh
-# Syncs everything to the private repo — framework code, private strategies, and logs.
-# .env is NEVER included.
+# Syncs everything to the private repo for the trading team.
+# .env is the ONLY thing excluded.
 #
 # Usage:
 #   ./push_private.sh            # sync current main to private/main
@@ -9,14 +9,13 @@
 # What gets pushed:
 #   - All tracked public files (framework, tests, docs)
 #   - Private strategies: crypto_5min_mm, paper_demo, demo_buy, enhanced_market_scanner
-#   - logs/sessions/  — per-session JSON exports (P&L, equity curve, trade records)
-#   - logs/trade_history_*.csv — per-day trade history
-#   - logs/trades.log — trade execution log
+#   - tools/ — proprietary research tooling (tick_recorder, price_target_tracker, configs)
+#   - storage/ — SQLite DBs (trading.db, market_minimums.db) and their CSV exports
+#   - logs/ — all app logs, per-session JSON exports, trade history CSVs
+#   - *.csv at repo root — research exports (crossings.csv, my_export.csv, etc.)
 #
 # What is always excluded:
 #   - .env (credentials — never committed anywhere)
-#   - storage/ (SQLite DB — large binary, not suitable for git)
-#   - logs/polymarket_trading_*.log (raw app debug logs — too large for GitHub)
 
 set -e
 
@@ -52,12 +51,31 @@ add_if_exists "strategies/paper_demo"
 add_if_exists "strategies/demo_buy"
 add_if_exists "strategies/enhanced_market_scanner"
 
+echo "Adding research tooling..."
+add_if_exists "tools"
+
+echo "Adding storage (SQLite DBs + CSV exports)..."
+add_if_exists "storage"
+
 echo "Adding logs..."
-add_if_exists "logs/sessions"
-# Glob trade history CSVs individually (daily app logs are too large for GitHub)
-for f in logs/trade_history_*.csv logs/trades.log; do
+add_if_exists "logs"
+
+echo "Adding root-level research CSVs..."
+shopt -s nullglob
+for f in *.csv; do
     add_if_exists "$f"
 done
+shopt -u nullglob
+
+# Safety check: .env must NEVER be force-added. Bail out if anything matched it.
+if git diff --cached --name-only | grep -qE '(^|/)\.env(\..*)?$'; then
+    echo ""
+    echo "✖  Refusing to push: .env (or variant) somehow got staged."
+    git reset
+    git checkout "$CURRENT_BRANCH"
+    git branch -D "$SYNC_BRANCH"
+    exit 1
+fi
 
 # Only commit if something was actually staged
 if git diff --cached --quiet; then
