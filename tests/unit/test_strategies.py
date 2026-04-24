@@ -227,7 +227,10 @@ class TestStrategyRegistry:
             if p.startswith("strategies/") and "/" in p[len("strategies/") :]
         }
         # Remove non-strategy entries (base files, not subfolders with strategies)
-        skip = {"__pycache__", "examples", "configs"}
+        # enhanced_market_scanner lives under strategies/ but exports a scanner
+        # utility class, not a BaseStrategy subclass — the registry deliberately
+        # skips it, so the test must too.
+        skip = {"__pycache__", "examples", "configs", "enhanced_market_scanner"}
         registered = available_strategies()
         for folder in tracked - skip:
             if folder and not folder.startswith("_"):
