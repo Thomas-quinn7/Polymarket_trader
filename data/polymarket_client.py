@@ -27,6 +27,7 @@ _http_session.headers.update({"Accept": "application/json"})
 try:
     import py_clob_client.http_helpers.helpers as _clob_http
     import httpx as _httpx
+
     _clob_http._http_client = _httpx.Client(timeout=15.0)
     logger.debug("SDK httpx timeout extended to 15s")
 except Exception:
@@ -444,7 +445,10 @@ class PolymarketClient:
                 for lvl in levels_raw:
                     if isinstance(lvl, dict):
                         out.append(
-                            {"price": _to_float(lvl.get("price", 0)), "size": _to_float(lvl.get("size", 0))}
+                            {
+                                "price": _to_float(lvl.get("price", 0)),
+                                "size": _to_float(lvl.get("size", 0)),
+                            }
                         )
                     else:
                         out.append(
@@ -469,7 +473,9 @@ class PolymarketClient:
             if "400" in err_str:
                 logger.warning(f"Order book 400 for {token_id[:20]}…")
             elif "status_code=None" in err_str or "Request exception" in err_str:
-                logger.warning(f"Network error fetching order book for {token_id[:20]}… (transient)")
+                logger.warning(
+                    f"Network error fetching order book for {token_id[:20]}… (transient)"
+                )
             else:
                 logger.error(f"Error fetching order book for {token_id}: {e}")
             return {"bids": [], "asks": [], "mid_price": 0.0}
