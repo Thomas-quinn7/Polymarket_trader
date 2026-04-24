@@ -67,6 +67,15 @@ for f in *.csv; do
 done
 shopt -u nullglob
 
+# `git add -f` on a directory sweeps in everything including __pycache__/*.pyc
+# and *.pyo. Drop those from the index so the private repo doesn't fill with
+# bytecode that differs across Python versions.
+CACHE_FILES=$(git diff --cached --name-only | grep -E '(__pycache__/|\.pyc$|\.pyo$)' || true)
+if [ -n "$CACHE_FILES" ]; then
+    echo "Removing Python bytecode from staged files..."
+    echo "$CACHE_FILES" | xargs git reset HEAD -- > /dev/null
+fi
+
 # Safety check: .env must NEVER be force-added. Bail out if anything matched it.
 if git diff --cached --name-only | grep -qE '(^|/)\.env(\..*)?$'; then
     echo ""
@@ -112,13 +121,21 @@ while IFS= read -r csv; do
 done < <(git ls-tree --name-only "$PRIVATE_REMOTE/main" | grep -E '^[^/]+\.csv$' || true)
 
 if [ ${#EXISTING_PATHS[@]} -gt 0 ]; then
-    git checkout "$PRIVATE_REMOTE/main" -- "${EXISTING_PATHS[@]}"
-    # These paths are gitignored on $CURRENT_BRANCH; unstage so they return to
-    # the "untracked, ignored" state they had before the sync ran.
-    git reset HEAD -- "${EXISTING_PATHS[@]}" > /dev/null
+    # Tolerate per-path failures: on Windows, `git checkout` sometimes can't
+    # unlink a CSV/DB that another process still has open. Restore each path
+    # individually so one locked file doesn't block the rest, and don't let
+    # `set -e` abort the restore loop.
     for p in "${EXISTING_PATHS[@]}"; do
-        echo "  ✓ $p"
+        if git checkout "$PRIVATE_REMOTE/main" -- "$p" 2>/dev/null; then
+            echo "  ✓ $p"
+        else
+            echo "  ⚠  $p  (skipped — likely locked by another process)"
+        fi
     done
+    # These paths are gitignored on $CURRENT_BRANCH; unstage everything that
+    # actually made it into the index so the restored files return to the
+    # untracked-but-ignored state they had before the sync ran.
+    git reset HEAD -- "${EXISTING_PATHS[@]}" > /dev/null 2>&1 || true
 fi
 
 echo ""
