@@ -17,3 +17,10 @@ per-file-ignores =
     # dashboard/api.py intentionally imports config after setting up module-level
     # path constants that are referenced at import time; E402 is expected here.
     dashboard/api.py: E402
+    # tools/*.py are standalone scripts that run from the repo root without
+    # requiring the package to be installed. They adjust sys.path before
+    # importing from data/ and utils/, which trips E402 by design.
+    tools/price_target_tracker.py: E402
+    # Same sys.path bootstrap as above, plus an SQL UPSERT block whose lines
+    # exceed 100 chars to keep the CASE/WHEN columns aligned for readability.
+    tools/tick_recorder.py: E402, E501
