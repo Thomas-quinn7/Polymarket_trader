@@ -11,7 +11,12 @@ exclude =
     # Dead-code package — kept for reference, not part of the trading system
     pkg/,
     # Utility / manual test scripts that are not run in CI
-    tests/scripts/
+    tests/scripts/,
+    # Internal PDF builder scripts (gitignored on origin, only present on the
+    # private remote). Their bodies are large literal strings of guide content
+    # whose long lines are intentional — flake8 line-length checks aren't useful.
+    build_guide_pdf.py,
+    build_run_guide_pdf.py
 
 per-file-ignores =
     # dashboard/api.py intentionally imports config after setting up module-level
