@@ -97,6 +97,14 @@ class PolymarketMarket:
         # --- outcome prices (YES at [0], NO at [1]) ---
         outcome_prices = _parse_outcome_prices(raw)
 
+        # --- normalise YES/NO orientation ---
+        # Polymarket's `outcomes` field is the labels parallel to clobTokenIds
+        # and outcomePrices. The API has been observed to return the NO side
+        # first for some markets; if so, flip both arrays so token_ids[0] is
+        # always the YES token and outcome_prices[0] is always the YES price.
+        # When outcomes is missing or unrecognised we leave order unchanged.
+        token_ids, outcome_prices = _orient_yes_no(raw.get("outcomes"), token_ids, outcome_prices)
+
         return cls(
             market_id=str(market_id),
             slug=slug,
@@ -127,6 +135,56 @@ class PolymarketMarket:
         this method.
         """
         return self.volume > 0 and self.volume >= min_volume
+
+
+# Outcome labels that mean "YES" at index 0. Anything that maps to NO at index
+# 0 triggers a flip. Case-insensitive. Unknown labels => no flip (preserves
+# whatever order the API gave us, matching pre-2026-04 behaviour).
+_YES_LABELS = frozenset({"yes", "y", "true", "up", "for"})
+_NO_LABELS = frozenset({"no", "n", "false", "down", "against"})
+
+
+def _orient_yes_no(
+    outcomes,
+    token_ids: List[str],
+    outcome_prices: List[float],
+) -> tuple:
+    """
+    Reorder (token_ids, outcome_prices) so YES is at index 0 when the
+    `outcomes` field tells us the API returned them flipped.
+
+    Returns the (possibly reordered) token_ids and outcome_prices.
+
+    Behaviour:
+      outcomes=["Yes","No"]  -> no change
+      outcomes=["No","Yes"]  -> flipped
+      outcomes missing       -> no change (preserves API order)
+      outcomes unrecognised  -> no change (defensive: don't guess)
+    """
+    if not outcomes or len(token_ids) < 2:
+        return token_ids, outcome_prices
+    # outcomes can arrive as a JSON-encoded string from Gamma
+    if isinstance(outcomes, str):
+        try:
+            outcomes = _json.loads(outcomes)
+        except Exception:
+            return token_ids, outcome_prices
+    if not isinstance(outcomes, list) or len(outcomes) < 2:
+        return token_ids, outcome_prices
+    first = str(outcomes[0]).strip().lower()
+    second = str(outcomes[1]).strip().lower()
+    if first in _YES_LABELS and second in _NO_LABELS:
+        return token_ids, outcome_prices
+    if first in _NO_LABELS and second in _YES_LABELS:
+        # Flip both arrays in lockstep so price[i] still pairs with token[i].
+        flipped_tokens = [token_ids[1], token_ids[0]] + list(token_ids[2:])
+        flipped_prices = (
+            [outcome_prices[1], outcome_prices[0]] + list(outcome_prices[2:])
+            if len(outcome_prices) >= 2
+            else outcome_prices
+        )
+        return flipped_tokens, flipped_prices
+    return token_ids, outcome_prices
 
 
 def _parse_outcome_prices(raw: dict) -> List[float]:
