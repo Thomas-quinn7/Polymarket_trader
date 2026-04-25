@@ -67,6 +67,15 @@ for f in *.csv; do
 done
 shopt -u nullglob
 
+echo "Adding internal collaborator docs (PDFs + builders)..."
+add_if_exists "build_guide_pdf.py"
+add_if_exists "build_run_guide_pdf.py"
+shopt -s nullglob
+for f in *.pdf; do
+    add_if_exists "$f"
+done
+shopt -u nullglob
+
 # `git add -f` on a directory sweeps in everything including __pycache__/*.pyc
 # and *.pyo. Drop those from the index so the private repo doesn't fill with
 # bytecode that differs across Python versions.
@@ -115,10 +124,12 @@ for p in "${RESTORE_PATHS[@]}"; do
         EXISTING_PATHS+=("$p")
     fi
 done
-# Root-level CSVs pushed by the sync — restore each one that exists on the remote.
-while IFS= read -r csv; do
-    [ -n "$csv" ] && EXISTING_PATHS+=("$csv")
-done < <(git ls-tree --name-only "$PRIVATE_REMOTE/main" | grep -E '^[^/]+\.csv$' || true)
+# Root-level CSVs, PDFs, and the PDF builder scripts pushed by the sync —
+# restore each one that exists on the remote so the working tree keeps them.
+while IFS= read -r f; do
+    [ -n "$f" ] && EXISTING_PATHS+=("$f")
+done < <(git ls-tree --name-only "$PRIVATE_REMOTE/main" \
+    | grep -E '^[^/]+\.(csv|pdf)$|^build_.*_pdf\.py$' || true)
 
 if [ ${#EXISTING_PATHS[@]} -gt 0 ]; then
     # Tolerate per-path failures: on Windows, `git checkout` sometimes can't

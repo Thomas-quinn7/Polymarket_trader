@@ -294,3 +294,10 @@ strategies/enhanced_market_scanner/
 tools/
 crossings.csv
 my_export.csv
+
+# Internal collaborator-facing documentation: the build scripts that
+# generate the onboarding/run-guide PDFs, plus the PDFs themselves.
+# Synced to the private remote via push_private.sh; never to public origin.
+build_guide_pdf.py
+build_run_guide_pdf.py
+*.pdf
