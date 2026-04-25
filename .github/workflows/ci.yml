@@ -54,4 +54,7 @@ jobs:
         run: black --check .
 
       - name: flake8
-        run: flake8 . --max-line-length=100 --exclude=.venv,__pycache__,.git,*.egg-info
+        # Configuration (max-line-length, exclude, per-file-ignores) lives in
+        # .flake8 so the workflow stays in sync with what tests/unit/test_lint.py
+        # runs locally. Single source of truth.
+        run: flake8 .
