@@ -153,8 +153,8 @@ class AlertManager:
             if self.email_sender:
                 self._executor.submit(self._send_email_safe, alert_data)
 
-            if self.webhook_sender:
-                self._executor.submit(self._send_webhook_safe, alert_data)
+        if self.webhook_sender:
+            self._executor.submit(self._send_webhook_safe, alert_data)
 
         # Track alert history
         self._track_alert(alert_type, message)

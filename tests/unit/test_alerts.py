@@ -128,7 +128,7 @@ class TestDispatch:
 
         assert mock_executor.submit.call_count == 2
 
-    def test_info_alert_does_not_dispatch(self):
+    def test_info_alert_dispatches_webhook_only(self):
         m = self._manager_with_senders()
         mock_executor = MagicMock()
         m._executor = mock_executor
@@ -138,9 +138,11 @@ class TestDispatch:
         with patch("utils.alerts.config"):
             m.create_alert(AlertType.GENERAL_INFO, "title", "msg", AlertSeverity.INFO)
 
-        mock_executor.submit.assert_not_called()
+        # webhook fires for all severities; email is skipped for INFO
+        assert mock_executor.submit.call_count == 1
+        assert mock_executor.submit.call_args[0][0] == m._send_webhook_safe
 
-    def test_warning_alert_does_not_dispatch(self):
+    def test_warning_alert_dispatches_webhook_only(self):
         m = self._manager_with_senders()
         mock_executor = MagicMock()
         m._executor = mock_executor
@@ -150,7 +152,9 @@ class TestDispatch:
         with patch("utils.alerts.config"):
             m.create_alert(AlertType.POSITION_LOSS, "title", "msg", AlertSeverity.WARNING)
 
-        mock_executor.submit.assert_not_called()
+        # webhook fires for all severities; email is skipped for WARNING
+        assert mock_executor.submit.call_count == 1
+        assert mock_executor.submit.call_args[0][0] == m._send_webhook_safe
 
 
 # ── _send_*_safe exception handling ───────────────────────────────────────
