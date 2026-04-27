@@ -6,15 +6,21 @@ the full module is present and the tests run normally.
 """
 
 import os
+import queue
 import tempfile
+import threading
+from unittest.mock import MagicMock
 
 import pytest
 
 tick_recorder = pytest.importorskip("tools.tick_recorder")
 
 from tools.tick_recorder import (  # noqa: E402
+    MarketPoller,
+    MarketWatch,
     MinimumsDB,
     MinimumRow,
+    PollerConfig,
     QualityThresholds,
     _aggregated_depth,
     _ask1,
@@ -228,6 +234,36 @@ class TestMinimumsDB:
         rows = db.get_all_minimums()
         assert rows[0]["resolved_at_ms"] == 2_000_000
 
+    # Bug 4 regression: mark_resolved must not overwrite an existing timestamp.
+    def test_mark_resolved_does_not_overwrite_existing(self, db):
+        db.upsert_minimum(self._row())
+        db.mark_resolved("m1", 2_000_000)
+        db.mark_resolved("m1", 9_999_999)  # second call (e.g. stop-event exit) ignored
+        rows = db.get_all_minimums()
+        assert rows[0]["resolved_at_ms"] == 2_000_000
+
+    # Bug 2 regression: poll_count must accumulate across sessions, not overwrite.
+    def test_poll_stats_accumulate_across_sessions(self, db):
+        db.upsert_minimum(self._row())
+        db.update_poll_stats("m1", 10, 8, 1_100_000, 1_050_000)
+        db.update_poll_stats("m1", 5, 4, 1_200_000, 1_180_000)
+        rows = db.get_all_minimums()
+        assert rows[0]["poll_count"] == 15
+        assert rows[0]["no_poll_success_count"] == 12
+        # last_yes_poll_ms and last_no_poll_ms should be the MAX of the two calls
+        assert rows[0]["last_yes_poll_ms"] == 1_200_000
+        assert rows[0]["last_no_poll_ms"] == 1_180_000
+
+    def test_poll_stats_timestamp_keeps_max(self, db):
+        db.upsert_minimum(self._row())
+        db.update_poll_stats("m1", 5, 5, 1_200_000, 1_200_000)
+        # Later call with lower timestamps (e.g. a previous session's flush arriving
+        # out of order) must not clobber the higher stored timestamps.
+        db.update_poll_stats("m1", 3, 3, 1_100_000, 1_100_000)
+        rows = db.get_all_minimums()
+        assert rows[0]["last_yes_poll_ms"] == 1_200_000
+        assert rows[0]["last_no_poll_ms"] == 1_200_000
+
     def test_migrations_idempotent(self):
         # Running connect twice on the same DB file must not raise.
         with tempfile.TemporaryDirectory() as tmp:
@@ -238,6 +274,76 @@ class TestMinimumsDB:
             d2 = MinimumsDB(path)
             assert d2.connect()
             d2.close()
+
+
+# ── MarketPoller floor rollback (Bug 1) ───────────────────────────────────────
+
+
+def _make_poller(db_upsert_ok: bool = True) -> MarketPoller:
+    """Return a MarketPoller with a mock DB seeded with yes_floor=0.50."""
+    market = MarketWatch(
+        label="Bitcoin Up or Down - April 23, 10:30AM-10:35AM ET",
+        market_id="m_test",
+        yes_token_id="yes_tok",
+        no_token_id=None,
+        category="crypto",
+    )
+    mock_db = MagicMock()
+    mock_db.get_existing_floors.return_value = (0.50, None)
+    mock_db.upsert_minimum.return_value = db_upsert_ok
+    poller = MarketPoller(
+        market=market,
+        client=MagicMock(),
+        db=mock_db,
+        stop_event=threading.Event(),
+        ob_levels=3,
+        min_poll_interval_s=0.0,
+        done_queue=queue.Queue(),
+        api_semaphore=threading.Semaphore(1),
+        poller_cfg=PollerConfig(),
+    )
+    poller._first_seen_ms = 1_000_000
+    return poller
+
+
+class TestMarketPollerFloorRollback:
+    def test_floor_advanced_on_successful_write(self):
+        p = _make_poller(db_upsert_ok=True)
+        p._update_minimums(0.40, 0.39, 0.41, 200.0, None, None, None, None, 1_001_000)
+        assert p._yes_floor == pytest.approx(0.40)
+
+    def test_floor_reverted_on_failed_write(self):
+        p = _make_poller(db_upsert_ok=False)
+        p._update_minimums(0.40, 0.39, 0.41, 200.0, None, None, None, None, 1_001_000)
+        # The write failed — floor must revert so the minimum is retried.
+        assert p._yes_floor == pytest.approx(0.50)
+
+    def test_no_floor_reverted_independently(self):
+        market = MarketWatch(
+            label="Bitcoin Up or Down - April 23, 10:30AM-10:35AM ET",
+            market_id="m2",
+            yes_token_id="yes2",
+            no_token_id="no2",
+            category="crypto",
+        )
+        mock_db = MagicMock()
+        mock_db.get_existing_floors.return_value = (0.50, 0.55)
+        mock_db.upsert_minimum.return_value = False
+        poller = MarketPoller(
+            market=market,
+            client=MagicMock(),
+            db=mock_db,
+            stop_event=threading.Event(),
+            ob_levels=3,
+            min_poll_interval_s=0.0,
+            done_queue=queue.Queue(),
+            api_semaphore=threading.Semaphore(1),
+        )
+        poller._first_seen_ms = 1_000_000
+        # YES stays above floor, NO goes below — only NO floor should revert.
+        poller._update_minimums(0.50, 0.49, 0.51, 200.0, 0.40, 0.39, 0.41, 200.0, 1_001_000)
+        assert poller._yes_floor == pytest.approx(0.50)  # unchanged (not a new min)
+        assert poller._no_floor == pytest.approx(0.55)  # reverted
 
 
 # ── YES/NO orientation ────────────────────────────────────────────────────────
