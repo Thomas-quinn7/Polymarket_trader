@@ -459,10 +459,24 @@ class PolymarketClient:
                         )
                 return out
 
-            mid_price = _to_float(self.client.get_midpoint(token_id))
+            # Bug 3 fix: compute mid from the normalised book instead of making
+            # a second get_midpoint() HTTP call.  That second call returned data
+            # from a different instant than the bids/asks, so the mid didn't
+            # correspond to the spread snapshot stored alongside it.  Computing
+            # locally keeps mid, bid1, ask1 and depth all from the same fetch.
+            norm_bids = _normalise(raw_bids)[:levels]
+            norm_asks = _normalise(raw_asks)[:levels]
+            if norm_bids and norm_asks:
+                mid_price = (norm_bids[0]["price"] + norm_asks[0]["price"]) / 2.0
+            elif norm_bids:
+                mid_price = norm_bids[0]["price"]
+            elif norm_asks:
+                mid_price = norm_asks[0]["price"]
+            else:
+                mid_price = 0.0
             return {
-                "bids": _normalise(raw_bids)[:levels],
-                "asks": _normalise(raw_asks)[:levels],
+                "bids": norm_bids,
+                "asks": norm_asks,
                 "mid_price": mid_price,
             }
         except Exception as e:
