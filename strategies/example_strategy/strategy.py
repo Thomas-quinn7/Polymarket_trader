@@ -32,7 +32,10 @@ Pattern used throughout:
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from data.external.snapshot import ExternalSnapshot
 
 from config.polymarket_config import config
 from data.polymarket_client import PolymarketClient
@@ -160,7 +163,11 @@ class ExampleStrategy(BaseStrategy):
     # markets: List[PolymarketMarket] — already filtered and priced by
     # MarketProvider.  Read market.resolved_price; no from_api() needed.
 
-    def scan_for_opportunities(self, markets: List[PolymarketMarket]) -> List[TradeOpportunity]:
+    def scan_for_opportunities(
+        self,
+        markets: List[PolymarketMarket],
+        ext: "Optional[ExternalSnapshot]" = None,  # noqa: U100  unused
+    ) -> List[TradeOpportunity]:
         taker_fee = config.TAKER_FEE_PERCENT
         opportunities = []
 

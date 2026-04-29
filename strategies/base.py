@@ -11,7 +11,10 @@ get_scan_categories) have sensible defaults and can be overridden as needed.
 """
 
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from data.external.snapshot import ExternalSnapshot
 
 from data.polymarket_models import TradeOpportunity
 from data.market_schema import PolymarketMarket
@@ -43,21 +46,21 @@ class BaseStrategy(ABC):
     # ── Required ───────────────────────────────────────────────────────────
 
     @abstractmethod
-    def scan_for_opportunities(self, markets: List[PolymarketMarket]) -> List[TradeOpportunity]:
+    def scan_for_opportunities(
+        self,
+        markets: List[PolymarketMarket],
+        ext: "Optional[ExternalSnapshot]" = None,  # quoted: TYPE_CHECKING guard above
+    ) -> List[TradeOpportunity]:
         """
-        Examine a list of pre-filtered, pre-priced markets and return qualifying
-        opportunities.
-
-        Markets are provided by MarketProvider, which has already:
-          - Converted raw dicts to PolymarketMarket objects (no from_api() needed)
-          - Applied the criteria gates from get_market_criteria() (volume, binary, time)
-          - Set market.resolved_price using the strategy's price_source_preference
-
-        Strategies should read market.resolved_price instead of calling
-        client.get_price() or accessing outcome_prices directly.
+        Examine pre-filtered, pre-priced markets and return qualifying opportunities.
 
         Args:
-            markets: Pre-filtered PolymarketMarket objects with resolved_price set.
+            markets: Pre-filtered PolymarketMarket objects (resolved_price set).
+            ext:     Optional external signal snapshot (crypto prices, RSI,
+                     Fear & Greed, macro). None when EXTERNAL_DATA_ENABLED=False
+                     or on first tick before data is available.
+                     All ext.is_*() helpers return False when data is missing —
+                     safe to call unconditionally.
 
         Returns:
             List of TradeOpportunity objects (may be empty).

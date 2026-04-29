@@ -62,6 +62,15 @@ _TYPE_MAP: Dict[str, type] = {
     "direct_poll_interval_ms": int,
     "scheduled_poll_lead_s": float,
     "prefetch_lookahead_s": int,
+    # crypto_external
+    "fear_min_edge": float,
+    "fear_threshold": int,
+    "rsi_overbought": float,
+    "rsi_oversold": float,
+    "min_time_to_close_s": int,
+    "max_time_to_close_s": int,
+    "min_volume_usd": float,
+    "max_positions": int,
 }
 
 _VALID_EDGE_FILTER_MODES = {"net_edge", "slippage_adjusted"}

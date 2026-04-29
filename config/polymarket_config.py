@@ -217,6 +217,28 @@ class PolymarketConfig:
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 
+    # ── External Data APIs ────────────────────────────────────────────────────
+    # Master toggle. Set False to disable all external API calls (Binance,
+    # Fear & Greed, FRED). ExternalDataBus returns an empty snapshot instantly.
+    EXTERNAL_DATA_ENABLED = os.getenv("EXTERNAL_DATA_ENABLED", "True").lower() == "true"
+
+    # FRED API key (free) — https://fred.stlouisfed.org/docs/api/api_key.html
+    # Leave empty to disable macro data (Fed Funds, CPI, PCE, unemployment).
+    # When empty, FREDProvider.fetch_all() returns {} without making any calls.
+    FRED_API_KEY = os.getenv("FRED_API_KEY", "")
+
+    # Comma-separated list of crypto base symbols to track via Binance.
+    # Each symbol is paired with USDT for Binance requests (BTC → BTCUSDT).
+    # RSI is computed for every symbol in this list (one klines call each).
+    EXTERNAL_CRYPTO_SYMBOLS = os.getenv("EXTERNAL_CRYPTO_SYMBOLS", "BTC,ETH,SOL")
+
+    # Cache TTLs for each data category (seconds).
+    # Crypto prices update in real-time — 15s keeps data fresh without hammering Binance.
+    # Fear & Greed and FRED macro update daily/monthly — 1h is more than sufficient.
+    EXTERNAL_CRYPTO_TTL_S = int(os.getenv("EXTERNAL_CRYPTO_TTL_S", "15"))
+    EXTERNAL_FNG_TTL_S = int(os.getenv("EXTERNAL_FNG_TTL_S", "3600"))
+    EXTERNAL_MACRO_TTL_S = int(os.getenv("EXTERNAL_MACRO_TTL_S", "3600"))
+
     def __repr__(self) -> str:
         """
         Safe representation that masks all credential fields.
@@ -345,6 +367,14 @@ class PolymarketConfig:
         self.OLLAMA_ENABLED = env.get("OLLAMA_ENABLED", "False").lower() == "true"
         self.OLLAMA_HOST = env.get("OLLAMA_HOST", "http://localhost:11434")
         self.OLLAMA_MODEL = env.get("OLLAMA_MODEL", "llama3.2:3b")
+
+        # External data
+        self.EXTERNAL_DATA_ENABLED = env.get("EXTERNAL_DATA_ENABLED", "True").lower() == "true"
+        self.FRED_API_KEY = env.get("FRED_API_KEY", "")
+        self.EXTERNAL_CRYPTO_SYMBOLS = env.get("EXTERNAL_CRYPTO_SYMBOLS", "BTC,ETH,SOL")
+        self.EXTERNAL_CRYPTO_TTL_S = int(env.get("EXTERNAL_CRYPTO_TTL_S", "15"))
+        self.EXTERNAL_FNG_TTL_S = int(env.get("EXTERNAL_FNG_TTL_S", "3600"))
+        self.EXTERNAL_MACRO_TTL_S = int(env.get("EXTERNAL_MACRO_TTL_S", "3600"))
 
     @classmethod
     def from_dict(cls, overrides: dict) -> "PolymarketConfig":
