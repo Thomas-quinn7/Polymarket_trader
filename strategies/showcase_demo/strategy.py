@@ -22,7 +22,10 @@ import random
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from data.external.snapshot import ExternalSnapshot
 
 from config.polymarket_config import config
 from data.market_provider import MarketCriteria
@@ -419,7 +422,11 @@ class ShowcaseDemo(BaseStrategy):
         # the real market list provided by MarketProvider.
         return MarketCriteria(categories=["crypto", "fed", "regulatory", "other"])
 
-    def scan_for_opportunities(self, markets: List[PolymarketMarket]) -> List[TradeOpportunity]:
+    def scan_for_opportunities(
+        self,
+        markets: List[PolymarketMarket],
+        ext: "Optional[ExternalSnapshot]" = None,  # noqa: U100  unused — synthetic strategy
+    ) -> List[TradeOpportunity]:
         """
         Ignore real markets; return opportunities from the synthetic pool.
         Only markets not currently held are eligible.

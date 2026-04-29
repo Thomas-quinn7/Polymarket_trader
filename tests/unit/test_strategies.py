@@ -304,3 +304,17 @@ class TestExampleStrategy:
         cats = s.get_scan_categories()
         assert isinstance(cats, list)
         assert len(cats) > 0
+
+    def test_scan_for_opportunities_accepts_ext_kwarg(self):
+        from data.external.snapshot import ExternalSnapshot
+
+        s = ExampleStrategy(_make_client())
+        # Should not raise even though ExampleStrategy ignores ext
+        result = s.scan_for_opportunities([], ext=ExternalSnapshot())
+        assert isinstance(result, list)
+
+    def test_scan_for_opportunities_ext_none_default(self):
+        s = ExampleStrategy(_make_client())
+        # Calling without ext= should still work (default None)
+        result = s.scan_for_opportunities([])
+        assert isinstance(result, list)

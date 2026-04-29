@@ -8,7 +8,7 @@
 #
 # What gets pushed:
 #   - All tracked public files (framework, tests, docs)
-#   - Private strategies: crypto_5min_mm, paper_demo, demo_buy, enhanced_market_scanner
+#   - Private strategies: crypto_5min_mm, paper_demo, demo_buy, enhanced_market_scanner, crypto_external
 #   - tools/ — proprietary research tooling (tick_recorder, price_target_tracker, configs)
 #   - storage/ — SQLite DBs (trading.db, market_minimums.db) and their CSV exports
 #   - logs/ — all app logs, per-session JSON exports, trade history CSVs
@@ -50,6 +50,7 @@ add_if_exists "strategies/crypto_5min_mm"
 add_if_exists "strategies/paper_demo"
 add_if_exists "strategies/demo_buy"
 add_if_exists "strategies/enhanced_market_scanner"
+add_if_exists "strategies/crypto_external"
 
 echo "Adding research tooling..."
 add_if_exists "tools"
@@ -117,7 +118,7 @@ git branch -D "$SYNC_BRANCH"
 # working tree keeps the strategies, tools, storage and CSVs between syncs.
 echo ""
 echo "Restoring private files to working tree..."
-RESTORE_PATHS=(strategies/crypto_5min_mm strategies/paper_demo strategies/demo_buy strategies/enhanced_market_scanner tools storage)
+RESTORE_PATHS=(strategies/crypto_5min_mm strategies/paper_demo strategies/demo_buy strategies/enhanced_market_scanner strategies/crypto_external tools storage)
 EXISTING_PATHS=()
 for p in "${RESTORE_PATHS[@]}"; do
     if git cat-file -e "$PRIVATE_REMOTE/main:$p" 2>/dev/null; then

@@ -284,6 +284,7 @@ strategies/crypto_5min_mm/
 strategies/paper_demo/
 strategies/demo_buy/
 strategies/enhanced_market_scanner/
+strategies/crypto_external/
 
 # ============================================================
 # PRIVATE RESEARCH TOOLING & DATA EXPORTS (not for public release)

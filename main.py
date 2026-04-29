@@ -32,6 +32,7 @@ from typing import Optional
 
 from data.polymarket_client import PolymarketClient
 from data.database import TradeDatabase
+from data.external import ExternalDataBus, ExternalSnapshot
 from data.market_provider import MarketProvider
 from data.order_book_store import OrderBookStore, OrderBookSnapshot, OrderBookLevel
 from data.session_store import SessionStore
@@ -98,6 +99,21 @@ class TradingBot:
                 self.order_book_store = None
 
         self.market_provider = MarketProvider(self.client)
+
+        # ── External data bus ─────────────────────────────────────────────────────
+        # Coordinates Binance, Fear & Greed, and FRED macro providers.
+        # Returns ExternalSnapshot on every get_snapshot() call (cached, thread-safe).
+        # Set EXTERNAL_DATA_ENABLED=false in .env to disable all external API calls.
+        self.ext_bus: Optional[ExternalDataBus] = None
+        if config.EXTERNAL_DATA_ENABLED:
+            try:
+                self.ext_bus = ExternalDataBus(config)
+                logger.info("[TradingBot] ExternalDataBus initialized")
+            except Exception as e:
+                logger.warning(
+                    f"[TradingBot] ExternalDataBus failed to initialize: {e} "
+                    "— continuing without external data"
+                )
 
         # Session store — records settled trades per strategy run for later review
         self.session_store: Optional[SessionStore] = None
@@ -576,7 +592,15 @@ class TradingBot:
         try:
             criteria = self.strategy.get_market_criteria()
             markets = self.market_provider.get_markets(criteria)
-            opportunities = self.strategy.scan_for_opportunities(markets)
+            # Fetch external signals — cached; typically returns in <1 ms
+            ext: Optional[ExternalSnapshot] = None
+            if self.ext_bus is not None:
+                try:
+                    ext = self.ext_bus.get_snapshot()
+                except Exception as e:
+                    logger.warning(f"[TradingBot] get_snapshot() error (non-fatal): {e}")
+
+            opportunities = self.strategy.scan_for_opportunities(markets, ext=ext)
 
             if not opportunities:
                 logger.debug("No opportunities found in this scan")
