@@ -8,6 +8,12 @@ Built around the Polymarket CLOB (Central Limit Order Book) with 776 unit tests,
 
 > **What this is not:** A plug-and-play profitable trading bot. No alpha signal is included.
 
+> **What the numbers mean:** this repo is the sanitised public framework layer of a larger
+> private system. The **776 unit tests** here cover this public subset; the full system —
+> strategies, calibration research, and the statistical promotion gate that decides whether
+> a strategy has earned live capital — runs behind **3,300+ tests**. Detailed walkthrough
+> available on request.
+
 ---
 
 ## Architecture Overview
