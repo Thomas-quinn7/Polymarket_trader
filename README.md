@@ -1,18 +1,33 @@
 # Polymarket Trading Framework
 
-A production-quality Python trading infrastructure for [Polymarket](https://polymarket.com) prediction markets. Handles everything below the strategy layer — market data, order execution, portfolio management, backtesting, and real-time monitoring — so implementing and testing a new edge is the only focus.
+The market question behind this project: **can a retail-latency system find edge in
+Polymarket prediction markets that survives the executable price, fees, and its own
+statistics?** My answer so far is *not yet* — and the most useful thing the project
+produced is the machinery that forced that answer when the naive readings said yes. The
+flagship strategy's +EV backtest turned out to be a look-ahead I caught myself (a 0–60s
+early peek at an in-progress price bar; fixing one visibility filter swung the configured
+combo from +$169 to −$318), and its live signals out-predicted the *displayed* quote by
++19.7pp while the *executable* order book had already repriced — true edge −2.2pp across
+2,868 logged signals. The promotion gate refused it live capital, and I let it.
 
-Built around the Polymarket CLOB (Central Limit Order Book) with 776 unit tests, a wall-clock backtesting engine, fractional Kelly sizing, live order-book slippage estimation, per-session trade recording, and a FastAPI dashboard.
+This public repo is the infrastructure that makes verdicts like that trustworthy: market
+data, order execution, portfolio management, honest-friction backtesting, and real-time
+monitoring — a clean interface between a strategy signal and the exchange, so testing an
+edge (or killing one) is the only focus.
 
-> **What this is:** Trading infrastructure — a clean interface between a strategy signal and the exchange. The included `example_strategy` is a documented template with a stubbed signal that fires no trades by design. Copy it, implement your own edge formula, and the full stack runs it. Real strategies are kept private.
+> **What this is:** Trading infrastructure — the sanitised public framework layer of a
+> larger private system. The included `example_strategy` is a documented template with a
+> stubbed signal that fires no trades by design. Copy it, implement your own edge formula,
+> and the full stack runs it. Real strategies, calibration research, and the statistical
+> promotion gate are kept private.
 
-> **What this is not:** A plug-and-play profitable trading bot. No alpha signal is included.
+> **What this is not:** A plug-and-play profitable trading bot. No alpha signal is
+> included — and per the paragraph above, the author's own signals have not yet earned
+> live capital either. Treat any prediction-market "edge" as guilty until proven innocent.
 
-> **What the numbers mean:** this repo is the sanitised public framework layer of a larger
-> private system. The **776 unit tests** here cover this public subset; the full system —
-> strategies, calibration research, and the statistical promotion gate that decides whether
-> a strategy has earned live capital — runs behind **3,300+ tests**. Detailed walkthrough
-> available on request.
+> **What the numbers mean:** the **776 unit tests** here cover this public subset; the
+> full private system runs behind **3,700+ tests** (as of 2026-07-21). Detailed
+> walkthrough available on request.
 
 ---
 
