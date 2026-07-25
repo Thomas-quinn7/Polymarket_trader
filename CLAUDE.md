@@ -40,18 +40,9 @@ python main.py --live                   # live mode (requires confirmation promp
 
 Line length is 100. Black and flake8 are configured in `pyproject.toml` / `.flake8`. `isort` uses the `black` profile.
 
-## Repo structure and public/private split
+## Repo structure
 
-This is a **public framework repo** (`origin` → `github.com/Thomas-quinn7/Polymarket_trader`). A separate private repo (`private`/`dev` → `github.com/Thomas-quinn7/Polymarket_private`) receives everything via `./push_private.sh`, which force-adds gitignored paths (strategies, tools, storage, logs, PDFs) and force-pushes to `private/main`.
-
-Files intentionally gitignored on `origin`:
-- `strategies/crypto_5min_mm/`, `strategies/paper_demo/`, `strategies/demo_buy/`, `strategies/enhanced_market_scanner/` — live strategies
-- `tools/` — research tooling (tick_recorder, price_target_tracker)
-- `storage/` — SQLite DB + CSV exports
-- `logs/` — app logs, session JSON exports
-- `build_guide_pdf.py`, `build_run_guide_pdf.py`, `*.pdf` — internal collaborator docs
-
-Never commit `.env`. Never push to `origin` anything from the above list.
+This is a **public framework repo** (`origin` → `github.com/Thomas-quinn7/Polymarket_trader`), a standalone showcase of the framework layer. Local research artifacts (`storage/`, `logs/`, generated PDFs) are gitignored. Never commit `.env` (credentials).
 
 ## Architecture
 
@@ -122,6 +113,5 @@ Use `market.resolved_price` (never raw `outcome_prices`). `override_capital` on 
 ## Known constraints
 
 - `PREVENT_SLEEP` env var is Windows-only and a no-op on macOS — use `caffeinate -ims polymarket ...` on Mac for overnight runs.
-- `MAX_POSITIONS_PER_CATEGORY` must be ≥ 2× the number of simultaneous markets when running `crypto_5min_mm`, because each market opens both a YES and a NO position.
-- `tools/tick_recorder.py` and `tools/price_target_tracker.py` bootstrap `sys.path` manually (not installed as a package) — run them from the repo root.
+- `MAX_POSITIONS_PER_CATEGORY` must be ≥ 2× the number of simultaneous markets for any strategy that opens both a YES and a NO position per market.
 - mypy is configured with strict settings in `pyproject.toml` but is not yet gated in CI.
