@@ -143,6 +143,12 @@ class PolymarketConfig:
     # Kelly sizing is applied in OrderExecutor and capped at CAPITAL_SPLIT_PERCENT.
     KELLY_FRACTION = float(os.getenv("KELLY_FRACTION", "0.25"))
 
+    # No-signal sizing floor (fraction of balance). When an opportunity carries
+    # no usable win probability (no model_prob and confidence <= 0), Kelly has
+    # no edge to size on and the executor stakes this MINIMUM — never the
+    # CAPITAL_SPLIT_PERCENT cap. Set to 0.0 to refuse signal-less trades.
+    MIN_POSITION_PCT = float(os.getenv("MIN_POSITION_PCT", "0.02"))
+
     # Maximum open positions allowed within a single market category (crypto, fed, etc.).
     # Prevents over-concentration in correlated markets.  Set to 0 to disable.
     MAX_POSITIONS_PER_CATEGORY = int(os.getenv("MAX_POSITIONS_PER_CATEGORY", "2"))
@@ -287,6 +293,7 @@ class PolymarketConfig:
         self.MAX_POSITIONS_PER_CATEGORY = int(env.get("MAX_POSITIONS_PER_CATEGORY", "2"))
         self.CAPITAL_SPLIT_PERCENT = float(env.get("CAPITAL_SPLIT_PERCENT", "0.20"))
         self.KELLY_FRACTION = float(env.get("KELLY_FRACTION", "0.25"))
+        self.MIN_POSITION_PCT = float(env.get("MIN_POSITION_PCT", "0.02"))
         self.STOP_LOSS_PERCENT = float(env.get("STOP_LOSS_PERCENT", "0.0"))
         self.SLIPPAGE_TOLERANCE_PERCENT = float(env.get("SLIPPAGE_TOLERANCE_PERCENT", "5.0"))
         self.TAKER_FEE_PERCENT = float(env.get("TAKER_FEE_PERCENT", "2.0"))

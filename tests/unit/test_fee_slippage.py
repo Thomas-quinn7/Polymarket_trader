@@ -41,6 +41,8 @@ def _make_all(starting_balance=STARTING_BALANCE, max_positions=5):
     with patch("execution.order_executor.config") as cfg:
         cfg.PAPER_TRADING_ONLY = True
         cfg.CAPITAL_SPLIT_PERCENT = CAPITAL_SPLIT
+        # no-signal floor = cap: fixtures carry no model_prob
+        cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
         cfg.TAKER_FEE_PERCENT = 0.0
         executor = OrderExecutor(
             pnl_tracker=pnl,
@@ -74,6 +76,8 @@ def _buy(executor, opp, pid, fee_pct=0.0):
     ):
         ocfg.PAPER_TRADING_ONLY = True
         ocfg.CAPITAL_SPLIT_PERCENT = CAPITAL_SPLIT
+        # no-signal floor = cap: fixtures carry no model_prob
+        ocfg.MIN_POSITION_PCT = ocfg.CAPITAL_SPLIT_PERCENT
         ocfg.TAKER_FEE_PERCENT = fee_pct
         fcfg.MAX_POSITIONS = 5
         fcfg.FAKE_CURRENCY_BALANCE = STARTING_BALANCE
@@ -200,6 +204,8 @@ class TestSlippageEnforcement:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = False
             cfg.CAPITAL_SPLIT_PERCENT = CAPITAL_SPLIT
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             cfg.TAKER_FEE_PERCENT = fee_pct
             cfg.SLIPPAGE_TOLERANCE_PERCENT = slippage_tolerance
             cfg.MAX_RETRIES = 1
@@ -216,6 +222,8 @@ class TestSlippageEnforcement:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = False
             cfg.CAPITAL_SPLIT_PERCENT = CAPITAL_SPLIT
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             cfg.TAKER_FEE_PERCENT = fee_pct
             cfg.SLIPPAGE_TOLERANCE_PERCENT = slippage_tolerance
             cfg.MAX_RETRIES = 1

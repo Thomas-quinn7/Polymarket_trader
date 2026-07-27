@@ -24,6 +24,8 @@ def _kelly_position_size(
     confidence: float,
     max_fraction: float,
     kelly_fraction: float,
+    model_prob: Optional[float] = None,
+    no_signal_fraction: float = 0.0,
 ) -> float:
     """
     Fractional Kelly position sizing for a binary-outcome bet.
@@ -32,16 +34,47 @@ def _kelly_position_size(
       b  = net odds per unit staked = (1 - price) / price
       f* = (p*b - (1-p)) / b    (full Kelly fraction of bankroll)
 
-    kelly_fraction scales full Kelly down (e.g. 0.25 = quarter Kelly) to
-    limit volatility. Result is capped at max_fraction of balance.
+    The Kelly formula needs ``p`` = the true probability that the position
+    wins. When ``model_prob`` is provided it is used directly (correct path).
+    When absent, ``confidence`` is used as a fallback — this is only sensible
+    for strategies whose ``confidence`` field IS a probability; strategies
+    that emit confidence as a blended score (like the shipped example
+    strategy) will over-size with the fallback and should set ``model_prob``.
+    The fallback is capped at 0.95 so a score near 1.0 cannot bet a
+    near-full-Kelly stake on what is really "high conviction", not "95% win".
 
-    Falls back to max_fraction when confidence is zero (no model signal).
+    kelly_fraction scales full Kelly down (e.g. 0.25 = quarter Kelly) to
+    limit volatility. Result is capped at ``max_fraction`` of balance.
+
+    No-signal floor: with no probability signal at all (no model_prob and
+    confidence <= 0) there is no edge to size on, so this returns the
+    MINIMUM — ``no_signal_fraction`` of balance, default 0.0 (refuse) —
+    never the cap. Sizing the cap on no information is backwards: it inverts
+    the information/size relationship Kelly exists to encode. A degenerate
+    price (<= 0 or >= 1, i.e. no upside) likewise sizes 0.0.
     """
-    if confidence <= 0 or entry_price <= 0 or entry_price >= 1.0:
-        return balance * max_fraction
+    p = (
+        model_prob
+        if model_prob is not None
+        else (min(confidence, 0.95) if confidence is not None else None)
+    )
+
+    if not entry_price or entry_price <= 0 or entry_price >= 1.0:
+        return 0.0
+
+    # An explicit model_prob <= 0 means the model actively says this bet
+    # loses — refuse entirely, never stake even the no-signal floor.
+    if model_prob is not None and model_prob <= 0:
+        return 0.0
+
+    if p is None or p <= 0:
+        return balance * max(0.0, min(no_signal_fraction, max_fraction))
+
+    if p >= 1.0:
+        p = 0.999  # keep the b-based formula numerically sane
 
     b = (1.0 - entry_price) / entry_price
-    kelly_full = (confidence * b - (1.0 - confidence)) / b
+    kelly_full = (p * b - (1.0 - p)) / b
     kelly_full = max(0.0, kelly_full)
     fraction = min(kelly_full * kelly_fraction, max_fraction)
 
@@ -119,6 +152,8 @@ class OrderExecutor:
                     confidence=getattr(opportunity, "confidence", None) or 0.0,
                     max_fraction=config.CAPITAL_SPLIT_PERCENT,
                     kelly_fraction=config.KELLY_FRACTION,
+                    model_prob=getattr(opportunity, "model_prob", None),
+                    no_signal_fraction=getattr(config, "MIN_POSITION_PCT", 0.0),
                 )
 
             # Guard: invalid price means we cannot safely size the position

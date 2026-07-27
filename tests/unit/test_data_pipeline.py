@@ -44,6 +44,8 @@ def _make_all(starting_balance=STARTING_BALANCE, max_positions=5):
     with patch("execution.order_executor.config") as cfg:
         cfg.PAPER_TRADING_ONLY = True
         cfg.CAPITAL_SPLIT_PERCENT = CAPITAL_SPLIT
+        # no-signal floor = cap: fixtures carry no model_prob
+        cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
         executor = OrderExecutor(
             pnl_tracker=pnl,
             position_tracker=positions,
@@ -83,6 +85,8 @@ def _buy(executor, opp, pid, capital_split=CAPITAL_SPLIT, max_positions=5, fee_p
     ):
         ocfg.PAPER_TRADING_ONLY = True
         ocfg.CAPITAL_SPLIT_PERCENT = capital_split
+        # no-signal floor = cap: fixtures carry no model_prob
+        ocfg.MIN_POSITION_PCT = ocfg.CAPITAL_SPLIT_PERCENT
         ocfg.TAKER_FEE_PERCENT = fee_pct
         fcfg.MAX_POSITIONS = max_positions
         fcfg.FAKE_CURRENCY_BALANCE = STARTING_BALANCE
@@ -300,6 +304,8 @@ class TestCapitalSizing:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.10
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             executor.execute_buy(_opp(), "p1")
         expected = STARTING_BALANCE * 0.10
         assert currency.get_deployed() == pytest.approx(expected, abs=0.01)

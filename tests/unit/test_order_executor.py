@@ -32,6 +32,8 @@ def _make_executor(starting_balance=10_000.0, max_positions=5):
     with patch("execution.order_executor.config") as cfg:
         cfg.PAPER_TRADING_ONLY = True
         cfg.CAPITAL_SPLIT_PERCENT = 0.20
+        # no-signal floor = cap: fixtures carry no model_prob
+        cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
         executor = OrderExecutor(
             pnl_tracker=pnl,
             position_tracker=positions,
@@ -68,6 +70,8 @@ class TestExecuteBuy:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             cfg.TAKER_FEE_PERCENT = 0.0
             result = executor.execute_buy(make_opportunity(), "p1")
         assert result is True
@@ -77,6 +81,8 @@ class TestExecuteBuy:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             cfg.TAKER_FEE_PERCENT = 0.0
             executor.execute_buy(make_opportunity(), "p1")
         assert currency.get_balance() < 10_000.0
@@ -87,6 +93,8 @@ class TestExecuteBuy:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             cfg.TAKER_FEE_PERCENT = 0.0
             executor.execute_buy(make_opportunity(), "caller-id-123")
         pos = positions.get_position("caller-id-123")
@@ -98,6 +106,8 @@ class TestExecuteBuy:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             cfg.TAKER_FEE_PERCENT = 0.0
             executor.execute_buy(make_opportunity(), "p1")
         assert len(executor.order_history) == 1
@@ -113,6 +123,8 @@ class TestExecuteBuy:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             cfg.TAKER_FEE_PERCENT = 0.0
             result = executor.execute_buy(make_opportunity(), "p1")
         assert result is False
@@ -131,6 +143,8 @@ class TestExecuteBuy:
         ):
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             cfg.TAKER_FEE_PERCENT = 0.0
             result = executor.execute_buy(make_opportunity(), "p1")
 
@@ -144,6 +158,8 @@ class TestSettlePosition:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             cfg.TAKER_FEE_PERCENT = 0.0
             executor.execute_buy(make_opportunity(), pid)
 
@@ -180,6 +196,8 @@ class TestStats:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             cfg.TAKER_FEE_PERCENT = 0.0
             executor.execute_buy(make_opportunity(), "p1")
         stats = executor.get_execution_stats()
@@ -192,6 +210,8 @@ class TestStats:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             cfg.TAKER_FEE_PERCENT = 0.0
             executor.execute_buy(make_opportunity(market_id="m1"), "p1")
         orders = executor.get_order_history(limit=1)
@@ -203,6 +223,8 @@ class TestExecuteSell:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = True
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             cfg.TAKER_FEE_PERCENT = 0.0
             executor.execute_buy(make_opportunity(), pid)
 
@@ -235,6 +257,8 @@ class TestExecuteSell:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = False
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             cfg.TAKER_FEE_PERCENT = 0.0
             cfg.SLIPPAGE_TOLERANCE_PERCENT = 5.0
             cfg.MAX_RETRIES = 3
@@ -259,6 +283,8 @@ class TestExecuteSell:
         with patch("execution.order_executor.config") as cfg:
             cfg.PAPER_TRADING_ONLY = False
             cfg.CAPITAL_SPLIT_PERCENT = 0.20
+            # no-signal floor = cap: fixtures carry no model_prob
+            cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
             cfg.TAKER_FEE_PERCENT = 0.0
             cfg.SLIPPAGE_TOLERANCE_PERCENT = 5.0
             cfg.MAX_RETRIES = 3

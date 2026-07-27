@@ -39,6 +39,8 @@ def _executor(client=None, paper=True, tolerance=5.0):
     with patch("execution.order_executor.config") as c:
         c.PAPER_TRADING_ONLY = paper
         c.CAPITAL_SPLIT_PERCENT = SPLIT
+        # no-signal floor = cap: fixtures carry no model_prob
+        c.MIN_POSITION_PCT = c.CAPITAL_SPLIT_PERCENT
         c.TAKER_FEE_PERCENT = 0.0
         c.SLIPPAGE_TOLERANCE_PERCENT = tolerance
         c.MAX_RETRIES = 1
@@ -88,6 +90,8 @@ def _buy(executor, opp, pid, tolerance=5.0):
     with patch("execution.order_executor.config") as c:
         c.PAPER_TRADING_ONLY = True
         c.CAPITAL_SPLIT_PERCENT = SPLIT
+        # no-signal floor = cap: fixtures carry no model_prob
+        c.MIN_POSITION_PCT = c.CAPITAL_SPLIT_PERCENT
         c.TAKER_FEE_PERCENT = 0.0
         c.SLIPPAGE_TOLERANCE_PERCENT = tolerance
         c.MAX_RETRIES = 1

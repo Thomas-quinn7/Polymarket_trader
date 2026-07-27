@@ -63,7 +63,7 @@ edge (or killing one) is the only focus.
 
 - **CLOB limit & market orders** — GTC limit orders and FOK market orders via the Polymarket CLOB SDK; Relayer and Builder API auth modes supported
 - **Pre-trade slippage gate** — walks the live order book (10 levels) to estimate VWAP impact before each market order; aborts if slippage exceeds tolerance
-- **Fractional Kelly sizing** — position size = full Kelly × configurable fraction, capped at `CAPITAL_SPLIT_PERCENT`; `override_capital` bypasses Kelly for fixed-size strategies
+- **Fractional Kelly sizing** — position size = full Kelly × configurable fraction, capped at `CAPITAL_SPLIT_PERCENT`. Kelly's `p` comes from the opportunity's `model_prob` (a win probability); `confidence` is only a capped fallback, and with no signal at all the executor stakes the `MIN_POSITION_PCT` floor — never the cap. `override_capital` bypasses Kelly for fixed-size strategies
 - **Category concentration limits** — caps open positions per market category to prevent correlated overexposure
 - **Backtesting engine** — wall-clock timeline replay, side-aware YES/NO positions, half-spread model, configurable fees; strategies run unmodified against historical data
 - **Session recording** — every settled trade persisted to SQLite and JSON: price, hold time, edge %, fees, gross/net P&L, outcome, equity curve
@@ -549,6 +549,7 @@ class MyStrategy(BaseStrategy):
                     winning_token_id=market.token_ids[0],   # YES token
                     current_price=price,
                     edge_percent=net_edge,
+                    model_prob=your_win_probability(market),  # a probability, not a score — Kelly sizes on this
                     confidence=your_confidence(market),
                     ...
                 )
@@ -575,8 +576,10 @@ config = BacktestConfig(
     start_date="2025-01-01",
     end_date="2025-04-01",
     initial_balance=1000.0,
-    taker_fee_pct=2.0,
-    half_spread_pct=1.0,    # bid/ask spread model
+    taker_fee_pct=2.0,      # flat % of notional — a simplification; Polymarket's real
+    half_spread_pct=1.0,    # taker fee scales with shares*rate*p*(1-p), which a flat model
+                            # understates for mid-priced contracts. Treat backtest costs as
+                            # optimistic until you calibrate these to the live fee schedule.
     category="crypto",
 )
 

@@ -78,6 +78,8 @@ def _make_executor(balance=10_000.0, max_pos=5, split=0.20):
     with patch("execution.order_executor.config") as cfg:
         cfg.PAPER_TRADING_ONLY = True
         cfg.CAPITAL_SPLIT_PERCENT = split
+        # no-signal floor = cap: fixtures carry no model_prob
+        cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
         executor = OrderExecutor(
             pnl_tracker=pnl, position_tracker=positions, currency_tracker=currency
         )
@@ -88,6 +90,8 @@ def _buy(executor, opp, pid, split=0.20):
     with patch("execution.order_executor.config") as cfg:
         cfg.PAPER_TRADING_ONLY = True
         cfg.CAPITAL_SPLIT_PERCENT = split
+        # no-signal floor = cap: fixtures carry no model_prob
+        cfg.MIN_POSITION_PCT = cfg.CAPITAL_SPLIT_PERCENT
         cfg.TAKER_FEE_PERCENT = 0.0
         return executor.execute_buy(opp, pid)
 
