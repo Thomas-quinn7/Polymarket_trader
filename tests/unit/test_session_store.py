@@ -132,7 +132,7 @@ class TestCreateSession:
 
     def test_row_inserted(self, tmp_path):
         store = _make_store(tmp_path)
-        sid = store.create_session("paper_demo", "paper", 5_000.0)
+        sid = store.create_session("showcase_demo", "paper", 5_000.0)
         rows = store._conn.execute(
             "SELECT * FROM strategy_sessions WHERE session_id = ?", (sid,)
         ).fetchall()

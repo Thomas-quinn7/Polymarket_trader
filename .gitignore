@@ -279,12 +279,12 @@ strategies/*.py
 !strategies/config_loader.py
 !strategies/examples/
 
-# Private strategies — not for public release
-strategies/crypto_5min_mm/
-strategies/paper_demo/
-strategies/demo_buy/
-strategies/enhanced_market_scanner/
-strategies/crypto_external/
+# Local-only strategy folders: anything not explicitly re-included below
+# stays out of the public repo by default.
+strategies/*/
+!strategies/example_strategy/
+!strategies/showcase_demo/
+!strategies/examples/
 
 # ============================================================
 # PRIVATE RESEARCH TOOLING & DATA EXPORTS (not for public release)
@@ -298,7 +298,7 @@ my_export.csv
 
 # Internal collaborator-facing documentation: the build scripts that
 # generate the onboarding/run-guide PDFs, plus the PDFs themselves.
-# Synced to the private remote via push_private.sh; never to public origin.
+# Local-only; not part of the public release.
 build_guide_pdf.py
 build_run_guide_pdf.py
 *.pdf

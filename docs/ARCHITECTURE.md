@@ -420,7 +420,7 @@ Fields consumed only during component `__init__()` and cannot be applied to a ru
 ```python
 scan_interval = config.SCAN_INTERVAL_MS / 1000
 ```
-Changing it in `.env` and calling `/api/reload` takes effect on the next tick with no restart.
+Changing it via `POST /api/settings` (which writes `.env` and hot-reloads config) takes effect on the next tick with no restart.
 
 ---
 

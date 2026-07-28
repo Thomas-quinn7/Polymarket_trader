@@ -321,8 +321,9 @@ class ExampleStrategy(BaseStrategy):
                 return False
             return True
 
-        # "net_edge" mode — reject only strictly negative edge
-        if net_edge < 0:
+        # "net_edge" mode — reject non-positive edge (a zero-edge stub signal
+        # must fire no trades, exactly as the README promises)
+        if net_edge <= 0:
             logger.debug(
                 f"[Example] Skipping {market_slug}: gross edge {gross_edge:.2f}% "
                 f"wiped by {taker_fee:.1f}% fee"

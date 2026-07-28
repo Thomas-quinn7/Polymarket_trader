@@ -25,7 +25,7 @@ edge (or killing one) is the only focus.
 > included — and per the paragraph above, the author's own signals have not yet earned
 > live capital either. Treat any prediction-market "edge" as guilty until proven innocent.
 
-> **What the numbers mean:** the **807 unit tests** here (as of 2026-07-25) cover this
+> **What the numbers mean:** the **816 unit tests** here (as of 2026-07-28) cover this
 > public subset; the full private system runs behind **3,700+ tests** (as of 2026-07-21). Detailed
 > walkthrough available on request.
 
@@ -68,8 +68,8 @@ edge (or killing one) is the only focus.
 - **Backtesting engine** — wall-clock timeline replay, side-aware YES/NO positions, half-spread model, configurable fees; strategies run unmodified against historical data
 - **Session recording** — every settled trade persisted to SQLite and JSON: price, hold time, edge %, fees, gross/net P&L, outcome, equity curve
 - **Ollama strategy review** — on shutdown a local LLM generates a natural-language session review; runs entirely on-device, no cloud API
-- **Hot-reload config** — most `.env` settings apply without restart via `/api/reload`
-- **807 unit tests** (as of 2026-07-25) — execution, portfolio, data models, slippage estimation, config reload, backtest engine, metrics
+- **Hot-reload config** — most `.env` settings apply without restart via `POST /api/settings`
+- **816 unit tests** (as of 2026-07-28) — execution, portfolio, data models, slippage estimation, config reload, backtest engine, metrics
 
 ---
 
@@ -447,9 +447,9 @@ DASHBOARD_PORT=8080
 | `GET` | `/api/trades` | Trade history |
 | `GET` | `/api/sessions` | All recorded sessions |
 | `GET` | `/api/sessions/{id}` | Full session detail + Ollama review |
-| `POST` | `/api/start` | Start the trading loop |
-| `POST` | `/api/stop` | Stop the trading loop |
-| `POST` | `/api/reload` | Hot-reload config from `.env` |
+| `POST` | `/api/bot/start` | Start the trading loop |
+| `POST` | `/api/bot/stop` | Stop the trading loop |
+| `POST` | `/api/settings` | Write changed settings to `.env` and hot-reload config |
 | `GET` | `/api/health` | Health check (no auth required) |
 
 ---
@@ -629,7 +629,7 @@ Polymarket_Trading/
 ├── dashboard/
 │   └── api.py                        # FastAPI dashboard (positions, P&L, sessions)
 ├── tests/
-│   └── unit/                         # 807 pytest unit tests (as of 2026-07-25)
+│   └── unit/                         # 816 pytest unit tests (as of 2026-07-28)
 ├── main.py                           # Bot entry point and trading loop
 └── docker-compose.yml                # ScyllaDB + Ollama containers
 ```
@@ -652,7 +652,7 @@ Paper mode is enabled by default (`PAPER_TRADING_ONLY=True`). It uses real Polym
 python -m pytest tests/unit/
 ```
 
-807 tests (as of 2026-07-25) covering order execution, portfolio management, P&L calculation, slippage estimation, data models, config reload, backtesting engine, and metrics.
+816 tests (as of 2026-07-28) covering order execution, portfolio management, P&L calculation, slippage estimation, data models, config reload, backtesting engine, and metrics.
 
 ---
 

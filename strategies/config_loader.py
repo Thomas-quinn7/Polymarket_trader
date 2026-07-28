@@ -41,11 +41,11 @@ _TYPE_MAP: Dict[str, type] = {
     "edge_filter_mode": str,
     "strategy_min_confidence": float,
     "strategy_max_positions": int,
-    # demo_buy / paper_demo
+    # hold-to-expiry / demo-style params
     "hold_seconds": int,
     "min_volume": float,
     "primary_scan_category": str,
-    # enhanced_market_scanner (flat top-level scalar keys only)
+    # market-scanner tuning (flat top-level scalar keys only)
     "min_edge": float,
     "max_edge": float,
     "min_time_to_close": int,
@@ -53,7 +53,7 @@ _TYPE_MAP: Dict[str, type] = {
     "max_markets_to_track": int,
     "track_new_markets_only": bool,
     "ignore_seen_markets": bool,
-    # crypto_5min_mm
+    # quoting / market-making style params
     "limit_price": float,
     "shares": float,
     "min_ttc_to_enter": int,
@@ -62,7 +62,7 @@ _TYPE_MAP: Dict[str, type] = {
     "direct_poll_interval_ms": int,
     "scheduled_poll_lead_s": float,
     "prefetch_lookahead_s": int,
-    # crypto_external
+    # external-signal filters
     "fear_min_edge": float,
     "fear_threshold": int,
     "rsi_overbought": float,

@@ -104,8 +104,8 @@ class TestReloadStringFields:
 
     def test_strategy_updated(self):
         cfg = _config()
-        _reload(cfg, {"STRATEGY": "enhanced_market_scanner"})
-        assert cfg.STRATEGY == "enhanced_market_scanner"
+        _reload(cfg, {"STRATEGY": "showcase_demo"})
+        assert cfg.STRATEGY == "showcase_demo"
 
     def test_log_level_updated(self):
         cfg = _config()

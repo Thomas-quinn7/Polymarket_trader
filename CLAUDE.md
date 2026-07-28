@@ -98,7 +98,7 @@ Strategy.should_exit() / Strategy.get_exit_price()
 
 ### Execution auth modes
 
-`PolymarketClient.__init__` selects auth in priority order: Relayer (if `RELAYER_ENABLED`) → Builder (if `BUILDER_ENABLED`) → Standard. Order signing is two-phase: local sign → exchange submit. Retries reuse the same signed order (idempotent via salt). Builder daily limits are computed at startup and logged as `safe_scan_interval_ms`.
+`PolymarketClient.__init__` selects auth in priority order: Relayer (if `RELAYER_ENABLED`) → Builder (if `BUILDER_ENABLED`) → Standard. Order signing is two-phase: local sign → exchange submit. Retries reuse the same signed order (idempotent via salt). Builder daily tier limits drive the computed `config.safe_scan_interval_ms` property — consult it when tuning `SCAN_INTERVAL_MS` (it is not logged automatically).
 
 ## Writing a strategy
 
