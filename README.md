@@ -1,33 +1,28 @@
 # Polymarket Trading Framework
 
-The market question behind this project: **can a retail-latency system find edge in
-Polymarket prediction markets that survives the executable price, fees, and its own
-statistics?** My answer so far is *not yet* — and the most useful thing the project
-produced is the machinery that forced that answer when the naive readings said yes. The
-flagship strategy's +EV backtest turned out to be a look-ahead I caught myself (a 0–60s
-early peek at an in-progress price bar; fixing one visibility filter swung the configured
-combo from +$169 to −$318), and its live signals out-predicted the *displayed* quote by
-+19.7pp while the *executable* order book had already repriced — true edge −2.2pp across
-2,868 logged signals. The promotion gate refused it live capital, and I let it.
+This is the open-source framework layer of a trading system I have been building for Polymarket
+prediction markets. I started it with a friend, Ciaran McDonnell (co-author), and it covers everything
+between a strategy's signal and the exchange: market data, order execution, position sizing, portfolio
+tracking, backtesting and a live dashboard. You plug in a strategy and the whole stack runs it, so your
+time can go on the research instead of rebuilding the plumbing each time.
 
-This public repo is the infrastructure that makes verdicts like that trustworthy: market
-data, order execution, portfolio management, honest-friction backtesting, and real-time
-monitoring — a clean interface between a strategy signal and the exchange, so testing an
-edge (or killing one) is the only focus.
+Since then I have carried it on privately and built it out a lot further, with live order book
+recording, pricing models for short-dated crypto binaries, risk limits and a statistical promotion
+gate that any strategy has to pass before it goes near real money. That version runs behind 3,800+
+tests and paper trades around the clock. This repo is the part of it I am happy to share.
 
-> **What this is:** Trading infrastructure — the sanitised public framework layer of a
-> larger private system. The included `example_strategy` is a documented template with a
-> stubbed signal that fires no trades by design. Copy it, implement your own edge formula,
-> and the full stack runs it. Real strategies, calibration research, and the statistical
-> promotion gate are kept private.
+> **What this is:** Trading infrastructure, the public framework layer of a larger private system.
+> The included `example_strategy` is a documented template with a stubbed signal that fires no trades
+> by design. Copy it, implement your own edge formula, and the full stack runs it. Real strategies,
+> calibration research and the promotion gate are kept private.
 
-> **What this is not:** A plug-and-play profitable trading bot. No alpha signal is
-> included — and per the paragraph above, the author's own signals have not yet earned
-> live capital either. Treat any prediction-market "edge" as guilty until proven innocent.
+> **What this is not:** A plug-and-play profitable trading bot. No alpha signal is included, and any
+> prediction-market "edge" should be treated as guilty until proven innocent. The backtester and the
+> pre-trade slippage gate are there to help you check.
 
-> **What the numbers mean:** the **816 unit tests** here (as of 2026-07-28) cover this
-> public subset; the full private system runs behind **3,700+ tests** (as of 2026-07-21). Detailed
-> walkthrough available on request.
+> **What the numbers mean:** the **816 unit tests** here (as of 2026-07-28) cover this public subset.
+> The full private system runs behind **3,800+ tests** (as of 2026-07-25). Detailed walkthrough
+> available on request.
 
 ---
 
