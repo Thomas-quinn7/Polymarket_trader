@@ -6,10 +6,10 @@ between a strategy's signal and the exchange: market data, order execution, posi
 tracking, backtesting and a live dashboard. You plug in a strategy and the whole stack runs it, so your
 time can go on the research instead of rebuilding the plumbing each time.
 
-Since then I have carried it on privately and built it out a lot further, with live order book
+Since then the project has carried on privately and grown a lot further, with live order book
 recording, pricing models for short-dated crypto binaries, risk limits and a statistical promotion
-gate that any strategy has to pass before it goes near real money. That version runs behind 3,800+
-tests and paper trades around the clock. This repo is the part of it I am happy to share.
+gate that any strategy has to pass before it goes near real money. That version has 3,800+
+tests and has only ever traded on paper. This repo is the part of it I am happy to share.
 
 > **What this is:** Trading infrastructure, the public framework layer of a larger private system.
 > The included `example_strategy` is a documented template with a stubbed signal that fires no trades
@@ -56,15 +56,15 @@ tests and paper trades around the clock. This repo is the part of it I am happy 
 
 ## Key Features
 
-- **CLOB limit & market orders** — GTC limit orders and FOK market orders via the Polymarket CLOB SDK; Relayer and Builder API auth modes supported
-- **Pre-trade slippage gate** — walks the live order book (10 levels) to estimate VWAP impact before each market order; aborts if slippage exceeds tolerance
-- **Fractional Kelly sizing** — position size = full Kelly × configurable fraction, capped at `CAPITAL_SPLIT_PERCENT`. Kelly's `p` comes from the opportunity's `model_prob` (a win probability); `confidence` is only a capped fallback, and with no signal at all the executor stakes the `MIN_POSITION_PCT` floor — never the cap. `override_capital` bypasses Kelly for fixed-size strategies
-- **Category concentration limits** — caps open positions per market category to prevent correlated overexposure
-- **Backtesting engine** — wall-clock timeline replay, side-aware YES/NO positions, half-spread model, configurable fees; strategies run unmodified against historical data
-- **Session recording** — every settled trade persisted to SQLite and JSON: price, hold time, edge %, fees, gross/net P&L, outcome, equity curve
-- **Ollama strategy review** — on shutdown a local LLM generates a natural-language session review; runs entirely on-device, no cloud API
-- **Hot-reload config** — most `.env` settings apply without restart via `POST /api/settings`
-- **816 unit tests** (as of 2026-07-28) — execution, portfolio, data models, slippage estimation, config reload, backtest engine, metrics
+- **CLOB limit & market orders** - GTC limit orders and FOK market orders via the Polymarket CLOB SDK; Relayer and Builder API auth modes supported
+- **Pre-trade slippage gate** - walks the live order book (10 levels) to estimate VWAP impact before each market order; aborts if slippage exceeds tolerance
+- **Fractional Kelly sizing** - position size = full Kelly × configurable fraction, capped at `CAPITAL_SPLIT_PERCENT`. Kelly's `p` comes from the opportunity's `model_prob` (a win probability); `confidence` is only a capped fallback, and with no signal at all the executor stakes the `MIN_POSITION_PCT` floor - never the cap. `override_capital` bypasses Kelly for fixed-size strategies
+- **Category concentration limits** - caps open positions per market category to prevent correlated overexposure
+- **Backtesting engine** - wall-clock timeline replay, side-aware YES/NO positions, half-spread model, configurable fees; strategies run unmodified against historical data
+- **Session recording** - every settled trade persisted to SQLite and JSON: price, hold time, edge %, fees, gross/net P&L, outcome, equity curve
+- **Ollama strategy review** - on shutdown a local LLM generates a natural-language session review; runs entirely on-device, no cloud API
+- **Hot-reload config** - most `.env` settings apply without restart via `POST /api/settings`
+- **816 unit tests** (as of 2026-07-28) - execution, portfolio, data models, slippage estimation, config reload, backtest engine, metrics
 
 ---
 
@@ -73,7 +73,7 @@ tests and paper trades around the clock. This repo is the part of it I am happy 
 ### Prerequisites
 
 - Python 3.11 or higher
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) — fast Python package manager
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) - fast Python package manager
 
 **Install uv:**
 
@@ -139,7 +139,7 @@ POLYMARKET_FUNDER_ADDRESS=your_wallet_address_here
 # Set a strategy to run
 STRATEGY=example_strategy
 
-# Paper trading is enabled by default — no real money
+# Paper trading is enabled by default - no real money
 TRADING_MODE=paper
 PAPER_TRADING_ONLY=True
 ```
@@ -168,7 +168,7 @@ Then open `http://localhost:8080` in your browser to access the dashboard.
 
 The framework supports three authentication modes for submitting orders. They are applied in priority order: **Relayer → Builder → Standard**.
 
-### Relayer API (recommended — unlimited)
+### Relayer API (recommended - unlimited)
 
 Relayer keys provide unlimited relay transactions with no tier approval required. Generate one at [polymarket.com/settings?tab=api-keys](https://polymarket.com/settings?tab=api-keys).
 
@@ -219,7 +219,7 @@ The bot sends notifications on trade execution, position settlement, and system 
 ```env
 ENABLE_DISCORD_ALERTS=True
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN
-DISCORD_MENTION_USER=<@YOUR_DISCORD_USER_ID>   # optional — tags you in alerts
+DISCORD_MENTION_USER=<@YOUR_DISCORD_USER_ID>   # optional - tags you in alerts
 ```
 
 > To find your Discord user ID: enable Developer Mode in Discord settings, then right-click your username and select **Copy User ID**.
@@ -232,7 +232,7 @@ python tests/scripts/test_discord.py
 
 ### Email (SMTP)
 
-**1. For Gmail — create an App Password:**
+**1. For Gmail - create an App Password:**
 - Go to [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
 - Select **Mail** and your device, then generate the password
 - Use the generated password in `.env`, not your account password
@@ -261,7 +261,7 @@ python tests/scripts/test_email.py
 
 ## Database
 
-### SQLite (default — no setup required)
+### SQLite (default - no setup required)
 
 SQLite is used by default and requires no external process. The database file is created automatically at `./storage/trading.db` on first run.
 
@@ -270,9 +270,9 @@ DB_ENABLED=True
 DB_PATH=./storage/trading.db
 ```
 
-The database stores positions, trades, and P&L history. It survives restarts — open positions are restored automatically on startup. The `storage/` directory is gitignored; back it up separately if you need to preserve trade history across machines.
+The database stores positions, trades, and P&L history. It survives restarts - open positions are restored automatically on startup. The `storage/` directory is gitignored; back it up separately if you need to preserve trade history across machines.
 
-### ScyllaDB (optional — order book snapshots)
+### ScyllaDB (optional - order book snapshots)
 
 ScyllaDB is used to store order book snapshots for market microstructure analysis. It is disabled by default and requires Docker.
 
@@ -349,7 +349,7 @@ ScyllaDB and Ollama data are stored in Docker named volumes (`scylla_data`, `oll
 If you have an NVIDIA GPU and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) installed, uncomment the `deploy` block in `docker-compose.yml`:
 
 ```yaml
-# ollama service — uncomment to enable GPU
+# ollama service - uncomment to enable GPU
 deploy:
   resources:
     reservations:
@@ -367,7 +367,7 @@ After each session, the bot can generate a natural-language review of the strate
 
 ### Setup
 
-**Without Docker** — install Ollama directly:
+**Without Docker** - install Ollama directly:
 
 ```bash
 # macOS / Linux
@@ -391,7 +391,7 @@ OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=llama3.2:3b
 ```
 
-**With Docker Compose** — Ollama starts automatically and pulls the model on first use. No extra steps needed.
+**With Docker Compose** - Ollama starts automatically and pulls the model on first use. No extra steps needed.
 
 ### What the review covers
 
@@ -519,7 +519,7 @@ python main.py --paper --strategy example_strategy
 # Live mode (interactive confirmation prompt required)
 python main.py --live
 
-# Headless run — no dashboard, auto-start
+# Headless run - no dashboard, auto-start
 python main.py --auto-start --no-dashboard
 ```
 
@@ -544,7 +544,7 @@ class MyStrategy(BaseStrategy):
                     winning_token_id=market.token_ids[0],   # YES token
                     current_price=price,
                     edge_percent=net_edge,
-                    model_prob=your_win_probability(market),  # a probability, not a score — Kelly sizes on this
+                    model_prob=your_win_probability(market),  # a probability, not a score - Kelly sizes on this
                     confidence=your_confidence(market),
                     ...
                 )
@@ -571,7 +571,7 @@ config = BacktestConfig(
     start_date="2025-01-01",
     end_date="2025-04-01",
     initial_balance=1000.0,
-    taker_fee_pct=2.0,      # flat % of notional — a simplification; Polymarket's real
+    taker_fee_pct=2.0,      # flat % of notional - a simplification; Polymarket's real
     half_spread_pct=1.0,    # taker fee scales with shares*rate*p*(1-p), which a flat model
                             # understates for mid-priced contracts. Treat backtest costs as
                             # optimistic until you calibrate these to the live fee schedule.
@@ -633,11 +633,11 @@ Polymarket_Trading/
 
 ## Paper Trading
 
-Paper mode is enabled by default (`PAPER_TRADING_ONLY=True`). It uses real Polymarket prices with simulated execution — no real funds are involved.
+Paper mode is enabled by default (`PAPER_TRADING_ONLY=True`). It uses real Polymarket prices with simulated execution - no real funds are involved.
 
 - Slippage estimated from the live order book and recorded per position
 - P&L, position sizing, stop-losses, and settlement behave identically to live mode
-- Session JSON export works the same as live — ready to chart and analyse
+- Session JSON export works the same as live - ready to chart and analyse
 
 ---
 
@@ -659,7 +659,7 @@ For educational purposes. Trading on prediction markets carries financial risk. 
 
 **GNU Affero General Public License v3.0 (AGPL-3.0-only)**
 
-Copyright (C) 2026 [Thomas Quinn](https://github.com/Thomas-quinn7) ([LinkedIn](https://www.linkedin.com/in/thomassquinn/)) — primary author
-               [Ciaran McDonnell](https://github.com/CiaranMcDonnell) — co-author
+Copyright (C) 2026 [Thomas Quinn](https://github.com/Thomas-quinn7) ([LinkedIn](https://www.linkedin.com/in/thomassquinn/)) - primary author
+               [Ciaran McDonnell](https://github.com/CiaranMcDonnell) - co-author
 
-Non-commercial and educational use permitted. Any distribution or network deployment must be released under the same AGPL-3.0 license with full attribution. Commercial use requires explicit written permission from the authors.
+Use, modification and distribution, including commercial use, are allowed under the AGPL-3.0 terms: any distribution or network deployment must release its source under the same license, with attribution.
